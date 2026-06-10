@@ -26,7 +26,6 @@ function App() {
   const [showSearchForm, setShowSearchForm] = useState(false);
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
-  const [showSupport, setShowSupport] = useState(false);
 
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
