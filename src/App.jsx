@@ -25,8 +25,8 @@ function App() {
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [showSearchForm, setShowSearchForm] = useState(false);
   const [showBuyCredits, setShowBuyCredits] = useState(false);
-  const [showBuyCredits, setShowBuyCredits] = useState(false);
-const [showSupport, setShowSupport] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
 
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -628,11 +628,18 @@ const [showSupport, setShowSupport] = useState(false);
 
             <button
   className="btn outline large"
-  onClick={() => setShowBuyCredits(true)}
+  onClick={() => {
+    setShowBuyCredits(true);
+  }}
 >
   Comprar Créditos
 </button>
-            <button className="btn outline large">Suporte</button>
+            <button
+  className="btn outline large"
+  onClick={() => setShowSupport(true)}
+>
+  Suporte
+</button>
           </section>
 
           {profile.role === "admin" && (
@@ -845,9 +852,6 @@ const [showSupport, setShowSupport] = useState(false);
             </section>
           )}
         </main>
-{showBuyCredits && (
-  <BuyCreditsModal onClose={() => setShowBuyCredits(false)} />
-)}
 {showBuyCredits && (
   <BuyCreditsModal onClose={() => setShowBuyCredits(false)} />
 )}
