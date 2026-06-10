@@ -15,6 +15,8 @@ function extractTransactionId(payload) {
     payload?.data?.id ||
     payload?.data?.transaction_id ||
     payload?.data?.payment_id ||
+    payload?.data?.pix_id ||
+    payload?.data?.charge_id ||
     null
   );
 }
@@ -26,6 +28,7 @@ function extractStatus(payload) {
     payload.transaction_status ||
     payload?.data?.status ||
     payload?.data?.payment_status ||
+    payload?.data?.transaction_status ||
     ''
   );
 }
@@ -81,6 +84,13 @@ export default async function handler(req, res) {
     const secretFromQuery = String(req.query.secret || '');
 
     if (!webhookSecret || secretFromQuery !== webhookSecret) {
+      await saveWebhookLog({
+        transactionId: null,
+        status: null,
+        payload: req.body || {},
+        errorMessage: 'Webhook não autorizado',
+      });
+
       return res.status(401).json({
         success: false,
         message: 'Webhook não autorizado',
@@ -88,7 +98,9 @@ export default async function handler(req, res) {
     }
 
     payload = req.body || {};
-    transactionId = extractTransactionId(payload);
+
+    const extractedId = extractTransactionId(payload);
+    transactionId = extractedId ? String(extractedId).toLowerCase() : null;
     status = normalizeStatus(extractStatus(payload));
 
     console.log('Webhook PushinPay recebido:', JSON.stringify(payload));
@@ -109,61 +121,14 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: payment, error: paymentError } = await supabaseAdmin
-      .from('payments')
-      .select('id, pushinpay_id, gateway_transaction_id, status, processed_at')
-      .or(`pushinpay_id.eq.${transactionId},gateway_transaction_id.eq.${transactionId}`)
-      .maybeSingle();
-
-    if (paymentError) {
-      await saveWebhookLog({
-        transactionId,
-        status,
-        payload,
-        errorMessage: paymentError.message,
-      });
-
-      return res.status(500).json({
-        success: false,
-        message: 'Erro ao buscar pagamento',
-        error: paymentError.message,
-      });
-    }
-
-    if (!payment) {
-      await saveWebhookLog({
-        transactionId,
-        status,
-        payload,
-        errorMessage: 'Pagamento não encontrado no Supabase',
-      });
-
-      return res.status(200).json({
-        success: false,
-        message: 'Pagamento não encontrado no Supabase',
-        transactionId,
-        status,
-      });
-    }
-
     if (!isPaidStatus(status)) {
-      const updateResult = await supabaseAdmin
-        .from('payments')
-        .update({
-          status: status || 'pending',
-          gateway_payload: payload,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', payment.id)
-        .is('processed_at', null);
-
       await saveWebhookLog({
         transactionId,
         status,
         payload,
         processingResult: {
+          success: true,
           message: 'Webhook recebido, mas status ainda não é pago',
-          updateResult,
         },
       });
 
