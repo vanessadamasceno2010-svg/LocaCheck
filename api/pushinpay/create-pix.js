@@ -117,6 +117,7 @@ export default async function handler(req, res) {
         plan_id: plan.id,
         gateway: 'pushinpay',
         amount_cents: plan.price_cents,
+        amount: plan.price_cents,
         status: 'pending',
       })
       .select('id')
@@ -166,10 +167,13 @@ export default async function handler(req, res) {
       });
     }
 
+    const transactionId = pushinpayData.id;
+
     const { error: updateError } = await supabaseAdmin
       .from('payments')
       .update({
-        gateway_transaction_id: pushinpayData.id,
+        pushinpay_id: transactionId,
+        gateway_transaction_id: transactionId,
         pix_code: pushinpayData.qr_code,
         pix_qr_code_base64: pushinpayData.qr_code_base64 || null,
         gateway_payload: pushinpayData,
@@ -188,7 +192,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       paymentId: payment.id,
-      transactionId: pushinpayData.id,
+      transactionId,
       status: pushinpayData.status,
       plan: {
         id: plan.id,
@@ -208,6 +212,7 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       message: 'Erro interno ao gerar PIX',
+      error: error.message,
     });
   }
 }

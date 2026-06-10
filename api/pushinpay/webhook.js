@@ -111,9 +111,8 @@ export default async function handler(req, res) {
 
     const { data: payment, error: paymentError } = await supabaseAdmin
       .from('payments')
-      .select('id, gateway_transaction_id, status, processed_at')
-      .eq('gateway', 'pushinpay')
-      .eq('gateway_transaction_id', transactionId)
+      .select('id, pushinpay_id, gateway_transaction_id, status, processed_at')
+      .or(`pushinpay_id.eq.${transactionId},gateway_transaction_id.eq.${transactionId}`)
       .maybeSingle();
 
     if (paymentError) {
