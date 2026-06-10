@@ -35,12 +35,7 @@ export default async function handler(req, res) {
       });
     }
 
-    await supabaseAdmin.from('activity_logs').insert({
-      action: 'pushinpay_webhook_received',
-      details: payload,
-      created_at: new Date().toISOString(),
-    });
-
+  
     if (status !== 'paid') {
       await supabaseAdmin
         .from('payments')
