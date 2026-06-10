@@ -4,7 +4,71 @@ function normalizeStatus(status) {
   return String(status || '').toLowerCase().trim();
 }
 
+function extractTransactionId(payload) {
+  return (
+    payload.id ||
+    payload.transaction_id ||
+    payload.payment_id ||
+    payload.pix_id ||
+    payload.charge_id ||
+    payload.external_id ||
+    payload?.data?.id ||
+    payload?.data?.transaction_id ||
+    payload?.data?.payment_id ||
+    null
+  );
+}
+
+function extractStatus(payload) {
+  return (
+    payload.status ||
+    payload.payment_status ||
+    payload.transaction_status ||
+    payload?.data?.status ||
+    payload?.data?.payment_status ||
+    ''
+  );
+}
+
+function isPaidStatus(status) {
+  const normalized = normalizeStatus(status);
+
+  return [
+    'paid',
+    'approved',
+    'completed',
+    'confirmed',
+    'success',
+    'succeeded',
+    'pago',
+  ].includes(normalized);
+}
+
+async function saveWebhookLog({
+  transactionId,
+  status,
+  payload,
+  processingResult = null,
+  errorMessage = null,
+}) {
+  try {
+    await supabaseAdmin.from('pushinpay_webhook_logs').insert({
+      transaction_id: transactionId || null,
+      status: status || null,
+      raw_payload: payload || {},
+      processing_result: processingResult,
+      error_message: errorMessage,
+    });
+  } catch (logError) {
+    console.error('Erro ao salvar log do webhook:', logError);
+  }
+}
+
 export default async function handler(req, res) {
+  let payload = {};
+  let transactionId = null;
+  let status = '';
+
   try {
     if (req.method !== 'POST') {
       return res.status(405).json({
@@ -23,34 +87,92 @@ export default async function handler(req, res) {
       });
     }
 
-    const payload = req.body;
+    payload = req.body || {};
+    transactionId = extractTransactionId(payload);
+    status = normalizeStatus(extractStatus(payload));
 
-    const transactionId = payload.id;
-    const status = normalizeStatus(payload.status);
+    console.log('Webhook PushinPay recebido:', JSON.stringify(payload));
+    console.log('Transaction ID extraído:', transactionId);
+    console.log('Status extraído:', status);
 
     if (!transactionId) {
-      return res.status(400).json({
+      await saveWebhookLog({
+        transactionId: null,
+        status,
+        payload,
+        errorMessage: 'ID da transação não encontrado no payload',
+      });
+
+      return res.status(200).json({
         success: false,
-        message: 'ID da transação não informado',
+        message: 'ID da transação não encontrado no payload',
       });
     }
 
-  
-    if (status !== 'paid') {
-      await supabaseAdmin
+    const { data: payment, error: paymentError } = await supabaseAdmin
+      .from('payments')
+      .select('id, gateway_transaction_id, status, processed_at')
+      .eq('gateway', 'pushinpay')
+      .eq('gateway_transaction_id', transactionId)
+      .maybeSingle();
+
+    if (paymentError) {
+      await saveWebhookLog({
+        transactionId,
+        status,
+        payload,
+        errorMessage: paymentError.message,
+      });
+
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao buscar pagamento',
+        error: paymentError.message,
+      });
+    }
+
+    if (!payment) {
+      await saveWebhookLog({
+        transactionId,
+        status,
+        payload,
+        errorMessage: 'Pagamento não encontrado no Supabase',
+      });
+
+      return res.status(200).json({
+        success: false,
+        message: 'Pagamento não encontrado no Supabase',
+        transactionId,
+        status,
+      });
+    }
+
+    if (!isPaidStatus(status)) {
+      const updateResult = await supabaseAdmin
         .from('payments')
         .update({
           status: status || 'pending',
           gateway_payload: payload,
           updated_at: new Date().toISOString(),
         })
-        .eq('gateway', 'pushinpay')
-        .eq('gateway_transaction_id', transactionId)
+        .eq('id', payment.id)
         .is('processed_at', null);
+
+      await saveWebhookLog({
+        transactionId,
+        status,
+        payload,
+        processingResult: {
+          message: 'Webhook recebido, mas status ainda não é pago',
+          updateResult,
+        },
+      });
 
       return res.status(200).json({
         success: true,
-        message: 'Webhook recebido, pagamento ainda não aprovado',
+        message: 'Webhook recebido, mas pagamento ainda não aprovado',
+        transactionId,
+        status,
       });
     }
 
@@ -60,7 +182,12 @@ export default async function handler(req, res) {
     });
 
     if (error) {
-      console.error('Erro ao processar pagamento:', error);
+      await saveWebhookLog({
+        transactionId,
+        status,
+        payload,
+        errorMessage: error.message,
+      });
 
       return res.status(500).json({
         success: false,
@@ -69,13 +196,32 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(200).json(data);
+    await saveWebhookLog({
+      transactionId,
+      status,
+      payload,
+      processingResult: data,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Webhook processado',
+      result: data,
+    });
   } catch (error) {
-    console.error('Erro webhook PushinPay:', error);
+    console.error('Erro geral no webhook PushinPay:', error);
+
+    await saveWebhookLog({
+      transactionId,
+      status,
+      payload,
+      errorMessage: error.message || 'Erro interno desconhecido',
+    });
 
     return res.status(500).json({
       success: false,
       message: 'Erro interno no webhook',
+      error: error.message,
     });
   }
 }
