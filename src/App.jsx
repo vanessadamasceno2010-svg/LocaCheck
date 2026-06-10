@@ -1,0 +1,1379 @@
+import { useEffect, useState } from "react";
+import { supabase } from "./supabaseClient";
+import "./App.css";
+
+const TIPOS_OCORRENCIA = [
+  "Inadimplência",
+  "Multas não pagas",
+  "Avarias no veículo",
+  "Não devolução do veículo",
+  "Uso indevido",
+  "Fraude documental",
+  "Quebra de contrato",
+  "Apropriação indevida",
+  "Sinistro não informado",
+  "Outros",
+];
+
+function App() {
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [authMode, setAuthMode] = useState(null);
+
+  const [showRecordForm, setShowRecordForm] = useState(false);
+  const [showSearchForm, setShowSearchForm] = useState(false);
+
+  const [nome, setNome] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+
+  const [recordNome, setRecordNome] = useState("");
+  const [recordCpf, setRecordCpf] = useState("");
+  const [recordWhatsapp, setRecordWhatsapp] = useState("");
+  const [recordCidade, setRecordCidade] = useState("");
+  const [recordTipos, setRecordTipos] = useState([]);
+  const [recordDescricao, setRecordDescricao] = useState("");
+  const [recordImage, setRecordImage] = useState(null);
+
+  const [searchText, setSearchText] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchMessage, setSearchMessage] = useState("");
+
+  const [adminRecords, setAdminRecords] = useState([]);
+  const [adminMessage, setAdminMessage] = useState("");
+
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminUsersMessage, setAdminUsersMessage] = useState("");
+
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [editRecordNome, setEditRecordNome] = useState("");
+  const [editRecordCpf, setEditRecordCpf] = useState("");
+  const [editRecordWhatsapp, setEditRecordWhatsapp] = useState("");
+  const [editRecordCidade, setEditRecordCidade] = useState("");
+  const [editRecordTipos, setEditRecordTipos] = useState([]);
+  const [editRecordDescricao, setEditRecordDescricao] = useState("");
+  const [editRecordStatus, setEditRecordStatus] = useState("pendente");
+  const [editRecordImage, setEditRecordImage] = useState(null);
+  const [editRecordMessage, setEditRecordMessage] = useState("");
+
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [recordMessage, setRecordMessage] = useState("");
+
+  async function uploadRecordImage(file) {
+    if (!file || !session?.user?.id) return "";
+
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${session.user.id}/${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("records")
+      .upload(fileName, file);
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage.from("records").getPublicUrl(fileName);
+
+    return data.publicUrl;
+  }
+
+  async function loadProfile(userId) {
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData?.user;
+
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (data) {
+      setProfile(data);
+      return;
+    }
+
+    const { data: newProfile, error } = await supabase
+      .from("profiles")
+      .insert({
+        id: userId,
+        nome: user?.user_metadata?.nome || "Usuário",
+        whatsapp: user?.user_metadata?.whatsapp || "",
+        role: "user",
+        credits: 20,
+        consultas: 0,
+      })
+      .select()
+      .single();
+
+    if (!error) {
+      setProfile(newProfile);
+    } else {
+      console.log("Erro ao criar perfil:", error);
+    }
+  }
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+
+      if (data.session?.user) {
+        loadProfile(data.session.user.id);
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, currentSession) => {
+        setSession(currentSession);
+
+        if (currentSession?.user) {
+          loadProfile(currentSession.user.id);
+        } else {
+          setProfile(null);
+        }
+      }
+    );
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (session && profile?.role === "admin") {
+      carregarOcorrenciasAdmin();
+      carregarUsuariosAdmin();
+    }
+  }, [session, profile]);
+
+  async function cadastrarUsuario(e) {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password: senha,
+      options: {
+        data: {
+          nome,
+          whatsapp,
+        },
+      },
+    });
+
+    if (error) {
+      setMessage(error.message);
+    } else {
+      setMessage("Cadastro realizado com sucesso. Você já pode entrar.");
+      setAuthMode("login");
+      setNome("");
+      setWhatsapp("");
+      setEmail("");
+      setSenha("");
+    }
+
+    setLoading(false);
+  }
+
+  async function entrarUsuario(e) {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: senha,
+    });
+
+    if (error) {
+      setMessage("E-mail ou senha inválidos.");
+    } else {
+      setAuthMode(null);
+      setEmail("");
+      setSenha("");
+    }
+
+    setLoading(false);
+  }
+
+  async function sair() {
+    await supabase.auth.signOut();
+    setSession(null);
+    setProfile(null);
+  }
+
+  function toggleTipo(tipo) {
+    if (recordTipos.includes(tipo)) {
+      setRecordTipos(recordTipos.filter((item) => item !== tipo));
+    } else {
+      setRecordTipos([...recordTipos, tipo]);
+    }
+  }
+
+  function limparFormularioOcorrencia() {
+    setRecordNome("");
+    setRecordCpf("");
+    setRecordWhatsapp("");
+    setRecordCidade("");
+    setRecordTipos([]);
+    setRecordDescricao("");
+    setRecordImage(null);
+  }
+
+  async function cadastrarOcorrencia(e) {
+    e.preventDefault();
+    setLoading(true);
+    setRecordMessage("");
+
+    const cpfLimpo = recordCpf.replace(/\D/g, "");
+    const cpf4 = cpfLimpo.slice(-4);
+
+    if (recordTipos.length === 0) {
+      setRecordMessage("Selecione pelo menos um tipo de ocorrência.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const imagemUrl = recordImage ? await uploadRecordImage(recordImage) : "";
+
+      const { error } = await supabase.from("records").insert({
+        nome: recordNome,
+        cpf_full: cpfLimpo,
+        cpf4,
+        cidade: recordCidade,
+        whatsapp_locatario: recordWhatsapp,
+        tipos: recordTipos,
+        descricao: recordDescricao,
+        imagem_url: imagemUrl,
+        status: "pendente",
+        created_by: session.user.id,
+      });
+
+      if (error) {
+        console.log(error);
+        setRecordMessage(
+          "Erro ao registrar ocorrência. Verifique os dados e tente novamente."
+        );
+      } else {
+        setRecordMessage(
+          "Ocorrência registrada com sucesso! Breve a ocorrência já estará disponível para consulta na plataforma. Parabéns por contribuir com outros locadores."
+        );
+        limparFormularioOcorrencia();
+      }
+    } catch (error) {
+      console.log(error);
+      setRecordMessage("Erro ao enviar imagem. Tente novamente.");
+    }
+
+    setLoading(false);
+  }
+
+  async function consultarLocatario(e) {
+    e.preventDefault();
+
+    if (!searchText.trim()) {
+      setSearchMessage("Digite um nome, CPF ou cidade para consultar.");
+      return;
+    }
+
+    setLoading(true);
+    setSearchMessage("");
+    setSearchResults([]);
+
+    const { data, error } = await supabase.rpc("consultar_locatario", {
+      search_text: searchText,
+    });
+
+    if (error) {
+      console.log(error);
+      setSearchMessage(error.message || "Erro ao realizar consulta.");
+      setLoading(false);
+      return;
+    }
+
+    setSearchResults(data || []);
+
+    if (!data || data.length === 0) {
+      setSearchMessage(
+        "Consulta realizada. Nenhum registro aprovado foi encontrado para os dados informados."
+      );
+    } else {
+      setSearchMessage(
+        `Consulta realizada. ${data.length} registro(s) encontrado(s).`
+      );
+    }
+
+    await loadProfile(session.user.id);
+    setLoading(false);
+  }
+
+  async function carregarOcorrenciasAdmin() {
+    const { data, error } = await supabase
+      .from("records")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.log(error);
+      setAdminMessage("Erro ao carregar ocorrências.");
+      return;
+    }
+
+    setAdminRecords(data || []);
+  }
+
+  async function atualizarStatusOcorrencia(id, status) {
+    const { error } = await supabase
+      .from("records")
+      .update({
+        status,
+        approved_at: status === "aprovado" ? new Date().toISOString() : null,
+      })
+      .eq("id", id);
+
+    if (error) {
+      console.log(error);
+      setAdminMessage("Erro ao atualizar ocorrência.");
+      return;
+    }
+
+    setAdminMessage("Ocorrência atualizada com sucesso.");
+    carregarOcorrenciasAdmin();
+  }
+
+  async function excluirOcorrencia(id) {
+    const confirmar = window.confirm(
+      "Tem certeza que deseja excluir esta ocorrência?"
+    );
+
+    if (!confirmar) return;
+
+    const { error } = await supabase.from("records").delete().eq("id", id);
+
+    if (error) {
+      console.log(error);
+      setAdminMessage("Erro ao excluir ocorrência.");
+      return;
+    }
+
+    setAdminMessage("Ocorrência excluída com sucesso.");
+    carregarOcorrenciasAdmin();
+  }
+
+  function abrirEdicaoOcorrencia(item) {
+    setEditingRecord(item);
+    setEditRecordNome(item.nome || "");
+    setEditRecordCpf(item.cpf_full || "");
+    setEditRecordWhatsapp(item.whatsapp_locatario || "");
+    setEditRecordCidade(item.cidade || "");
+    setEditRecordTipos(item.tipos || []);
+    setEditRecordDescricao(item.descricao || "");
+    setEditRecordStatus(item.status || "pendente");
+    setEditRecordImage(null);
+    setEditRecordMessage("");
+  }
+
+  function toggleTipoEdicao(tipo) {
+    if (editRecordTipos.includes(tipo)) {
+      setEditRecordTipos(editRecordTipos.filter((item) => item !== tipo));
+    } else {
+      setEditRecordTipos([...editRecordTipos, tipo]);
+    }
+  }
+
+  async function salvarEdicaoOcorrencia(e) {
+    e.preventDefault();
+
+    if (!editingRecord) return;
+
+    if (editRecordTipos.length === 0) {
+      setEditRecordMessage("Selecione pelo menos um tipo de ocorrência.");
+      return;
+    }
+
+    setLoading(true);
+    setEditRecordMessage("");
+
+    const cpfLimpo = editRecordCpf.replace(/\D/g, "");
+    const cpf4 = cpfLimpo.slice(-4);
+
+    try {
+      let imagemUrl = editingRecord.imagem_url || "";
+
+      if (editRecordImage) {
+        imagemUrl = await uploadRecordImage(editRecordImage);
+      }
+
+      const { error } = await supabase
+        .from("records")
+        .update({
+          nome: editRecordNome,
+          cpf_full: cpfLimpo,
+          cpf4,
+          cidade: editRecordCidade,
+          whatsapp_locatario: editRecordWhatsapp,
+          tipos: editRecordTipos,
+          descricao: editRecordDescricao,
+          imagem_url: imagemUrl,
+          status: editRecordStatus,
+          approved_at:
+            editRecordStatus === "aprovado" ? new Date().toISOString() : null,
+        })
+        .eq("id", editingRecord.id);
+
+      if (error) {
+        console.log(error);
+        setEditRecordMessage("Erro ao salvar edição.");
+        setLoading(false);
+        return;
+      }
+
+      setEditRecordMessage("Ocorrência editada com sucesso.");
+      await carregarOcorrenciasAdmin();
+
+      setTimeout(() => {
+        setEditingRecord(null);
+        setEditRecordMessage("");
+      }, 800);
+    } catch (error) {
+      console.log(error);
+      setEditRecordMessage("Erro ao enviar imagem.");
+    }
+
+    setLoading(false);
+  }
+
+  async function carregarUsuariosAdmin() {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.log(error);
+      setAdminUsersMessage("Erro ao carregar usuários.");
+      return;
+    }
+
+    setAdminUsers(data || []);
+  }
+
+  async function alterarCreditosUsuario(userId, quantidade) {
+    const usuario = adminUsers.find((item) => item.id === userId);
+
+    if (!usuario) return;
+
+    const novosCreditos = Math.max(0, Number(usuario.credits || 0) + quantidade);
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ credits: novosCreditos })
+      .eq("id", userId);
+
+    if (error) {
+      console.log(error);
+      setAdminUsersMessage("Erro ao alterar créditos.");
+      return;
+    }
+
+    setAdminUsersMessage("Créditos atualizados com sucesso.");
+    carregarUsuariosAdmin();
+
+    if (userId === session.user.id) {
+      loadProfile(session.user.id);
+    }
+  }
+
+  async function ativarIlimitadoUsuario(userId) {
+    const hoje = new Date();
+    hoje.setDate(hoje.getDate() + 30);
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ unlimited_until: hoje.toISOString() })
+      .eq("id", userId);
+
+    if (error) {
+      console.log(error);
+      setAdminUsersMessage("Erro ao ativar plano ilimitado.");
+      return;
+    }
+
+    setAdminUsersMessage("Plano ilimitado ativado por 30 dias.");
+    carregarUsuariosAdmin();
+
+    if (userId === session.user.id) {
+      loadProfile(session.user.id);
+    }
+  }
+
+  async function cancelarIlimitadoUsuario(userId) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ unlimited_until: null })
+      .eq("id", userId);
+
+    if (error) {
+      console.log(error);
+      setAdminUsersMessage("Erro ao cancelar plano ilimitado.");
+      return;
+    }
+
+    setAdminUsersMessage("Plano ilimitado cancelado.");
+    carregarUsuariosAdmin();
+
+    if (userId === session.user.id) {
+      loadProfile(session.user.id);
+    }
+  }
+
+  if (session && !profile) {
+    return (
+      <div className="page">
+        <main className="dashboard">
+          <section className="dashboardHero">
+            <span>LocaCheck</span>
+            <h1>Carregando seu painel...</h1>
+            <p>Estamos preparando seus créditos e informações da conta.</p>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  if (session && profile) {
+    const unlimitedActive =
+      profile.unlimited_until && new Date(profile.unlimited_until) > new Date();
+
+    return (
+      <div className="page">
+        <header className="header">
+          <div className="brand">
+            <div className="logo">LC</div>
+            <div>
+              <strong>LocaCheck</strong>
+              <span>
+                {profile.role === "admin"
+                  ? "Painel administrador"
+                  : "Painel do usuário"}
+              </span>
+            </div>
+          </div>
+
+          <button className="btn secondary" onClick={sair}>
+            Sair
+          </button>
+        </header>
+
+        <main className="dashboard">
+          <section className="dashboardHero">
+            <span>Painel LocaCheck</span>
+            <h1>Bem-vindo, {profile.nome || "Usuário"}</h1>
+            <p>
+              Consulte locatários, registre ocorrências e acompanhe seus créditos
+              em um só lugar.
+            </p>
+          </section>
+
+          <section className="dashboardGrid">
+            <div className="dashboardCard">
+              <small>Créditos disponíveis</small>
+              <strong>{profile.credits}</strong>
+            </div>
+
+            <div className="dashboardCard">
+              <small>Consultas realizadas</small>
+              <strong>{profile.consultas}</strong>
+            </div>
+
+            <div className="dashboardCard">
+              <small>Plano ilimitado</small>
+              <strong>{unlimitedActive ? "Ativo" : "Inativo"}</strong>
+            </div>
+          </section>
+
+          <section className="dashboardActions">
+            <button
+              className="btn primary large"
+              onClick={() => {
+                setSearchMessage("");
+                setSearchResults([]);
+                setSearchText("");
+                setShowSearchForm(true);
+              }}
+            >
+              Consultar Locatário
+            </button>
+
+            <button
+              className="btn outline large"
+              onClick={() => {
+                setRecordMessage("");
+                setShowRecordForm(true);
+              }}
+            >
+              Registrar Ocorrência
+            </button>
+
+            <button className="btn outline large">Comprar Créditos</button>
+            <button className="btn outline large">Suporte</button>
+          </section>
+
+          {profile.role === "admin" && (
+            <section className="adminPanel">
+              <div className="adminHeader">
+                <div>
+                  <span>Administração</span>
+                  <h2>Usuários cadastrados</h2>
+                  <p>Gerencie créditos e plano ilimitado dos usuários.</p>
+                </div>
+
+                <button className="btn secondary" onClick={carregarUsuariosAdmin}>
+                  Atualizar usuários
+                </button>
+              </div>
+
+              {adminUsersMessage && (
+                <div className="authMessage">{adminUsersMessage}</div>
+              )}
+
+              <div className="adminList">
+                {adminUsers.length === 0 && (
+                  <div className="adminEmpty">Nenhum usuário encontrado.</div>
+                )}
+
+                {adminUsers.map((user) => {
+                  const userUnlimitedActive =
+                    user.unlimited_until &&
+                    new Date(user.unlimited_until) > new Date();
+
+                  return (
+                    <div className="adminRecord" key={user.id}>
+                      <div className="adminRecordTop">
+                        <h3>{user.nome || "Usuário"}</h3>
+                        <span
+                          className={`statusBadge ${
+                            user.role === "admin" ? "aprovado" : "pendente"
+                          }`}
+                        >
+                          {user.role}
+                        </span>
+                      </div>
+
+                      <p>
+                        <strong>WhatsApp:</strong>{" "}
+                        {user.whatsapp || "Não informado"}
+                      </p>
+
+                      <p>
+                        <strong>Créditos:</strong> {user.credits}
+                      </p>
+
+                      <p>
+                        <strong>Consultas:</strong> {user.consultas}
+                      </p>
+
+                      <p>
+                        <strong>Plano ilimitado:</strong>{" "}
+                        {userUnlimitedActive
+                          ? `Ativo até ${new Date(
+                              user.unlimited_until
+                            ).toLocaleDateString("pt-BR")}`
+                          : "Inativo"}
+                      </p>
+
+                      <div className="adminButtons">
+                        <button
+                          className="btn primary"
+                          onClick={() => alterarCreditosUsuario(user.id, 10)}
+                        >
+                          +10 créditos
+                        </button>
+
+                        <button
+                          className="btn outline"
+                          onClick={() => alterarCreditosUsuario(user.id, -10)}
+                        >
+                          -10 créditos
+                        </button>
+
+                        <button
+                          className="btn primary"
+                          onClick={() => ativarIlimitadoUsuario(user.id)}
+                        >
+                          Ativar ilimitado 30 dias
+                        </button>
+
+                        <button
+                          className="btn danger"
+                          onClick={() => cancelarIlimitadoUsuario(user.id)}
+                        >
+                          Cancelar ilimitado
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {profile.role === "admin" && (
+            <section className="adminPanel">
+              <div className="adminHeader">
+                <div>
+                  <span>Administração</span>
+                  <h2>Ocorrências cadastradas</h2>
+                  <p>Aprove, reprove, edite ou exclua ocorrências enviadas.</p>
+                </div>
+
+                <button
+                  className="btn secondary"
+                  onClick={carregarOcorrenciasAdmin}
+                >
+                  Atualizar
+                </button>
+              </div>
+
+              {adminMessage && <div className="authMessage">{adminMessage}</div>}
+
+              <div className="adminList">
+                {adminRecords.length === 0 && (
+                  <div className="adminEmpty">
+                    Nenhuma ocorrência cadastrada ainda.
+                  </div>
+                )}
+
+                {adminRecords.map((item) => (
+                  <div className="adminRecord" key={item.id}>
+                    <div className="adminRecordTop">
+                      <h3>{item.nome}</h3>
+                      <span className={`statusBadge ${item.status}`}>
+                        {item.status}
+                      </span>
+                    </div>
+
+                    <p>
+                      <strong>CPF completo:</strong>{" "}
+                      {item.cpf_full || "Não informado"}
+                    </p>
+
+                    <p>
+                      <strong>CPF final:</strong> {item.cpf4}
+                    </p>
+
+                    <p>
+                      <strong>WhatsApp:</strong>{" "}
+                      {item.whatsapp_locatario || "Não informado"}
+                    </p>
+
+                    <p>
+                      <strong>Cidade/UF:</strong>{" "}
+                      {item.cidade || "Não informado"}
+                    </p>
+
+                    <p>
+                      <strong>Tipos:</strong> {item.tipos?.join(", ")}
+                    </p>
+
+                    <p>
+                      <strong>Descrição:</strong> {item.descricao}
+                    </p>
+
+                    {item.imagem_url && (
+                      <div className="imagePreviewBox">
+                        <strong>Imagem/comprovante:</strong>
+                        <a href={item.imagem_url} target="_blank" rel="noreferrer">
+                          Abrir imagem
+                        </a>
+                        <img src={item.imagem_url} alt="Comprovante" />
+                      </div>
+                    )}
+
+                    <div className="adminButtons">
+                      <button
+                        className="btn outline"
+                        onClick={() => abrirEdicaoOcorrencia(item)}
+                      >
+                        Editar
+                      </button>
+
+                      <button
+                        className="btn primary"
+                        onClick={() =>
+                          atualizarStatusOcorrencia(item.id, "aprovado")
+                        }
+                      >
+                        Aprovar
+                      </button>
+
+                      <button
+                        className="btn outline"
+                        onClick={() =>
+                          atualizarStatusOcorrencia(item.id, "reprovado")
+                        }
+                      >
+                        Reprovar
+                      </button>
+
+                      <button
+                        className="btn danger"
+                        onClick={() => excluirOcorrencia(item.id)}
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </main>
+
+        {editingRecord && (
+          <div className="modalOverlay">
+            <div className="recordModal">
+              <button
+                className="closeModal"
+                onClick={() => setEditingRecord(null)}
+              >
+                ×
+              </button>
+
+              <h2>Editar Ocorrência</h2>
+
+              <p>
+                Altere os dados completos da ocorrência. Para usuários comuns, o
+                CPF continuará aparecendo apenas com os 4 últimos números.
+              </p>
+
+              <form onSubmit={salvarEdicaoOcorrencia} className="recordForm">
+                <input
+                  type="text"
+                  placeholder="Nome do locatário"
+                  value={editRecordNome}
+                  onChange={(e) => setEditRecordNome(e.target.value)}
+                  required
+                />
+
+                <input
+                  type="text"
+                  placeholder="CPF completo"
+                  value={editRecordCpf}
+                  onChange={(e) => setEditRecordCpf(e.target.value)}
+                  required
+                />
+
+                <input
+                  type="text"
+                  placeholder="WhatsApp do locatário cadastrado"
+                  value={editRecordWhatsapp}
+                  onChange={(e) => setEditRecordWhatsapp(e.target.value)}
+                  required
+                />
+
+                <input
+                  type="text"
+                  placeholder="Cidade/UF"
+                  value={editRecordCidade}
+                  onChange={(e) => setEditRecordCidade(e.target.value)}
+                  required
+                />
+
+                <select
+                  className="selectInput"
+                  value={editRecordStatus}
+                  onChange={(e) => setEditRecordStatus(e.target.value)}
+                >
+                  <option value="pendente">Pendente</option>
+                  <option value="aprovado">Aprovado</option>
+                  <option value="reprovado">Reprovado</option>
+                </select>
+
+                <div className="checkboxBox">
+                  <strong>Tipo de ocorrência</strong>
+
+                  <div className="checkboxGrid">
+                    {TIPOS_OCORRENCIA.map((tipo) => (
+                      <label key={tipo}>
+                        <input
+                          type="checkbox"
+                          checked={editRecordTipos.includes(tipo)}
+                          onChange={() => toggleTipoEdicao(tipo)}
+                        />
+                        {tipo}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {editingRecord.imagem_url && (
+                  <div className="imagePreviewBox">
+                    <strong>Imagem atual:</strong>
+                    <a
+                      href={editingRecord.imagem_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Abrir imagem atual
+                    </a>
+                    <img src={editingRecord.imagem_url} alt="Comprovante atual" />
+                  </div>
+                )}
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    setEditRecordImage(e.target.files?.[0] || null)
+                  }
+                />
+
+                <small className="fieldHelp">
+                  Envie uma nova imagem apenas se quiser substituir/adicionar
+                  comprovante.
+                </small>
+
+                <textarea
+                  placeholder="Descrição da ocorrência"
+                  value={editRecordDescricao}
+                  onChange={(e) => setEditRecordDescricao(e.target.value)}
+                  rows="5"
+                  required
+                />
+
+                <button className="btn primary full" disabled={loading}>
+                  {loading ? "Salvando..." : "Salvar alterações"}
+                </button>
+              </form>
+
+              {editRecordMessage && (
+                <div className="authMessage">{editRecordMessage}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showSearchForm && (
+          <div className="modalOverlay">
+            <div className="recordModal">
+              <button
+                className="closeModal"
+                onClick={() => setShowSearchForm(false)}
+              >
+                ×
+              </button>
+
+              <h2>Consultar Locatário</h2>
+
+              <p>
+                Digite nome, CPF completo ou cidade. A consulta desconta 1
+                crédito ao buscar, exceto usuários com plano ilimitado ativo.
+              </p>
+
+              <form onSubmit={consultarLocatario} className="recordForm">
+                <input
+                  type="text"
+                  placeholder="Nome, CPF ou cidade"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  required
+                />
+
+                <button className="btn primary full" disabled={loading}>
+                  {loading ? "Consultando..." : "Buscar"}
+                </button>
+              </form>
+
+              {searchMessage && (
+                <div className="authMessage">{searchMessage}</div>
+              )}
+
+              {searchResults.length > 0 && (
+                <div className="resultsBox">
+                  {searchResults.map((item) => (
+                    <div className="resultCard" key={item.id}>
+                      <h3>{item.nome}</h3>
+
+                      <p>
+                        <strong>CPF final:</strong> {item.cpf4}
+                      </p>
+
+                      <p>
+                        <strong>WhatsApp do locatário cadastrado:</strong>{" "}
+                        {item.whatsapp_locatario || "Não informado"}
+                      </p>
+
+                      <p>
+                        <strong>Cidade/UF:</strong>{" "}
+                        {item.cidade || "Não informado"}
+                      </p>
+
+                      <p>
+                        <strong>Ocorrências:</strong>{" "}
+                        {item.tipos?.join(", ")}
+                      </p>
+
+                      <p>
+                        <strong>Descrição:</strong> {item.descricao}
+                      </p>
+
+                      {item.imagem_url && (
+                        <div className="imagePreviewBox">
+                          <strong>Imagem/comprovante:</strong>
+                          <a
+                            href={item.imagem_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Abrir imagem
+                          </a>
+                          <img src={item.imagem_url} alt="Comprovante" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showRecordForm && (
+          <div className="modalOverlay">
+            <div className="recordModal">
+              <button
+                className="closeModal"
+                onClick={() => setShowRecordForm(false)}
+              >
+                ×
+              </button>
+
+              <h2>Registrar Ocorrência</h2>
+
+              <p>
+                Cadastre uma ocorrência relacionada a um locatário de veículo.
+                O CPF será exibido futuramente apenas pelos 4 últimos números.
+              </p>
+
+              <form onSubmit={cadastrarOcorrencia} className="recordForm">
+                <input
+                  type="text"
+                  placeholder="Nome do locatário"
+                  value={recordNome}
+                  onChange={(e) => setRecordNome(e.target.value)}
+                  required
+                />
+
+                <input
+                  type="text"
+                  placeholder="WhatsApp do locatário cadastrado"
+                  value={recordWhatsapp}
+                  onChange={(e) => setRecordWhatsapp(e.target.value)}
+                  required
+                />
+
+                <input
+                  type="text"
+                  placeholder="CPF completo"
+                  value={recordCpf}
+                  onChange={(e) => setRecordCpf(e.target.value)}
+                  required
+                />
+
+                <small className="fieldHelp">
+                  O CPF completo pode ser digitado, mas a plataforma exibirá
+                  apenas os 4 últimos números.
+                </small>
+
+                <input
+                  type="text"
+                  placeholder="Cidade/UF"
+                  value={recordCidade}
+                  onChange={(e) => setRecordCidade(e.target.value)}
+                  required
+                />
+
+                <div className="checkboxBox">
+                  <strong>Tipo de ocorrência</strong>
+
+                  <div className="checkboxGrid">
+                    {TIPOS_OCORRENCIA.map((tipo) => (
+                      <label key={tipo}>
+                        <input
+                          type="checkbox"
+                          checked={recordTipos.includes(tipo)}
+                          onChange={() => toggleTipo(tipo)}
+                        />
+                        {tipo}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setRecordImage(e.target.files?.[0] || null)}
+                />
+
+                <small className="fieldHelp">
+                  Envie uma foto ou comprovante, se houver.
+                </small>
+
+                <textarea
+                  placeholder="Descrição da ocorrência"
+                  value={recordDescricao}
+                  onChange={(e) => setRecordDescricao(e.target.value)}
+                  rows="5"
+                  required
+                />
+
+                <button className="btn primary full" disabled={loading}>
+                  {loading ? "Salvando..." : "Registrar ocorrência"}
+                </button>
+              </form>
+
+              {recordMessage && (
+                <div className="authMessage">{recordMessage}</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="page">
+      <header className="header">
+        <div className="brand">
+          <div className="logo">LC</div>
+          <div>
+            <strong>LocaCheck</strong>
+            <span>Sistema Nacional de Consulta de Locatários de Veículos</span>
+          </div>
+        </div>
+
+        <div className="actions">
+          <button className="btn secondary" onClick={() => setAuthMode("login")}>
+            Entrar
+          </button>
+
+          <button className="btn primary" onClick={() => setAuthMode("cadastro")}>
+            Cadastrar
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section className="hero">
+          <div className="badge">Proteção inteligente para locadoras</div>
+
+          <h1>
+            Consulte antes de alugar. <br />
+            Proteja sua frota de prejuízos.
+          </h1>
+
+          <p>
+            A LocaCheck ajuda locadoras, frotistas e administradores de veículos
+            a consultar históricos, registrar ocorrências e reduzir riscos de
+            inadimplência, multas, avarias e não devolução.
+          </p>
+
+          <div className="heroActions">
+            <button
+              className="btn primary large"
+              onClick={() => setAuthMode("login")}
+            >
+              Consultar Locatário
+            </button>
+
+            <button
+              className="btn outline large"
+              onClick={() => setAuthMode("login")}
+            >
+              Registrar Ocorrência
+            </button>
+          </div>
+        </section>
+
+        <section className="cards">
+          <div className="card">
+            <h3>20 Créditos Grátis</h3>
+            <p>Todo novo usuário recebe créditos para começar a consultar.</p>
+          </div>
+
+          <div className="card featured">
+            <h3>Consulta Completa</h3>
+            <p>
+              Ao buscar, 1 crédito é descontado e o resultado completo é
+              exibido.
+            </p>
+          </div>
+
+          <div className="card">
+            <h3>Cadastro Gratuito</h3>
+            <p>Registre ocorrências de locatários sem pagar nada.</p>
+          </div>
+        </section>
+
+        <section className="plans">
+          <div className="sectionTitle">
+            <span>Planos</span>
+            <h2>Escolha como deseja consultar</h2>
+            <p>
+              Compre créditos avulsos ou assine o plano ilimitado mensal para
+              consultar sem se preocupar com saldo.
+            </p>
+          </div>
+
+          <div className="planGrid">
+            <div className="planCard">
+              <h3>20 Créditos</h3>
+              <strong>R$ 19,90</strong>
+              <p>Ideal para começar e testar a plataforma.</p>
+              <button className="btn outline full">Comprar</button>
+            </div>
+
+            <div className="planCard">
+              <h3>50 Créditos</h3>
+              <strong>R$ 39,90</strong>
+              <p>Boa opção para locadores com consultas frequentes.</p>
+              <button className="btn outline full">Comprar</button>
+            </div>
+
+            <div className="planCard">
+              <h3>100 Créditos</h3>
+              <strong>R$ 69,90</strong>
+              <p>Mais economia para quem consulta com regularidade.</p>
+              <button className="btn outline full">Comprar</button>
+            </div>
+
+            <div className="planCard unlimited">
+              <div className="recommended">Mais indicado para locadoras</div>
+              <h3>Ilimitado Mensal</h3>
+              <strong>R$ 97,00</strong>
+              <p>Consultas ilimitadas durante 30 dias.</p>
+              <button className="btn primary full">Assinar por 30 dias</button>
+            </div>
+          </div>
+        </section>
+
+        <section className="how">
+          <h2>Como funciona</h2>
+
+          <div className="steps">
+            <div>
+              <span>01</span>
+              <h4>Cadastre-se</h4>
+              <p>Crie sua conta e receba 20 créditos grátis.</p>
+            </div>
+
+            <div>
+              <span>02</span>
+              <h4>Consulte</h4>
+              <p>Digite nome, CPF ou cidade e veja registros disponíveis.</p>
+            </div>
+
+            <div>
+              <span>03</span>
+              <h4>Proteja sua frota</h4>
+              <p>Use as informações para decidir com mais segurança.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {authMode && (
+        <div className="modalOverlay">
+          <div className="authModal">
+            <button className="closeModal" onClick={() => setAuthMode(null)}>
+              ×
+            </button>
+
+            <h2>
+              {authMode === "login"
+                ? "Entrar na LocaCheck"
+                : "Criar conta grátis"}
+            </h2>
+
+            <p>
+              {authMode === "login"
+                ? "Acesse seu painel para consultar locatários."
+                : "Cadastre-se e receba 20 créditos grátis."}
+            </p>
+
+            <form
+              onSubmit={authMode === "login" ? entrarUsuario : cadastrarUsuario}
+            >
+              {authMode === "cadastro" && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Nome ou empresa"
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    required
+                  />
+
+                  <input
+                    type="text"
+                    placeholder="WhatsApp"
+                    value={whatsapp}
+                    onChange={(e) => setWhatsapp(e.target.value)}
+                    required
+                  />
+                </>
+              )}
+
+              <input
+                type="email"
+                placeholder="E-mail"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+
+              <input
+                type="password"
+                placeholder="Senha"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                required
+              />
+
+              <button className="btn primary full" disabled={loading}>
+                {loading
+                  ? "Aguarde..."
+                  : authMode === "login"
+                  ? "Entrar"
+                  : "Cadastrar grátis"}
+              </button>
+            </form>
+
+            {message && <div className="authMessage">{message}</div>}
+
+            <button
+              className="switchAuth"
+              onClick={() => {
+                setMessage("");
+                setAuthMode(authMode === "login" ? "cadastro" : "login");
+              }}
+            >
+              {authMode === "login" ? "Ainda não tenho conta" : "Já tenho conta"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
