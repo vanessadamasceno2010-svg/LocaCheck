@@ -692,4 +692,106 @@ body {
   .checkboxGrid {
     grid-template-columns: 1fr;
   }
+}.buyPlansGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.buyPlanCard {
+  border: 1px solid #cbd5e1;
+  border-radius: 22px;
+  padding: 24px;
+  background: #f8fafc;
+}
+
+.buyPlanCard h3 {
+  margin: 0 0 12px;
+  font-size: 22px;
+  color: #0f172a;
+}
+
+.buyPlanCard strong {
+  display: block;
+  font-size: 32px;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+
+.buyPlanCard p {
+  color: #475569;
+  margin: 0 0 18px;
+  min-height: 54px;
+}
+
+.buyPlanCard.featuredPlan {
+  background: linear-gradient(135deg, #2563eb, #172554);
+  border-color: #93c5fd;
+}
+
+.buyPlanCard.featuredPlan h3,
+.buyPlanCard.featuredPlan strong {
+  color: white;
+}
+
+.buyPlanCard.featuredPlan p {
+  color: #dbeafe;
+}
+
+@media (max-width: 650px) {
+  .buyPlansGrid {
+    grid-template-columns: 1fr;
+  }
+}.buyPlansGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.buyPlanCard {
+  border: 1px solid #cbd5e1;
+  border-radius: 22px;
+  padding: 24px;
+  background: #f8fafc;
+}
+
+.buyPlanCard h3 {
+  margin: 0 0 12px;
+  font-size: 22px;
+  color: #0f172a;
+}
+
+.buyPlanCard strong {
+  display: block;
+  font-size: 32px;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+
+.buyPlanCard p {
+  color: #475569;
+  margin: 0 0 18px;
+  min-height: 54px;
+}
+
+.buyPlanCard.featuredPlan {
+  background: linear-gradient(135deg, #2563eb, #172554);
+  border-color: #93c5fd;
+}
+
+.buyPlanCard.featuredPlan h3,
+.buyPlanCard.featuredPlan strong {
+  color: white;
+}
+
+.buyPlanCard.featuredPlan p {
+  color: #dbeafe;
+}
+
+@media (max-width: 650px) {
+  .buyPlansGrid {
+    grid-template-columns: 1fr;
+  }
 }

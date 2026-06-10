@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
+import BuyCreditsModal from "./BuyCreditsModal";
+import SupportModal from "./SupportModal";
 import "./App.css";
 
 const TIPOS_OCORRENCIA = [
@@ -22,6 +24,9 @@ function App() {
 
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [showSearchForm, setShowSearchForm] = useState(false);
+  const [showBuyCredits, setShowBuyCredits] = useState(false);
+  const [showBuyCredits, setShowBuyCredits] = useState(false);
+const [showSupport, setShowSupport] = useState(false);
 
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -621,7 +626,12 @@ function App() {
               Registrar Ocorrência
             </button>
 
-            <button className="btn outline large">Comprar Créditos</button>
+            <button
+  className="btn outline large"
+  onClick={() => setShowBuyCredits(true)}
+>
+  Comprar Créditos
+</button>
             <button className="btn outline large">Suporte</button>
           </section>
 
@@ -835,7 +845,19 @@ function App() {
             </section>
           )}
         </main>
+{showBuyCredits && (
+  <BuyCreditsModal onClose={() => setShowBuyCredits(false)} />
+)}
+{showBuyCredits && (
+  <BuyCreditsModal onClose={() => setShowBuyCredits(false)} />
+)}
 
+{showSupport && (
+  <SupportModal
+    session={session}
+    onClose={() => setShowSupport(false)}
+  />
+)}
         {editingRecord && (
           <div className="modalOverlay">
             <div className="recordModal">
