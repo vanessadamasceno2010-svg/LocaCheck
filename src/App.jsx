@@ -72,11 +72,14 @@ function App() {
   const [showSupport, setShowSupport] = useState(false);
   const [showConsultationHistory, setShowConsultationHistory] = useState(false);
   const [showPaymentsHistory, setShowPaymentsHistory] = useState(false);
+  const [showMyRecords, setShowMyRecords] = useState(false);
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
   const [paymentsHistory, setPaymentsHistory] = useState([]);
   const [paymentsHistoryMessage, setPaymentsHistoryMessage] = useState("");
+  const [myRecords, setMyRecords] = useState([]);
+  const [myRecordsMessage, setMyRecordsMessage] = useState("");
 
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -97,6 +100,7 @@ function App() {
 
   const [adminRecords, setAdminRecords] = useState([]);
   const [adminMessage, setAdminMessage] = useState("");
+  const [adminRecordFilter, setAdminRecordFilter] = useState("todos");
 
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminUsersMessage, setAdminUsersMessage] = useState("");
@@ -603,6 +607,38 @@ function App() {
     }
   }
 
+  async function carregarMinhasOcorrencias() {
+    if (!session?.user?.id) return;
+
+    setLoading(true);
+    setMyRecordsMessage("");
+
+    const { data, error } = await supabase
+      .from("records")
+      .select("id, nome, cpf4, cidade, tipos, descricao, imagem_url, status, created_at, approved_at")
+      .eq("created_by", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.log("Erro ao carregar minhas ocorrências:", error);
+      setMyRecords([]);
+      setMyRecordsMessage(
+        error.message || "Erro ao carregar suas ocorrências."
+      );
+      setLoading(false);
+      return;
+    }
+
+    setMyRecords(data || []);
+
+    if (!data || data.length === 0) {
+      setMyRecordsMessage("Você ainda não cadastrou nenhuma ocorrência.");
+    }
+
+    setLoading(false);
+  }
+
   async function carregarHistoricoConsultas() {
     if (!session?.user?.id) return;
 
@@ -785,6 +821,16 @@ function App() {
               }}
             >
               Registrar Ocorrência
+            </button>
+
+            <button
+              className="btn outline large"
+              onClick={() => {
+                setShowMyRecords(true);
+                carregarMinhasOcorrencias();
+              }}
+            >
+              Minhas Ocorrências
             </button>
 
             <button
@@ -1072,24 +1118,47 @@ function App() {
                   <p>Aprove, reprove, edite ou exclua ocorrências enviadas.</p>
                 </div>
 
-                <button
-                  className="btn secondary"
-                  onClick={carregarOcorrenciasAdmin}
-                >
-                  Atualizar
-                </button>
+                <div className="adminButtons">
+                  <select
+                    className="selectInput"
+                    value={adminRecordFilter}
+                    onChange={(e) => setAdminRecordFilter(e.target.value)}
+                  >
+                    <option value="todos">Todas</option>
+                    <option value="pendente">Pendentes</option>
+                    <option value="aprovado">Aprovadas</option>
+                    <option value="reprovado">Reprovadas</option>
+                  </select>
+
+                  <button
+                    className="btn secondary"
+                    onClick={carregarOcorrenciasAdmin}
+                  >
+                    Atualizar
+                  </button>
+                </div>
               </div>
 
               {adminMessage && <div className="authMessage">{adminMessage}</div>}
 
               <div className="adminList">
-                {adminRecords.length === 0 && (
+                {adminRecords.filter((item) =>
+                  adminRecordFilter === "todos"
+                    ? true
+                    : item.status === adminRecordFilter
+                ).length === 0 && (
                   <div className="adminEmpty">
-                    Nenhuma ocorrência cadastrada ainda.
+                    Nenhuma ocorrência encontrada para este filtro.
                   </div>
                 )}
 
-                {adminRecords.map((item) => (
+                {adminRecords
+                  .filter((item) =>
+                    adminRecordFilter === "todos"
+                      ? true
+                      : item.status === adminRecordFilter
+                  )
+                  .map((item) => (
                   <div className="adminRecord" key={item.id}>
                     <div className="adminRecordTop">
                       <h3>{item.nome}</h3>
@@ -1183,6 +1252,96 @@ function App() {
     session={session}
     onClose={() => setShowSupport(false)}
   />
+)}
+
+{showMyRecords && (
+  <div className="modalOverlay">
+    <div className="recordModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowMyRecords(false)}
+      >
+        ×
+      </button>
+
+      <h2>Minhas Ocorrências</h2>
+
+      <p>
+        Acompanhe as ocorrências que você cadastrou e o status de aprovação.
+      </p>
+
+      <button
+        className="btn secondary full"
+        onClick={carregarMinhasOcorrencias}
+        disabled={loading}
+        style={{ marginBottom: "16px" }}
+      >
+        {loading ? "Atualizando..." : "Atualizar ocorrências"}
+      </button>
+
+      {myRecordsMessage && (
+        <div className="authMessage">{myRecordsMessage}</div>
+      )}
+
+      {myRecords.length > 0 && (
+        <div className="resultsBox">
+          {myRecords.map((item) => (
+            <div className="resultCard" key={item.id}>
+              <div className="adminRecordTop">
+                <h3>{item.nome || "Locatário não informado"}</h3>
+                <span className={`statusBadge ${item.status}`}>
+                  {item.status || "pendente"}
+                </span>
+              </div>
+
+              <p>
+                <strong>CPF final:</strong> {item.cpf4 || "Não informado"}
+              </p>
+
+              <p>
+                <strong>Cidade/UF:</strong> {item.cidade || "Não informado"}
+              </p>
+
+              <p>
+                <strong>Tipos:</strong>{" "}
+                {Array.isArray(item.tipos)
+                  ? item.tipos.join(", ")
+                  : item.tipos || "Não informado"}
+              </p>
+
+              <p>
+                <strong>Descrição:</strong> {item.descricao || "Não informado"}
+              </p>
+
+              <p>
+                <strong>Cadastrada em:</strong>{" "}
+                {item.created_at
+                  ? new Date(item.created_at).toLocaleString("pt-BR")
+                  : "Não informado"}
+              </p>
+
+              <p>
+                <strong>Aprovada em:</strong>{" "}
+                {item.approved_at
+                  ? new Date(item.approved_at).toLocaleString("pt-BR")
+                  : "Ainda não aprovada"}
+              </p>
+
+              {item.imagem_url && (
+                <div className="imagePreviewBox">
+                  <strong>Imagem/comprovante:</strong>
+                  <a href={item.imagem_url} target="_blank" rel="noreferrer">
+                    Abrir imagem
+                  </a>
+                  <img src={item.imagem_url} alt="Comprovante" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
 )}
 
 {showConsultationHistory && (
