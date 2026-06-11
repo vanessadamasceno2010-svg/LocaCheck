@@ -61,6 +61,29 @@ function traduzirStatusPagamento(status) {
   return labels[normalized] || status || "Não informado";
 }
 
+function getStatusOcorrenciaInfo(status) {
+  const normalized = String(status || "pendente").toLowerCase();
+
+  if (normalized === "aprovado") {
+    return {
+      label: "Aprovado",
+      message: "Já disponível para consulta na plataforma.",
+    };
+  }
+
+  if (normalized === "reprovado") {
+    return {
+      label: "Reprovado",
+      message: "Não aparece nas consultas. Verifique o motivo informado pelo administrador.",
+    };
+  }
+
+  return {
+    label: "Pendente",
+    message: "Aguardando análise do administrador.",
+  };
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -123,6 +146,7 @@ function App() {
   const [editRecordTipos, setEditRecordTipos] = useState([]);
   const [editRecordDescricao, setEditRecordDescricao] = useState("");
   const [editRecordStatus, setEditRecordStatus] = useState("pendente");
+  const [editRecordRejectionReason, setEditRecordRejectionReason] = useState("");
   const [editRecordImage, setEditRecordImage] = useState(null);
   const [editRecordMessage, setEditRecordMessage] = useState("");
 
@@ -462,17 +486,34 @@ function App() {
   }
 
   async function atualizarStatusOcorrencia(id, status) {
+    let rejectionReason = "";
+
+    if (status === "reprovado") {
+      rejectionReason = window.prompt(
+        "Informe o motivo da reprovação para o usuário:",
+        "Faltou comprovante ou os dados estão incompletos."
+      );
+
+      if (rejectionReason === null) return;
+
+      if (!rejectionReason.trim()) {
+        setAdminMessage("Informe um motivo para reprovar a ocorrência.");
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from("records")
       .update({
         status,
         approved_at: status === "aprovado" ? new Date().toISOString() : null,
+        rejection_reason: status === "reprovado" ? rejectionReason.trim() : null,
       })
       .eq("id", id);
 
     if (error) {
       console.log(error);
-      setAdminMessage("Erro ao atualizar ocorrência.");
+      setAdminMessage("Erro ao atualizar ocorrência. Confirme se a coluna rejection_reason foi criada no Supabase.");
       return;
     }
 
@@ -508,6 +549,7 @@ function App() {
     setEditRecordTipos(item.tipos || []);
     setEditRecordDescricao(item.descricao || "");
     setEditRecordStatus(item.status || "pendente");
+    setEditRecordRejectionReason(item.rejection_reason || "");
     setEditRecordImage(null);
     setEditRecordMessage("");
   }
@@ -527,6 +569,11 @@ function App() {
 
     if (editRecordTipos.length === 0) {
       setEditRecordMessage("Selecione pelo menos um tipo de ocorrência.");
+      return;
+    }
+
+    if (editRecordStatus === "reprovado" && !editRecordRejectionReason.trim()) {
+      setEditRecordMessage("Informe o motivo da reprovação.");
       return;
     }
 
@@ -557,6 +604,10 @@ function App() {
           status: editRecordStatus,
           approved_at:
             editRecordStatus === "aprovado" ? new Date().toISOString() : null,
+          rejection_reason:
+            editRecordStatus === "reprovado"
+              ? editRecordRejectionReason.trim()
+              : null,
         })
         .eq("id", editingRecord.id);
 
@@ -1267,6 +1318,12 @@ function App() {
                       <strong>Descrição:</strong> {item.descricao}
                     </p>
 
+                    {item.status === "reprovado" && item.rejection_reason && (
+                      <p>
+                        <strong>Motivo da reprovação:</strong> {item.rejection_reason}
+                      </p>
+                    )}
+
                     {item.imagem_url && (
                       <div className="imagePreviewBox">
                         <strong>Imagem/comprovante:</strong>
@@ -1467,14 +1524,27 @@ function App() {
 
       {myRecords.length > 0 && (
         <div className="resultsBox">
-          {myRecords.map((item) => (
+          {myRecords.map((item) => {
+            const statusInfo = getStatusOcorrenciaInfo(item.status);
+
+            return (
             <div className="resultCard" key={item.id}>
               <div className="adminRecordTop">
                 <h3>{item.nome || "Locatário não informado"}</h3>
-                <span className={`statusBadge ${item.status}`}>
-                  {item.status || "pendente"}
+                <span className={`statusBadge ${item.status || "pendente"}`}>
+                  {statusInfo.label}
                 </span>
               </div>
+
+              <p>
+                <strong>Status:</strong> {statusInfo.message}
+              </p>
+
+              {String(item.status || "").toLowerCase() === "reprovado" && item.rejection_reason && (
+                <p>
+                  <strong>Motivo da reprovação:</strong> {item.rejection_reason}
+                </p>
+              )}
 
               <p>
                 <strong>CPF final:</strong> {item.cpf4 || "Não informado"}
@@ -1519,7 +1589,8 @@ function App() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -1708,8 +1779,8 @@ function App() {
               <h2>Editar Ocorrência</h2>
 
               <p>
-                Altere os dados completos da ocorrência. Para usuários comuns, o
-                CPF continuará aparecendo apenas com os 4 últimos números.
+                Altere os dados completos da ocorrência. Se reprovar, informe o motivo para o usuário.
+                Para usuários comuns, o CPF continuará aparecendo apenas com os 4 últimos números.
               </p>
 
               <form onSubmit={salvarEdicaoOcorrencia} className="recordForm">
@@ -1754,6 +1825,16 @@ function App() {
                   <option value="aprovado">Aprovado</option>
                   <option value="reprovado">Reprovado</option>
                 </select>
+
+                {editRecordStatus === "reprovado" && (
+                  <textarea
+                    placeholder="Motivo da reprovação para o usuário"
+                    value={editRecordRejectionReason}
+                    onChange={(e) => setEditRecordRejectionReason(e.target.value)}
+                    rows="3"
+                    required
+                  />
+                )}
 
                 <div className="checkboxBox">
                   <strong>Tipo de ocorrência</strong>
