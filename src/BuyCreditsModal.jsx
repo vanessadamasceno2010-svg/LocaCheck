@@ -6,7 +6,7 @@ function formatMoney(cents) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(cents / 100);
+  }).format(Number(cents || 0) / 100);
 }
 
 function getQrCodeImageSrc(qrCodeBase64) {
@@ -28,6 +28,12 @@ function BuyCreditsModal({ onClose }) {
   const [pixCode, setPixCode] = useState("");
   const [pixQrBase64, setPixQrBase64] = useState("");
   const [copied, setCopied] = useState(false);
+  const [localToast, setLocalToast] = useState(null);
+
+  function showLocalToast(type, title, message) {
+    setLocalToast({ type, title, message });
+    setTimeout(() => setLocalToast(null), 4200);
+  }
 
   async function carregarPlanos() {
     setLoadingPlans(true);
@@ -41,11 +47,9 @@ function BuyCreditsModal({ onClose }) {
 
     if (plansError) {
       console.error("Erro ao carregar planos:", plansError);
-
       setError(
         "Não foi possível carregar os planos. Verifique se a tabela plans está configurada no Supabase."
       );
-
       setLoadingPlans(false);
       return;
     }
@@ -75,13 +79,14 @@ function BuyCreditsModal({ onClose }) {
 
     if (!response.success) {
       setError(response.message || "Erro ao gerar PIX.");
+      showLocalToast("error", "Erro ao gerar PIX", response.message || "Tente novamente.");
       setGeneratingPix(false);
       return;
     }
 
     setPixCode(response.pix?.qrCode || "");
     setPixQrBase64(response.pix?.qrCodeBase64 || "");
-
+    showLocalToast("success", "PIX gerado", "Pague o PIX e aguarde a liberação automática.");
     setGeneratingPix(false);
   }
 
@@ -91,6 +96,7 @@ function BuyCreditsModal({ onClose }) {
     try {
       await navigator.clipboard.writeText(pixCode);
       setCopied(true);
+      showLocalToast("success", "Código copiado", "O PIX copia e cola foi copiado.");
 
       setTimeout(() => {
         setCopied(false);
@@ -116,7 +122,14 @@ function BuyCreditsModal({ onClose }) {
 
   return (
     <div className="modalOverlay">
-      <div className="recordModal">
+      {localToast && (
+        <div className={`toastPopup ${localToast.type || "success"}`}>
+          <strong>{localToast.title}</strong>
+          <span>{localToast.message}</span>
+        </div>
+      )}
+
+      <div className="recordModal buyCreditsModal compactModal">
         <button className="closeModal" onClick={onClose}>
           ×
         </button>
@@ -125,8 +138,7 @@ function BuyCreditsModal({ onClose }) {
 
         {!pixCode && (
           <p>
-            Escolha um plano e gere o PIX. Após a confirmação do pagamento, os
-            créditos serão liberados automaticamente.
+            Escolha um plano. Todos os planos ficam visíveis em uma tela para facilitar a comparação.
           </p>
         )}
 
@@ -136,21 +148,7 @@ function BuyCreditsModal({ onClose }) {
           </div>
         )}
 
-        {error && (
-          <div
-            style={{
-              background: "#fee2e2",
-              color: "#991b1b",
-              padding: "12px",
-              borderRadius: "10px",
-              marginBottom: "16px",
-              fontSize: "14px",
-              fontWeight: "600",
-            }}
-          >
-            {error}
-          </div>
-        )}
+        {error && <div className="errorMessage">{error}</div>}
 
         {!loadingPlans && !pixCode && (
           <>
@@ -159,26 +157,21 @@ function BuyCreditsModal({ onClose }) {
                 <p>Nenhum plano ativo encontrado.</p>
               </div>
             ) : (
-              <div className="buyPlansGrid">
+              <div className="buyPlansGrid compactBuyPlansGrid">
                 {plans.map((plano) => {
                   const isSelected = selectedPlanId === plano.id;
                   const isUnlimited = plano.is_unlimited === true;
 
                   return (
-                    <div
-                      className={`buyPlanCard ${
+                    <button
+                      className={`buyPlanCard compactBuyPlanCard ${
                         isUnlimited ? "featuredPlan" : ""
-                      }`}
+                      } ${isSelected ? "selectedPlan" : ""}`}
                       key={plano.id}
-                      style={{
-                        border: isSelected ? "2px solid #2563eb" : undefined,
-                      }}
+                      onClick={() => setSelectedPlanId(plano.id)}
+                      type="button"
                     >
-                      {isUnlimited && (
-                        <div className="recommended">
-                          Mais indicado para locadoras
-                        </div>
-                      )}
+                      {isUnlimited && <span className="miniTag">Ilimitado</span>}
 
                       <h3>{plano.name}</h3>
 
@@ -186,43 +179,20 @@ function BuyCreditsModal({ onClose }) {
 
                       <p>
                         {isUnlimited
-                          ? `Consultas ilimitadas durante ${
-                              plano.duration_days || 30
-                            } dias.`
-                          : `${plano.credits} consultas disponíveis.`}
+                          ? `${plano.duration_days || 30} dias de consultas ilimitadas.`
+                          : `${plano.credits} consultas.`}
                       </p>
 
-                      <button
-                        className={`btn full ${
-                          isUnlimited ? "secondary" : "primary"
-                        }`}
-                        onClick={() => setSelectedPlanId(plano.id)}
-                        type="button"
-                      >
-                        {isSelected ? "Plano selecionado" : "Selecionar plano"}
-                      </button>
-                    </div>
+                      <small>{isSelected ? "Selecionado" : "Selecionar"}</small>
+                    </button>
                   );
                 })}
               </div>
             )}
 
             {selectedPlan && (
-              <div
-                style={{
-                  marginTop: "18px",
-                  padding: "14px",
-                  borderRadius: "12px",
-                  background: "#f8fafc",
-                  border: "1px solid #e5e7eb",
-                }}
-              >
-                <p style={{ margin: 0, fontSize: "14px" }}>
-                  Plano selecionado:{" "}
-                  <strong>
-                    {selectedPlan.name} - {formatMoney(selectedPlan.price_cents)}
-                  </strong>
-                </p>
+              <div className="selectedPlanSummary">
+                Plano selecionado: <strong>{selectedPlan.name} - {formatMoney(selectedPlan.price_cents)}</strong>
               </div>
             )}
 
@@ -231,7 +201,6 @@ function BuyCreditsModal({ onClose }) {
               onClick={gerarPix}
               disabled={generatingPix || loadingPlans || plans.length === 0}
               type="button"
-              style={{ marginTop: "18px" }}
             >
               {generatingPix ? "Gerando PIX..." : "Gerar PIX"}
             </button>
@@ -239,87 +208,33 @@ function BuyCreditsModal({ onClose }) {
         )}
 
         {pixCode && (
-          <div
-            style={{
-              marginTop: "18px",
-              padding: "18px",
-              borderRadius: "16px",
-              background: "#f8fafc",
-              border: "1px solid #e5e7eb",
-              textAlign: "center",
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>PIX gerado com sucesso</h3>
+          <div className="pixResultBox">
+            <h3>PIX gerado com sucesso</h3>
 
-            <p style={{ fontSize: "14px", color: "#475569" }}>
-              Pague usando o QR Code ou copie o código PIX abaixo.
-            </p>
+            <p>Pague usando o QR Code ou copie o código PIX abaixo.</p>
 
             {pixQrBase64 && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  margin: "16px 0",
-                }}
-              >
-                <img
-                  src={getQrCodeImageSrc(pixQrBase64)}
-                  alt="QR Code PIX"
-                  style={{
-                    width: "220px",
-                    height: "220px",
-                    background: "#ffffff",
-                    padding: "10px",
-                    borderRadius: "12px",
-                    border: "1px solid #e5e7eb",
-                  }}
-                />
+              <div className="qrCodeBox">
+                <img src={getQrCodeImageSrc(pixQrBase64)} alt="QR Code PIX" />
               </div>
             )}
 
-            <textarea
-              value={pixCode}
-              readOnly
-              style={{
-                width: "100%",
-                minHeight: "110px",
-                resize: "none",
-                padding: "12px",
-                borderRadius: "10px",
-                border: "1px solid #d1d5db",
-                fontSize: "12px",
-                boxSizing: "border-box",
-              }}
-            />
+            <textarea value={pixCode} readOnly className="pixTextarea" />
 
-            <button
-              className="btn full primary"
-              onClick={copiarPix}
-              type="button"
-              style={{ marginTop: "12px" }}
-            >
+            <button className="btn full primary" onClick={copiarPix} type="button">
               {copied ? "Código copiado!" : "Copiar código PIX"}
             </button>
 
-            <button
-              className="btn full secondary"
-              onClick={voltarParaPlanos}
-              type="button"
-              style={{ marginTop: "10px" }}
-            >
+            <button className="btn full secondary" onClick={() => window.location.reload()} type="button">
+              Já paguei, atualizar página
+            </button>
+
+            <button className="btn full outline" onClick={voltarParaPlanos} type="button">
               Escolher outro plano
             </button>
 
-            <p
-              style={{
-                marginTop: "14px",
-                fontSize: "12px",
-                color: "#64748b",
-              }}
-            >
-              Após o pagamento, aguarde alguns instantes. A confirmação é feita
-              automaticamente pela PushinPay.
+            <p className="fieldHelp">
+              Após o pagamento aprovado, os créditos serão liberados automaticamente pela PushinPay.
             </p>
           </div>
         )}
