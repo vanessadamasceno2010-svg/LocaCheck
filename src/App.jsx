@@ -323,10 +323,66 @@ function App() {
     }
   }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
 
+  useEffect(() => {
+    if (session?.user?.id && profile) {
+      verificarPagamentosAprovadosRecentes();
+    }
+  }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
+
 
   function showToast(type, title, messageText) {
     setToast({ type, title, message: messageText });
     setTimeout(() => setToast(null), 4200);
+  }
+
+  function abrirCompraPublica() {
+    if (session?.user?.id) {
+      setShowBuyCredits(true);
+      return;
+    }
+
+    setMessage("Entre ou cadastre-se para comprar créditos via PIX.");
+    setAuthMode("login");
+  }
+
+  async function verificarPagamentosAprovadosRecentes() {
+    if (!session?.user?.id) return;
+
+    const storageKey = `locacheck-paid-alerts-${session.user.id}`;
+    let alertedIds = [];
+
+    try {
+      alertedIds = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    } catch {
+      alertedIds = [];
+    }
+
+    const { data, error } = await supabase
+      .from("payments")
+      .select("id, status, credits, plan_type, paid_at, processed_at")
+      .eq("user_id", session.user.id)
+      .eq("status", "paid")
+      .order("paid_at", { ascending: false })
+      .limit(5);
+
+    if (error || !data || data.length === 0) return;
+
+    const novos = data.filter((payment) => !alertedIds.includes(payment.id));
+    if (novos.length === 0) return;
+
+    const maisRecente = novos[0];
+    const isUnlimited = maisRecente.plan_type === "unlimited";
+
+    showToast(
+      "success",
+      "Pagamento aprovado!",
+      isUnlimited
+        ? "Seu plano ilimitado já foi ativado. Atualize a página se o saldo ainda não aparecer."
+        : "Seus créditos já foram liberados. Atualize a página se o saldo ainda não aparecer."
+    );
+
+    const merged = Array.from(new Set([...alertedIds, ...novos.map((payment) => payment.id)])).slice(-30);
+    localStorage.setItem(storageKey, JSON.stringify(merged));
   }
 
   async function registrarLogAdmin(action, details = {}) {
@@ -395,6 +451,8 @@ function App() {
 
   async function salvarMeusDados(e) {
     e.preventDefault();
+
+    if (loading) return;
 
     if (!session?.user?.id) return;
 
@@ -544,6 +602,8 @@ function App() {
 
   async function cadastrarOcorrencia(e) {
     e.preventDefault();
+
+    if (loading) return;
     setLoading(true);
     setRecordMessage("");
 
@@ -594,6 +654,8 @@ function App() {
 
   async function consultarLocatario(e) {
     e.preventDefault();
+
+    if (loading) return;
 
     if (!searchText.trim()) {
       setSearchMessage("Digite um nome ou CPF para consultar.");
@@ -657,6 +719,8 @@ function App() {
   }
 
   async function atualizarStatusOcorrencia(id, status) {
+    if (loading) return;
+
     let rejectionReason = "";
 
     if (status === "reprovado") {
@@ -673,6 +737,8 @@ function App() {
       }
     }
 
+    setLoading(true);
+
     const { error } = await supabase
       .from("records")
       .update({
@@ -685,6 +751,7 @@ function App() {
     if (error) {
       console.log(error);
       setAdminMessage("Erro ao atualizar ocorrência. Confirme se a coluna rejection_reason foi criada no Supabase.");
+      setLoading(false);
       return;
     }
 
@@ -692,9 +759,12 @@ function App() {
     showToast("success", "Ocorrência atualizada", `Status alterado para ${status}.`);
     await registrarLogAdmin(`ocorrencia_${status}`, { record_id: id, status });
     carregarOcorrenciasAdmin();
+    setLoading(false);
   }
 
   async function excluirOcorrencia(id) {
+    if (loading) return;
+
     const confirmar = window.confirm(
       "Tem certeza que deseja excluir esta ocorrência?"
     );
@@ -739,6 +809,8 @@ function App() {
 
   async function salvarEdicaoOcorrencia(e) {
     e.preventDefault();
+
+    if (loading) return;
 
     if (!editingRecord) return;
 
@@ -826,6 +898,8 @@ function App() {
   }
 
   async function alterarCreditosUsuario(userId, quantidade) {
+    if (loading) return;
+
     const usuario = adminUsers.find((item) => item.id === userId);
 
     if (!usuario) return;
@@ -854,6 +928,8 @@ function App() {
   }
 
   async function ativarIlimitadoUsuario(userId) {
+    if (loading) return;
+
     const hoje = new Date();
     hoje.setDate(hoje.getDate() + 30);
 
@@ -879,6 +955,8 @@ function App() {
   }
 
   async function cancelarIlimitadoUsuario(userId) {
+    if (loading) return;
+
     const { error } = await supabase
       .from("profiles")
       .update({ unlimited_until: null })
@@ -1056,6 +1134,8 @@ function App() {
   }
 
   async function atualizarStatusSuporte(id, status) {
+    if (loading) return;
+
     const payload = {
       status,
       resolved_at: status === "resolvido" ? new Date().toISOString() : null,
@@ -2990,6 +3070,43 @@ function App() {
           </div>
         </section>
 
+        <section className="marketUseCases">
+          <div className="sectionTitle">
+            <span>Para quem é</span>
+            <h2>Mais segurança para quem trabalha com locação</h2>
+            <p>
+              A LocaCheck foi pensada para reduzir riscos antes da entrega do veículo,
+              mantendo consulta responsável, histórico organizado e apoio à decisão.
+            </p>
+          </div>
+
+          <div className="useCaseGrid">
+            <div className="useCaseCard">
+              <span>Locadoras</span>
+              <h3>Decisão mais segura antes do contrato</h3>
+              <p>Consulte registros aprovados e reduza prejuízos com inadimplência, multas e avarias.</p>
+            </div>
+
+            <div className="useCaseCard">
+              <span>Frotistas</span>
+              <h3>Controle para operações maiores</h3>
+              <p>Acompanhe ocorrências, usuários, créditos, pagamentos e exporte relatórios em CSV.</p>
+            </div>
+
+            <div className="useCaseCard">
+              <span>Motos e carros</span>
+              <h3>Uso flexível em diferentes operações</h3>
+              <p>Funciona para locação de motos, carros, entregadores, mensalistas e contratos avulsos.</p>
+            </div>
+
+            <div className="useCaseCard">
+              <span>LGPD</span>
+              <h3>Consulta com responsabilidade</h3>
+              <p>Usuários comuns visualizam dados limitados e o CPF permanece protegido nas consultas.</p>
+            </div>
+          </div>
+        </section>
+
         <section className="plans">
           <div className="sectionTitle">
             <span>Planos</span>
@@ -3005,21 +3122,21 @@ function App() {
               <h3>20 Créditos</h3>
               <strong>R$ 19,90</strong>
               <p>Ideal para começar e testar a plataforma.</p>
-              <button className="btn outline full" onClick={() => { setMessage("Entre ou cadastre-se para comprar créditos via PIX."); setAuthMode("login"); }}>Comprar</button>
+              <button className="btn outline full" onClick={abrirCompraPublica}>Comprar</button>
             </div>
 
             <div className="planCard">
               <h3>50 Créditos</h3>
               <strong>R$ 39,90</strong>
               <p>Boa opção para locadores com consultas frequentes.</p>
-              <button className="btn outline full" onClick={() => { setMessage("Entre ou cadastre-se para comprar créditos via PIX."); setAuthMode("login"); }}>Comprar</button>
+              <button className="btn outline full" onClick={abrirCompraPublica}>Comprar</button>
             </div>
 
             <div className="planCard">
               <h3>100 Créditos</h3>
               <strong>R$ 69,90</strong>
               <p>Mais economia para quem consulta com regularidade.</p>
-              <button className="btn outline full" onClick={() => { setMessage("Entre ou cadastre-se para comprar créditos via PIX."); setAuthMode("login"); }}>Comprar</button>
+              <button className="btn outline full" onClick={abrirCompraPublica}>Comprar</button>
             </div>
 
             <div className="planCard unlimited">
@@ -3027,7 +3144,7 @@ function App() {
               <h3>Ilimitado Mensal</h3>
               <strong>R$ 97,00</strong>
               <p>Consultas ilimitadas durante 30 dias.</p>
-              <button className="btn primary full" onClick={() => { setMessage("Entre ou cadastre-se para assinar via PIX."); setAuthMode("login"); }}>Assinar por 30 dias</button>
+              <button className="btn primary full" onClick={abrirCompraPublica}>Assinar por 30 dias</button>
             </div>
           </div>
         </section>
@@ -3053,6 +3170,11 @@ function App() {
               <h4>Proteja sua frota</h4>
               <p>Use as informações para decidir com mais segurança.</p>
             </div>
+          </div>
+
+          <div className="trustBox">
+            <strong>Fluxo profissional:</strong>
+            <span>o usuário consulta, registra ocorrências com comprovante, o admin aprova ou reprova e tudo fica registrado em logs do sistema.</span>
           </div>
         </section>
       </main>
