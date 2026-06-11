@@ -26,6 +26,10 @@ function App() {
   const [showSearchForm, setShowSearchForm] = useState(false);
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
+  const [showConsultationHistory, setShowConsultationHistory] = useState(false);
+
+  const [consultationHistory, setConsultationHistory] = useState([]);
+  const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
 
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -547,6 +551,36 @@ function App() {
     }
   }
 
+  async function carregarHistoricoConsultas() {
+    if (!session?.user?.id) return;
+
+    setLoading(true);
+    setConsultationHistoryMessage("");
+
+    const { data, error } = await supabase
+      .from("consultation_logs")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.log(error);
+      setConsultationHistory([]);
+      setConsultationHistoryMessage("Erro ao carregar histórico de consultas.");
+      setLoading(false);
+      return;
+    }
+
+    setConsultationHistory(data || []);
+
+    if (!data || data.length === 0) {
+      setConsultationHistoryMessage("Nenhuma consulta registrada ainda.");
+    }
+
+    setLoading(false);
+  }
+
   if (session && !profile) {
     return (
       <div className="page">
@@ -636,19 +670,30 @@ function App() {
             </button>
 
             <button
-  className="btn outline large"
-  onClick={() => {
-    setShowBuyCredits(true);
-  }}
->
-  Comprar Créditos
-</button>
+              className="btn outline large"
+              onClick={() => {
+                setShowBuyCredits(true);
+              }}
+            >
+              Comprar Créditos
+            </button>
+
             <button
-  className="btn outline large"
-  onClick={() => setShowSupport(true)}
->
-  Suporte
-</button>
+              className="btn outline large"
+              onClick={() => {
+                setShowConsultationHistory(true);
+                carregarHistoricoConsultas();
+              }}
+            >
+              Minhas Consultas
+            </button>
+
+            <button
+              className="btn outline large"
+              onClick={() => setShowSupport(true)}
+            >
+              Suporte
+            </button>
           </section>
 
           {profile.role === "admin" && (
@@ -870,6 +915,78 @@ function App() {
     session={session}
     onClose={() => setShowSupport(false)}
   />
+)}
+
+{showConsultationHistory && (
+  <div className="modalOverlay">
+    <div className="recordModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowConsultationHistory(false)}
+      >
+        ×
+      </button>
+
+      <h2>Minhas Consultas</h2>
+
+      <p>Confira o histórico das consultas realizadas na plataforma.</p>
+
+      <button
+        className="btn secondary full"
+        onClick={carregarHistoricoConsultas}
+        disabled={loading}
+        style={{ marginBottom: "16px" }}
+      >
+        {loading ? "Atualizando..." : "Atualizar histórico"}
+      </button>
+
+      {consultationHistoryMessage && (
+        <div className="authMessage">{consultationHistoryMessage}</div>
+      )}
+
+      {consultationHistory.length > 0 && (
+        <div className="resultsBox">
+          {consultationHistory.map((item) => (
+            <div className="resultCard" key={item.id}>
+              <h3>
+                Consulta realizada em {" "}
+                {new Date(item.created_at).toLocaleString("pt-BR")}
+              </h3>
+
+              <p>
+                <strong>Termo pesquisado:</strong>{" "}
+                {item.searched_text || "Não informado"}
+              </p>
+
+              {item.searched_cpf && (
+                <p>
+                  <strong>CPF pesquisado:</strong>{" "}
+                  {String(item.searched_cpf).length >= 11
+                    ? `***.***.***-${String(item.searched_cpf).slice(-2)}`
+                    : item.searched_cpf}
+                </p>
+              )}
+
+              <p>
+                <strong>Registros encontrados:</strong>{" "}
+                {item.results_count ?? 0}
+              </p>
+
+              <p>
+                <strong>Crédito consumido:</strong>{" "}
+                {item.credit_charged ? "Sim" : "Não"}
+              </p>
+
+              <p>
+                <strong>Plano ilimitado usado:</strong>{" "}
+                {item.used_unlimited ? "Sim" : "Não"}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
 )}
         {editingRecord && (
           <div className="modalOverlay">
