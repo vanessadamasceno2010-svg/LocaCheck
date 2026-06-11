@@ -73,6 +73,8 @@ function App() {
   const [showConsultationHistory, setShowConsultationHistory] = useState(false);
   const [showPaymentsHistory, setShowPaymentsHistory] = useState(false);
   const [showMyRecords, setShowMyRecords] = useState(false);
+  const [showProfileData, setShowProfileData] = useState(false);
+  const [showTermsPrivacy, setShowTermsPrivacy] = useState(false);
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -80,6 +82,10 @@ function App() {
   const [paymentsHistoryMessage, setPaymentsHistoryMessage] = useState("");
   const [myRecords, setMyRecords] = useState([]);
   const [myRecordsMessage, setMyRecordsMessage] = useState("");
+
+  const [profileNome, setProfileNome] = useState("");
+  const [profileWhatsapp, setProfileWhatsapp] = useState("");
+  const [profileMessage, setProfileMessage] = useState("");
 
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -213,6 +219,59 @@ function App() {
       carregarUsuariosAdmin();
     }
   }, [session, profile]);
+
+  useEffect(() => {
+    if (profile) {
+      setProfileNome(profile.nome || "");
+      setProfileWhatsapp(profile.whatsapp || "");
+    }
+  }, [profile]);
+
+
+  function abrirMeusDados() {
+    setProfileNome(profile?.nome || "");
+    setProfileWhatsapp(profile?.whatsapp || "");
+    setProfileMessage("");
+    setShowProfileData(true);
+  }
+
+  async function salvarMeusDados(e) {
+    e.preventDefault();
+
+    if (!session?.user?.id) return;
+
+    if (!profileNome.trim()) {
+      setProfileMessage("Informe seu nome ou nome da empresa.");
+      return;
+    }
+
+    if (!profileWhatsapp.trim()) {
+      setProfileMessage("Informe seu WhatsApp.");
+      return;
+    }
+
+    setLoading(true);
+    setProfileMessage("");
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        nome: profileNome.trim(),
+        whatsapp: profileWhatsapp.trim(),
+      })
+      .eq("id", session.user.id);
+
+    if (error) {
+      console.log("Erro ao atualizar perfil:", error);
+      setProfileMessage(error.message || "Erro ao atualizar seus dados.");
+      setLoading(false);
+      return;
+    }
+
+    await loadProfile(session.user.id);
+    setProfileMessage("Dados atualizados com sucesso.");
+    setLoading(false);
+  }
 
   async function cadastrarUsuario(e) {
     e.preventDefault();
@@ -864,6 +923,20 @@ function App() {
 
             <button
               className="btn outline large"
+              onClick={abrirMeusDados}
+            >
+              Meus Dados
+            </button>
+
+            <button
+              className="btn outline large"
+              onClick={() => setShowTermsPrivacy(true)}
+            >
+              Termos e Privacidade
+            </button>
+
+            <button
+              className="btn outline large"
               onClick={() => setShowSupport(true)}
             >
               Suporte
@@ -1252,6 +1325,115 @@ function App() {
     session={session}
     onClose={() => setShowSupport(false)}
   />
+)}
+
+
+{showProfileData && (
+  <div className="modalOverlay">
+    <div className="recordModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowProfileData(false)}
+      >
+        ×
+      </button>
+
+      <h2>Meus Dados</h2>
+
+      <p>Atualize seus dados de contato da conta LocaCheck.</p>
+
+      <form onSubmit={salvarMeusDados} className="recordForm">
+        <input
+          type="text"
+          placeholder="Nome ou empresa"
+          value={profileNome}
+          onChange={(e) => setProfileNome(e.target.value)}
+          required
+        />
+
+        <input
+          type="text"
+          placeholder="WhatsApp"
+          value={profileWhatsapp}
+          onChange={(e) => setProfileWhatsapp(e.target.value)}
+          required
+        />
+
+        <button className="btn primary full" disabled={loading}>
+          {loading ? "Salvando..." : "Salvar dados"}
+        </button>
+      </form>
+
+      {profileMessage && (
+        <div className="authMessage">{profileMessage}</div>
+      )}
+    </div>
+  </div>
+)}
+
+{showTermsPrivacy && (
+  <div className="modalOverlay">
+    <div className="recordModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowTermsPrivacy(false)}
+      >
+        ×
+      </button>
+
+      <h2>Termos de Uso e Política de Privacidade</h2>
+
+      <div className="resultsBox">
+        <div className="resultCard">
+          <h3>Uso responsável da plataforma</h3>
+          <p>
+            A LocaCheck é uma ferramenta de apoio para locadoras, frotistas e
+            empresas que desejam registrar e consultar ocorrências relacionadas
+            à locação de veículos. As informações devem ser usadas com
+            responsabilidade, boa-fé e finalidade legítima.
+          </p>
+        </div>
+
+        <div className="resultCard">
+          <h3>Proteção de dados e LGPD</h3>
+          <p>
+            Os dados cadastrados devem ser verdadeiros, necessários e relacionados
+            a uma ocorrência real. A plataforma aplica medidas para reduzir a
+            exposição de dados pessoais, como exibição de CPF mascarado para
+            usuários comuns.
+          </p>
+        </div>
+
+        <div className="resultCard">
+          <h3>Responsabilidade do usuário</h3>
+          <p>
+            Quem cadastra uma ocorrência declara que possui base legítima para o
+            registro e que as informações fornecidas são corretas. É proibido
+            cadastrar dados falsos, ofensivos, discriminatórios ou sem relação
+            com uma locação de veículo.
+          </p>
+        </div>
+
+        <div className="resultCard">
+          <h3>Consultas</h3>
+          <p>
+            Cada consulta pode consumir crédito, salvo nos casos de plano ilimitado
+            ativo. O histórico de consultas pode ser registrado para segurança,
+            auditoria e prevenção de uso indevido.
+          </p>
+        </div>
+
+        <div className="resultCard">
+          <h3>Solicitações e suporte</h3>
+          <p>
+            Solicitações de correção, revisão ou remoção de informações podem ser
+            tratadas pelo suporte da plataforma. O objetivo é manter uma base útil,
+            segura e responsável para todos os usuários.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
 )}
 
 {showMyRecords && (
@@ -1964,6 +2146,15 @@ function App() {
         </section>
       </main>
 
+      <div className="heroActions" style={{ justifyContent: "center", marginBottom: "24px" }}>
+        <button
+          className="btn outline"
+          onClick={() => setShowTermsPrivacy(true)}
+        >
+          Termos e Política de Privacidade
+        </button>
+      </div>
+
       {authMode && (
         <div className="modalOverlay">
           <div className="authModal">
@@ -1982,6 +2173,14 @@ function App() {
                 ? "Acesse seu painel para consultar locatários."
                 : "Cadastre-se e receba 20 créditos grátis."}
             </p>
+
+            <button
+              type="button"
+              className="switchAuth"
+              onClick={() => setShowTermsPrivacy(true)}
+            >
+              Ver Termos de Uso e Política de Privacidade
+            </button>
 
             <form
               onSubmit={authMode === "login" ? entrarUsuario : cadastrarUsuario}
@@ -2042,6 +2241,59 @@ function App() {
             >
               {authMode === "login" ? "Ainda não tenho conta" : "Já tenho conta"}
             </button>
+          </div>
+        </div>
+      )}
+
+
+      {showTermsPrivacy && (
+        <div className="modalOverlay">
+          <div className="recordModal">
+            <button
+              className="closeModal"
+              onClick={() => setShowTermsPrivacy(false)}
+            >
+              ×
+            </button>
+
+            <h2>Termos de Uso e Política de Privacidade</h2>
+
+            <div className="resultsBox">
+              <div className="resultCard">
+                <h3>Uso responsável da plataforma</h3>
+                <p>
+                  A LocaCheck é uma ferramenta de apoio para locadoras, frotistas
+                  e empresas que desejam registrar e consultar ocorrências
+                  relacionadas à locação de veículos.
+                </p>
+              </div>
+
+              <div className="resultCard">
+                <h3>Proteção de dados e LGPD</h3>
+                <p>
+                  Os dados cadastrados devem ser verdadeiros, necessários e
+                  relacionados a uma ocorrência real. A plataforma reduz a
+                  exposição de dados pessoais, como exibição de CPF mascarado para
+                  usuários comuns.
+                </p>
+              </div>
+
+              <div className="resultCard">
+                <h3>Responsabilidade do usuário</h3>
+                <p>
+                  Quem cadastra uma ocorrência declara que possui base legítima
+                  para o registro e que as informações fornecidas são corretas.
+                </p>
+              </div>
+
+              <div className="resultCard">
+                <h3>Consultas e auditoria</h3>
+                <p>
+                  Consultas podem consumir créditos e podem ser registradas para
+                  segurança, auditoria e prevenção de uso indevido.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
