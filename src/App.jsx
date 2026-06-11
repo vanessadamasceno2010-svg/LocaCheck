@@ -17,6 +17,50 @@ const TIPOS_OCORRENCIA = [
   "Outros",
 ];
 
+function formatMoneyFromPayment(payment) {
+  const cents = payment?.amount_cents ?? payment?.plans?.price_cents;
+
+  if (typeof cents === "number" && cents > 0) {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(cents / 100);
+  }
+
+  const amount = Number(payment?.amount || 0);
+
+  if (amount > 0) {
+    if (amount >= 100) {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      }).format(amount / 100);
+    }
+
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(amount);
+  }
+
+  return "Não informado";
+}
+
+function traduzirStatusPagamento(status) {
+  const normalized = String(status || "").toLowerCase();
+
+  const labels = {
+    pending: "Pendente",
+    paid: "Pago",
+    failed: "Falhou",
+    canceled: "Cancelado",
+    cancelled: "Cancelado",
+    expired: "Expirado",
+  };
+
+  return labels[normalized] || status || "Não informado";
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -27,9 +71,12 @@ function App() {
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
   const [showConsultationHistory, setShowConsultationHistory] = useState(false);
+  const [showPaymentsHistory, setShowPaymentsHistory] = useState(false);
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
+  const [paymentsHistory, setPaymentsHistory] = useState([]);
+  const [paymentsHistoryMessage, setPaymentsHistoryMessage] = useState("");
 
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -581,6 +628,54 @@ function App() {
     setLoading(false);
   }
 
+
+  async function carregarHistoricoPagamentos() {
+    if (!session?.user?.id) return;
+
+    setLoading(true);
+    setPaymentsHistoryMessage("");
+
+    const { data, error } = await supabase
+      .from("payments")
+      .select(`
+        id,
+        status,
+        amount,
+        amount_cents,
+        credits,
+        plan_type,
+        created_at,
+        paid_at,
+        processed_at,
+        pix_code,
+        plans (
+          name,
+          credits,
+          price_cents,
+          is_unlimited
+        )
+      `)
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.log(error);
+      setPaymentsHistory([]);
+      setPaymentsHistoryMessage("Erro ao carregar histórico de pagamentos.");
+      setLoading(false);
+      return;
+    }
+
+    setPaymentsHistory(data || []);
+
+    if (!data || data.length === 0) {
+      setPaymentsHistoryMessage("Nenhum pagamento encontrado.");
+    }
+
+    setLoading(false);
+  }
+
   if (session && !profile) {
     return (
       <div className="page">
@@ -686,6 +781,16 @@ function App() {
               }}
             >
               Minhas Consultas
+            </button>
+
+            <button
+              className="btn outline large"
+              onClick={() => {
+                setShowPaymentsHistory(true);
+                carregarHistoricoPagamentos();
+              }}
+            >
+              Meus Pagamentos
             </button>
 
             <button
@@ -983,6 +1088,101 @@ function App() {
               </p>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+
+{showPaymentsHistory && (
+  <div className="modalOverlay">
+    <div className="recordModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowPaymentsHistory(false)}
+      >
+        ×
+      </button>
+
+      <h2>Meus Pagamentos</h2>
+
+      <p>Confira os PIX gerados, pagamentos pendentes e pagamentos aprovados.</p>
+
+      <button
+        className="btn secondary full"
+        onClick={carregarHistoricoPagamentos}
+        disabled={loading}
+        style={{ marginBottom: "16px" }}
+      >
+        {loading ? "Atualizando..." : "Atualizar pagamentos"}
+      </button>
+
+      {paymentsHistoryMessage && (
+        <div className="authMessage">{paymentsHistoryMessage}</div>
+      )}
+
+      {paymentsHistory.length > 0 && (
+        <div className="resultsBox">
+          {paymentsHistory.map((item) => {
+            const statusClass = String(item.status || "pending").toLowerCase();
+            const planName =
+              item.plans?.name ||
+              item.plan_type ||
+              (item.plans?.is_unlimited ? "Plano Ilimitado" : "Créditos");
+
+            return (
+              <div className="resultCard" key={item.id}>
+                <div className="adminRecordTop">
+                  <h3>{planName}</h3>
+                  <span className={`statusBadge ${statusClass}`}>
+                    {traduzirStatusPagamento(item.status)}
+                  </span>
+                </div>
+
+                <p>
+                  <strong>Valor:</strong> {formatMoneyFromPayment(item)}
+                </p>
+
+                <p>
+                  <strong>Créditos:</strong>{" "}
+                  {item.plans?.is_unlimited
+                    ? "Plano ilimitado"
+                    : item.credits || item.plans?.credits || "Não informado"}
+                </p>
+
+                <p>
+                  <strong>Gerado em:</strong>{" "}
+                  {item.created_at
+                    ? new Date(item.created_at).toLocaleString("pt-BR")
+                    : "Não informado"}
+                </p>
+
+                <p>
+                  <strong>Pago em:</strong>{" "}
+                  {item.paid_at
+                    ? new Date(item.paid_at).toLocaleString("pt-BR")
+                    : "Ainda não confirmado"}
+                </p>
+
+                {item.status === "pending" && item.pix_code && (
+                  <details style={{ marginTop: "10px" }}>
+                    <summary>Código PIX copia e cola</summary>
+                    <textarea
+                      value={item.pix_code}
+                      readOnly
+                      style={{
+                        width: "100%",
+                        minHeight: "100px",
+                        marginTop: "10px",
+                        resize: "none",
+                      }}
+                    />
+                  </details>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
