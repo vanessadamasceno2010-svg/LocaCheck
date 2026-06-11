@@ -795,3 +795,260 @@ body {
     grid-template-columns: 1fr;
   }
 }
+/* ===== Produção: animações, pop-ups e ajustes gerais ===== */
+@keyframes modalPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modalOverlay {
+  animation: overlayFadeIn 0.2s ease-out;
+}
+
+.authModal,
+.recordModal {
+  animation: modalPopIn 0.25s ease-out;
+}
+
+.toastPopup {
+  position: fixed;
+  top: 22px;
+  right: 22px;
+  z-index: 999;
+  width: min(360px, calc(100vw - 44px));
+  border-radius: 18px;
+  padding: 16px 18px;
+  color: #0f172a;
+  background: white;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  display: grid;
+  gap: 4px;
+  animation: toastSlideIn 0.25s ease-out;
+}
+
+.toastPopup strong {
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.toastPopup span {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.toastPopup.success {
+  border-left: 6px solid #16a34a;
+}
+
+.toastPopup.error {
+  border-left: 6px solid #dc2626;
+}
+
+.toastPopup.warning {
+  border-left: 6px solid #f59e0b;
+}
+
+.notificationButton {
+  position: relative;
+}
+
+.notificationDot {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: #ef4444;
+  border: 2px solid white;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16);
+}
+
+.unreadNotification {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.modalActionsRow {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.modalActionsRow .btn {
+  flex: 1;
+}
+
+.errorMessage {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.compactModal {
+  max-width: 980px;
+}
+
+.buyCreditsModal h2 {
+  margin-bottom: 8px;
+}
+
+.compactBuyPlansGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.compactBuyPlanCard {
+  text-align: left;
+  cursor: pointer;
+  padding: 16px;
+  min-height: 168px;
+  border: 1px solid #cbd5e1;
+}
+
+.compactBuyPlanCard h3 {
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+
+.compactBuyPlanCard strong {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.compactBuyPlanCard p {
+  min-height: auto;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.compactBuyPlanCard small {
+  display: inline-block;
+  font-weight: 900;
+  color: #2563eb;
+}
+
+.compactBuyPlanCard.featuredPlan small {
+  color: white;
+}
+
+.selectedPlan {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  border-color: #2563eb;
+}
+
+.miniTag {
+  display: inline-block;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: white;
+  color: #1d4ed8;
+  font-weight: 900;
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.selectedPlanSummary {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  color: #334155;
+  font-size: 14px;
+}
+
+.pixResultBox {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.pixResultBox h3 {
+  margin-top: 0;
+}
+
+.qrCodeBox {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0;
+}
+
+.qrCodeBox img {
+  width: 190px;
+  height: 190px;
+  background: white;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.pixTextarea {
+  width: 100%;
+  min-height: 92px;
+  resize: none;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.compactList .adminRecord {
+  padding: 18px;
+}
+
+@media (max-width: 1000px) {
+  .compactBuyPlansGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .toastPopup {
+    top: 14px;
+    right: 14px;
+    width: calc(100vw - 28px);
+  }
+
+  .compactBuyPlansGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .modalActionsRow {
+    flex-direction: column;
+  }
+}
