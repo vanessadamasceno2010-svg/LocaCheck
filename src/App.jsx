@@ -290,8 +290,8 @@ function App() {
     setSearchMessage("");
     setSearchResults([]);
 
-    const { data, error } = await supabase.rpc("consultar_locatario", {
-      search_text: searchText,
+    const { data, error } = await supabase.rpc("secure_consult_renter", {
+      p_search: searchText,
     });
 
     if (error) {
@@ -301,15 +301,25 @@ function App() {
       return;
     }
 
-    setSearchResults(data || []);
+    if (!data?.success) {
+      setSearchMessage(data?.message || "Não foi possível realizar a consulta.");
+      setSearchResults([]);
+      await loadProfile(session.user.id);
+      setLoading(false);
+      return;
+    }
 
-    if (!data || data.length === 0) {
+    const results = data.results || [];
+
+    setSearchResults(results);
+
+    if (results.length === 0) {
       setSearchMessage(
         "Consulta realizada. Nenhum registro aprovado foi encontrado para os dados informados."
       );
     } else {
       setSearchMessage(
-        `Consulta realizada. ${data.length} registro(s) encontrado(s).`
+        `Consulta realizada. ${results.length} registro(s) encontrado(s).`
       );
     }
 
@@ -1027,12 +1037,8 @@ function App() {
                       <h3>{item.nome}</h3>
 
                       <p>
-                        <strong>CPF final:</strong> {item.cpf4}
-                      </p>
-
-                      <p>
-                        <strong>WhatsApp do locatário cadastrado:</strong>{" "}
-                        {item.whatsapp_locatario || "Não informado"}
+                        <strong>CPF:</strong>{" "}
+                        {item.cpf_masked || item.cpf4 || "Não informado"}
                       </p>
 
                       <p>
