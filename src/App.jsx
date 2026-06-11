@@ -136,6 +136,10 @@ function App() {
   const [showProfileData, setShowProfileData] = useState(false);
   const [showTermsPrivacy, setShowTermsPrivacy] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSystemLogs, setShowSystemLogs] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [notificationReadIds, setNotificationReadIds] = useState([]);
+  const [showAllRecentPayments, setShowAllRecentPayments] = useState(false);
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -148,6 +152,8 @@ function App() {
 
   const [profileNome, setProfileNome] = useState("");
   const [profileWhatsapp, setProfileWhatsapp] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profileNewPassword, setProfileNewPassword] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
 
   const [nome, setNome] = useState("");
@@ -183,6 +189,8 @@ function App() {
   const [adminSupportMessages, setAdminSupportMessages] = useState([]);
   const [adminSupportMessage, setAdminSupportMessage] = useState("");
   const [adminSupportFilter, setAdminSupportFilter] = useState("todos");
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [activityLogsMessage, setActivityLogsMessage] = useState("");
 
   const [editingRecord, setEditingRecord] = useState(null);
   const [editRecordNome, setEditRecordNome] = useState("");
@@ -288,6 +296,7 @@ function App() {
       carregarOcorrenciasAdmin();
       carregarUsuariosAdmin();
       carregarMensagensSuporteAdmin();
+      carregarLogsSistema();
     }
   }, [session, profile]);
 
@@ -295,13 +304,91 @@ function App() {
     if (profile) {
       setProfileNome(profile.nome || "");
       setProfileWhatsapp(profile.whatsapp || "");
+      setProfileEmail(session?.user?.email || "");
     }
   }, [profile]);
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const saved = localStorage.getItem(`locacheck-notifications-read-${session.user.id}`);
+    try {
+      setNotificationReadIds(saved ? JSON.parse(saved) : []);
+    } catch {
+      setNotificationReadIds([]);
+    }
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (session?.user?.id && profile) {
+      carregarNotificacoes();
+    }
+  }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
+
+
+  function showToast(type, title, messageText) {
+    setToast({ type, title, message: messageText });
+    setTimeout(() => setToast(null), 4200);
+  }
+
+  async function registrarLogAdmin(action, details = {}) {
+    if (!session?.user?.id || profile?.role !== "admin") return;
+
+    const { error } = await supabase.from("activity_logs").insert({
+      user_id: session.user.id,
+      action,
+      details,
+    });
+
+    if (error) {
+      console.log("Erro ao registrar log administrativo:", error);
+    }
+  }
+
+  async function carregarLogsSistema() {
+    if (profile?.role !== "admin") return;
+
+    setActivityLogsMessage("");
+
+    const { data, error } = await supabase
+      .from("activity_logs")
+      .select("id, user_id, action, details, created_at")
+      .order("created_at", { ascending: false })
+      .limit(80);
+
+    if (error) {
+      console.log("Erro ao carregar logs:", error);
+      setActivityLogs([]);
+      setActivityLogsMessage(error.message || "Erro ao carregar logs do sistema.");
+      return;
+    }
+
+    setActivityLogs(data || []);
+
+    if (!data || data.length === 0) {
+      setActivityLogsMessage("Nenhum log registrado ainda.");
+    }
+  }
+
+  function marcarNotificacoesComoLidas() {
+    if (!session?.user?.id) return;
+    const ids = notificationItems.map((item) => item.id);
+    setNotificationReadIds(ids);
+    localStorage.setItem(
+      `locacheck-notifications-read-${session.user.id}`,
+      JSON.stringify(ids)
+    );
+    showToast("success", "Notificações lidas", "As notificações foram marcadas como lidas.");
+  }
+
+  function notificacaoNaoLida(item) {
+    return !notificationReadIds.includes(item.id);
+  }
 
 
   function abrirMeusDados() {
     setProfileNome(profile?.nome || "");
     setProfileWhatsapp(profile?.whatsapp || "");
+    setProfileEmail(session?.user?.email || "");
+    setProfileNewPassword("");
     setProfileMessage("");
     setShowProfileData(true);
   }
@@ -324,7 +411,7 @@ function App() {
     setLoading(true);
     setProfileMessage("");
 
-    const { error } = await supabase
+    const { error: profileError } = await supabase
       .from("profiles")
       .update({
         nome: profileNome.trim(),
@@ -332,15 +419,49 @@ function App() {
       })
       .eq("id", session.user.id);
 
-    if (error) {
-      console.log("Erro ao atualizar perfil:", error);
-      setProfileMessage(error.message || "Erro ao atualizar seus dados.");
+    if (profileError) {
+      console.log("Erro ao atualizar perfil:", profileError);
+      setProfileMessage(profileError.message || "Erro ao atualizar seus dados.");
+      showToast("error", "Erro ao salvar", "Não foi possível atualizar seus dados.");
       setLoading(false);
       return;
     }
 
+    const authPayload = {};
+
+    if (profileEmail.trim() && profileEmail.trim() !== session.user.email) {
+      authPayload.email = profileEmail.trim();
+    }
+
+    if (profileNewPassword.trim()) {
+      if (profileNewPassword.trim().length < 6) {
+        setProfileMessage("A nova senha precisa ter pelo menos 6 caracteres.");
+        setLoading(false);
+        return;
+      }
+      authPayload.password = profileNewPassword.trim();
+    }
+
+    if (Object.keys(authPayload).length > 0) {
+      const { error: authError } = await supabase.auth.updateUser(authPayload);
+
+      if (authError) {
+        console.log("Erro ao atualizar acesso:", authError);
+        setProfileMessage(authError.message || "Dados salvos, mas não foi possível atualizar e-mail/senha.");
+        showToast("warning", "Atenção", "Perfil salvo, mas revise o e-mail ou senha informados.");
+        setLoading(false);
+        return;
+      }
+    }
+
     await loadProfile(session.user.id);
-    setProfileMessage("Dados atualizados com sucesso.");
+    setProfileNewPassword("");
+    setProfileMessage(
+      authPayload.email
+        ? "Dados atualizados. Confirme o novo e-mail se o Supabase enviar uma confirmação."
+        : "Dados atualizados com sucesso."
+    );
+    showToast("success", "Dados atualizados", "Suas informações foram salvas com sucesso.");
     setLoading(false);
   }
 
@@ -364,6 +485,7 @@ function App() {
       setMessage(error.message);
     } else {
       setMessage("Cadastro realizado com sucesso. Você já pode entrar.");
+      showToast("success", "Cadastro realizado", "Sua conta foi criada com 20 créditos iniciais.");
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -387,6 +509,7 @@ function App() {
     if (error) {
       setMessage("E-mail ou senha inválidos.");
     } else {
+      showToast("success", "Login realizado", "Bem-vindo ao painel LocaCheck.");
       setAuthMode(null);
       setEmail("");
       setSenha("");
@@ -456,8 +579,9 @@ function App() {
         );
       } else {
         setRecordMessage(
-          "Ocorrência registrada com sucesso! Breve a ocorrência já estará disponível para consulta na plataforma. Parabéns por contribuir com outros locadores."
+          "Ocorrência registrada com sucesso! Breve a ocorrência já estará disponível para consulta na plataforma."
         );
+        showToast("success", "Ocorrência registrada", "Sua ocorrência foi enviada para análise do administrador.");
         limparFormularioOcorrencia();
       }
     } catch (error) {
@@ -472,7 +596,7 @@ function App() {
     e.preventDefault();
 
     if (!searchText.trim()) {
-      setSearchMessage("Digite um nome, CPF ou cidade para consultar.");
+      setSearchMessage("Digite um nome ou CPF para consultar.");
       return;
     }
 
@@ -565,6 +689,8 @@ function App() {
     }
 
     setAdminMessage("Ocorrência atualizada com sucesso.");
+    showToast("success", "Ocorrência atualizada", `Status alterado para ${status}.`);
+    await registrarLogAdmin(`ocorrencia_${status}`, { record_id: id, status });
     carregarOcorrenciasAdmin();
   }
 
@@ -584,6 +710,8 @@ function App() {
     }
 
     setAdminMessage("Ocorrência excluída com sucesso.");
+    showToast("success", "Ocorrência excluída", "O registro foi removido.");
+    await registrarLogAdmin("ocorrencia_excluida", { record_id: id });
     carregarOcorrenciasAdmin();
   }
 
@@ -666,6 +794,8 @@ function App() {
       }
 
       setEditRecordMessage("Ocorrência editada com sucesso.");
+      showToast("success", "Ocorrência salva", "As alterações foram aplicadas.");
+      await registrarLogAdmin("ocorrencia_editada", { record_id: editingRecord.id, status: editRecordStatus });
       await carregarOcorrenciasAdmin();
 
       setTimeout(() => {
@@ -714,6 +844,8 @@ function App() {
     }
 
     setAdminUsersMessage("Créditos atualizados com sucesso.");
+    showToast("success", "Créditos atualizados", "Saldo do usuário alterado.");
+    await registrarLogAdmin("creditos_alterados", { user_id: userId, quantidade, novos_creditos: novosCreditos });
     carregarUsuariosAdmin();
 
     if (userId === session.user.id) {
@@ -737,6 +869,8 @@ function App() {
     }
 
     setAdminUsersMessage("Plano ilimitado ativado por 30 dias.");
+    showToast("success", "Plano ativado", "Plano ilimitado ativado por 30 dias.");
+    await registrarLogAdmin("ilimitado_ativado", { user_id: userId });
     carregarUsuariosAdmin();
 
     if (userId === session.user.id) {
@@ -757,6 +891,8 @@ function App() {
     }
 
     setAdminUsersMessage("Plano ilimitado cancelado.");
+    showToast("success", "Plano cancelado", "O ilimitado do usuário foi cancelado.");
+    await registrarLogAdmin("ilimitado_cancelado", { user_id: userId });
     carregarUsuariosAdmin();
 
     if (userId === session.user.id) {
@@ -939,6 +1075,8 @@ function App() {
     }
 
     setAdminSupportMessage("Mensagem de suporte atualizada.");
+    showToast("success", "Suporte atualizado", "Status da mensagem alterado.");
+    await registrarLogAdmin("suporte_atualizado", { support_id: id, status });
     carregarMensagensSuporteAdmin();
   }
 
@@ -956,9 +1094,6 @@ function App() {
         item.nome,
         item.cpf_full,
         item.cpf4,
-        item.cidade,
-        item.status,
-        Array.isArray(item.tipos) ? item.tipos.join(" ") : item.tipos,
       ]
         .filter(Boolean)
         .join(" ")
@@ -1223,6 +1358,12 @@ function App() {
 
     return (
       <div className="page">
+        {toast && (
+          <div className={`toastPopup ${toast.type || "success"}`}>
+            <strong>{toast.title}</strong>
+            <span>{toast.message}</span>
+          </div>
+        )}
         <header className="header">
           <div className="brand">
             <div className="logo">LC</div>
@@ -1338,13 +1479,16 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large notificationButton"
               onClick={() => {
                 setShowNotifications(true);
                 carregarNotificacoes();
               }}
             >
               Notificações
+              {notificationItems.some((item) => notificacaoNaoLida(item)) && (
+                <span className="notificationDot" />
+              )}
             </button>
 
             <button
@@ -1447,7 +1591,7 @@ function App() {
                       <div className="adminEmpty">Nenhum pagamento encontrado.</div>
                     )}
 
-                    {(adminFinancialData.recent_payments || []).map((payment) => {
+                    {(showAllRecentPayments ? (adminFinancialData.recent_payments || []) : (adminFinancialData.recent_payments || []).slice(0, 5)).map((payment) => {
                       const amountCents = Number(payment.amount_cents || 0);
                       const statusLabel = traduzirStatusPagamento(payment.status);
 
@@ -1496,6 +1640,16 @@ function App() {
                         </div>
                       );
                     })}
+
+                    {(adminFinancialData.recent_payments || []).length > 5 && (
+                      <button
+                        className="btn secondary full"
+                        type="button"
+                        onClick={() => setShowAllRecentPayments(!showAllRecentPayments)}
+                      >
+                        {showAllRecentPayments ? "Ver menos" : "Ver mais pagamentos"}
+                      </button>
+                    )}
                   </div>
                 </>
               )}
@@ -1770,6 +1924,55 @@ function App() {
             <section className="adminPanel">
               <div className="adminHeader">
                 <div>
+                  <span>Auditoria</span>
+                  <h2>Logs do Sistema</h2>
+                  <p>Acompanhe ações administrativas importantes realizadas na plataforma.</p>
+                </div>
+
+                <button className="btn secondary" onClick={carregarLogsSistema}>
+                  Atualizar logs
+                </button>
+              </div>
+
+              {activityLogsMessage && (
+                <div className="authMessage">{activityLogsMessage}</div>
+              )}
+
+              <div className="adminList compactList">
+                {activityLogs.length === 0 && (
+                  <div className="adminEmpty">Nenhum log encontrado.</div>
+                )}
+
+                {activityLogs.map((log) => (
+                  <div className="adminRecord" key={log.id}>
+                    <div className="adminRecordTop">
+                      <h3>{log.action}</h3>
+                      <span className="statusBadge aprovado">Log</span>
+                    </div>
+
+                    <p>
+                      <strong>Data:</strong>{" "}
+                      {log.created_at ? new Date(log.created_at).toLocaleString("pt-BR") : "Não informado"}
+                    </p>
+
+                    <p>
+                      <strong>Admin:</strong> {log.user_id || "Não informado"}
+                    </p>
+
+                    <p>
+                      <strong>Detalhes:</strong>{" "}
+                      {log.details ? JSON.stringify(log.details) : "Sem detalhes"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {profile.role === "admin" && (
+            <section className="adminPanel">
+              <div className="adminHeader">
+                <div>
                   <span>Administração</span>
                   <h2>Ocorrências cadastradas</h2>
                   <p>Aprove, reprove, edite ou exclua ocorrências enviadas.</p>
@@ -1929,14 +2132,25 @@ function App() {
 
       <p>Veja avisos importantes sobre créditos, plano e ocorrências cadastradas.</p>
 
-      <button
-        className="btn secondary full"
-        onClick={carregarNotificacoes}
-        disabled={loading}
-        style={{ marginBottom: "16px" }}
-      >
-        Atualizar notificações
-      </button>
+      <div className="modalActionsRow">
+        <button
+          className="btn secondary"
+          onClick={carregarNotificacoes}
+          disabled={loading}
+          type="button"
+        >
+          Atualizar
+        </button>
+
+        <button
+          className="btn primary"
+          onClick={marcarNotificacoesComoLidas}
+          disabled={notificationItems.length === 0}
+          type="button"
+        >
+          Marcar como lidas
+        </button>
+      </div>
 
       {notificationMessage && (
         <div className="authMessage">{notificationMessage}</div>
@@ -1945,11 +2159,11 @@ function App() {
       {notificationItems.length > 0 && (
         <div className="resultsBox">
           {notificationItems.map((item) => (
-            <div className="resultCard" key={item.id}>
+            <div className={`resultCard ${notificacaoNaoLida(item) ? "unreadNotification" : ""}`} key={item.id}>
               <div className="adminRecordTop">
                 <h3>{item.title}</h3>
                 <span className={`statusBadge ${item.status}`}>
-                  {item.status}
+                  {notificacaoNaoLida(item) ? "Nova" : item.status}
                 </span>
               </div>
 
@@ -1993,6 +2207,25 @@ function App() {
           onChange={(e) => setProfileWhatsapp(e.target.value)}
           required
         />
+
+        <input
+          type="email"
+          placeholder="E-mail de acesso"
+          value={profileEmail}
+          onChange={(e) => setProfileEmail(e.target.value)}
+          required
+        />
+
+        <input
+          type="password"
+          placeholder="Nova senha (opcional)"
+          value={profileNewPassword}
+          onChange={(e) => setProfileNewPassword(e.target.value)}
+        />
+
+        <small className="fieldHelp">
+          Ao alterar o e-mail, o Supabase pode solicitar confirmação pelo novo endereço.
+        </small>
 
         <button className="btn primary full" disabled={loading}>
           {loading ? "Salvando..." : "Salvar dados"}
@@ -2469,6 +2702,19 @@ function App() {
                 <button className="btn primary full" disabled={loading}>
                   {loading ? "Salvando..." : "Salvar alterações"}
                 </button>
+
+                <button
+                  className="btn outline full"
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    setEditRecordStatus("aprovado");
+                    setEditRecordRejectionReason("");
+                    setEditRecordMessage("Status alterado para aprovado. Clique em Salvar alterações para confirmar.");
+                  }}
+                >
+                  Preparar aprovação
+                </button>
               </form>
 
               {editRecordMessage && (
@@ -2491,14 +2737,14 @@ function App() {
               <h2>Consultar Locatário</h2>
 
               <p>
-                Digite nome, CPF completo ou cidade. A consulta desconta 1
+                Digite nome ou CPF completo. A consulta desconta 1
                 crédito ao buscar, exceto usuários com plano ilimitado ativo.
               </p>
 
               <form onSubmit={consultarLocatario} className="recordForm">
                 <input
                   type="text"
-                  placeholder="Nome, CPF ou cidade"
+                  placeholder="Nome ou CPF"
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   required
@@ -2666,6 +2912,12 @@ function App() {
 
   return (
     <div className="page">
+      {toast && (
+        <div className={`toastPopup ${toast.type || "success"}`}>
+          <strong>{toast.title}</strong>
+          <span>{toast.message}</span>
+        </div>
+      )}
       <header className="header">
         <div className="brand">
           <div className="logo">LC</div>
@@ -2753,21 +3005,21 @@ function App() {
               <h3>20 Créditos</h3>
               <strong>R$ 19,90</strong>
               <p>Ideal para começar e testar a plataforma.</p>
-              <button className="btn outline full">Comprar</button>
+              <button className="btn outline full" onClick={() => { setMessage("Entre ou cadastre-se para comprar créditos via PIX."); setAuthMode("login"); }}>Comprar</button>
             </div>
 
             <div className="planCard">
               <h3>50 Créditos</h3>
               <strong>R$ 39,90</strong>
               <p>Boa opção para locadores com consultas frequentes.</p>
-              <button className="btn outline full">Comprar</button>
+              <button className="btn outline full" onClick={() => { setMessage("Entre ou cadastre-se para comprar créditos via PIX."); setAuthMode("login"); }}>Comprar</button>
             </div>
 
             <div className="planCard">
               <h3>100 Créditos</h3>
               <strong>R$ 69,90</strong>
               <p>Mais economia para quem consulta com regularidade.</p>
-              <button className="btn outline full">Comprar</button>
+              <button className="btn outline full" onClick={() => { setMessage("Entre ou cadastre-se para comprar créditos via PIX."); setAuthMode("login"); }}>Comprar</button>
             </div>
 
             <div className="planCard unlimited">
@@ -2775,7 +3027,7 @@ function App() {
               <h3>Ilimitado Mensal</h3>
               <strong>R$ 97,00</strong>
               <p>Consultas ilimitadas durante 30 dias.</p>
-              <button className="btn primary full">Assinar por 30 dias</button>
+              <button className="btn primary full" onClick={() => { setMessage("Entre ou cadastre-se para assinar via PIX."); setAuthMode("login"); }}>Assinar por 30 dias</button>
             </div>
           </div>
         </section>
@@ -2793,7 +3045,7 @@ function App() {
             <div>
               <span>02</span>
               <h4>Consulte</h4>
-              <p>Digite nome, CPF ou cidade e veja registros disponíveis.</p>
+              <p>Digite nome ou CPF e veja registros disponíveis.</p>
             </div>
 
             <div>
