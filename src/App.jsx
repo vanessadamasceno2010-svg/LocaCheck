@@ -138,6 +138,10 @@ function App() {
   const [adminFinancialMessage, setAdminFinancialMessage] = useState("");
   const [loadingFinancialDashboard, setLoadingFinancialDashboard] = useState(false);
 
+  const [adminSupportMessages, setAdminSupportMessages] = useState([]);
+  const [adminSupportMessage, setAdminSupportMessage] = useState("");
+  const [adminSupportFilter, setAdminSupportFilter] = useState("todos");
+
   const [editingRecord, setEditingRecord] = useState(null);
   const [editRecordNome, setEditRecordNome] = useState("");
   const [editRecordCpf, setEditRecordCpf] = useState("");
@@ -241,6 +245,7 @@ function App() {
       carregarDashboardFinanceiro();
       carregarOcorrenciasAdmin();
       carregarUsuariosAdmin();
+      carregarMensagensSuporteAdmin();
     }
   }, [session, profile]);
 
@@ -725,7 +730,7 @@ function App() {
 
     const { data, error } = await supabase
       .from("records")
-      .select("id, nome, cpf4, cidade, tipos, descricao, imagem_url, status, created_at, approved_at")
+      .select("id, nome, cpf4, cidade, tipos, descricao, imagem_url, status, rejection_reason, created_at, approved_at")
       .eq("created_by", session.user.id)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -843,6 +848,56 @@ function App() {
 
     setAdminFinancialData(data);
     setLoadingFinancialDashboard(false);
+  }
+
+  async function carregarMensagensSuporteAdmin() {
+    if (profile?.role !== "admin") return;
+
+    setAdminSupportMessage("");
+
+    const { data, error } = await supabase
+      .from("support_messages")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.log("Erro ao carregar mensagens de suporte:", error);
+      setAdminSupportMessages([]);
+      setAdminSupportMessage(
+        error.message || "Erro ao carregar mensagens de suporte. Verifique as políticas RLS da tabela support_messages."
+      );
+      return;
+    }
+
+    setAdminSupportMessages(data || []);
+
+    if (!data || data.length === 0) {
+      setAdminSupportMessage("Nenhuma mensagem de suporte encontrada.");
+    }
+  }
+
+  async function atualizarStatusSuporte(id, status) {
+    const payload = {
+      status,
+      resolved_at: status === "resolvido" ? new Date().toISOString() : null,
+    };
+
+    const { error } = await supabase
+      .from("support_messages")
+      .update(payload)
+      .eq("id", id);
+
+    if (error) {
+      console.log("Erro ao atualizar suporte:", error);
+      setAdminSupportMessage(
+        error.message || "Erro ao atualizar status da mensagem. Confirme se as colunas status e resolved_at existem."
+      );
+      return;
+    }
+
+    setAdminSupportMessage("Mensagem de suporte atualizada.");
+    carregarMensagensSuporteAdmin();
   }
 
   if (session && !profile) {
@@ -1229,6 +1284,140 @@ function App() {
                     </div>
                   );
                 })}
+              </div>
+            </section>
+          )}
+
+          {profile.role === "admin" && (
+            <section className="adminPanel">
+              <div className="adminHeader">
+                <div>
+                  <span>Suporte</span>
+                  <h2>Mensagens recebidas</h2>
+                  <p>Veja as mensagens enviadas pelos usuários pela tela de suporte.</p>
+                </div>
+
+                <button
+                  className="btn secondary"
+                  onClick={carregarMensagensSuporteAdmin}
+                >
+                  Atualizar suporte
+                </button>
+              </div>
+
+              <div className="adminButtons" style={{ marginBottom: "16px" }}>
+                <button
+                  className={adminSupportFilter === "todos" ? "btn primary" : "btn outline"}
+                  onClick={() => setAdminSupportFilter("todos")}
+                >
+                  Todas
+                </button>
+
+                <button
+                  className={adminSupportFilter === "aberto" ? "btn primary" : "btn outline"}
+                  onClick={() => setAdminSupportFilter("aberto")}
+                >
+                  Abertas
+                </button>
+
+                <button
+                  className={adminSupportFilter === "resolvido" ? "btn primary" : "btn outline"}
+                  onClick={() => setAdminSupportFilter("resolvido")}
+                >
+                  Resolvidas
+                </button>
+              </div>
+
+              {adminSupportMessage && (
+                <div className="authMessage">{adminSupportMessage}</div>
+              )}
+
+              <div className="adminList">
+                {adminSupportMessages.filter((item) => {
+                  if (adminSupportFilter === "todos") return true;
+                  const status = String(item.status || "aberto").toLowerCase();
+                  return status === adminSupportFilter;
+                }).length === 0 && (
+                  <div className="adminEmpty">Nenhuma mensagem para este filtro.</div>
+                )}
+
+                {adminSupportMessages
+                  .filter((item) => {
+                    if (adminSupportFilter === "todos") return true;
+                    const status = String(item.status || "aberto").toLowerCase();
+                    return status === adminSupportFilter;
+                  })
+                  .map((item) => {
+                    const status = String(item.status || "aberto").toLowerCase();
+                    const statusClass = status === "resolvido" ? "aprovado" : "pendente";
+                    const nomeSuporte =
+                      item.nome || item.name || item.user_name || item.nome_empresa || "Usuário";
+                    const whatsappSuporte =
+                      item.whatsapp || item.telefone || item.phone || "Não informado";
+                    const emailSuporte =
+                      item.email || item.user_email || "Não informado";
+                    const assuntoSuporte =
+                      item.assunto || item.subject || item.tipo || "Mensagem de suporte";
+                    const textoSuporte =
+                      item.mensagem || item.message || item.texto || item.content || item.descricao || "Mensagem não informada";
+
+                    return (
+                      <div className="adminRecord" key={item.id}>
+                        <div className="adminRecordTop">
+                          <h3>{assuntoSuporte}</h3>
+                          <span className={`statusBadge ${statusClass}`}>
+                            {status === "resolvido" ? "Resolvida" : "Aberta"}
+                          </span>
+                        </div>
+
+                        <p>
+                          <strong>Usuário:</strong> {nomeSuporte}
+                        </p>
+
+                        <p>
+                          <strong>E-mail:</strong> {emailSuporte}
+                        </p>
+
+                        <p>
+                          <strong>WhatsApp:</strong> {whatsappSuporte}
+                        </p>
+
+                        <p>
+                          <strong>Mensagem:</strong> {textoSuporte}
+                        </p>
+
+                        <p>
+                          <strong>Enviada em:</strong>{" "}
+                          {item.created_at
+                            ? new Date(item.created_at).toLocaleString("pt-BR")
+                            : "Não informado"}
+                        </p>
+
+                        {item.resolved_at && (
+                          <p>
+                            <strong>Resolvida em:</strong>{" "}
+                            {new Date(item.resolved_at).toLocaleString("pt-BR")}
+                          </p>
+                        )}
+
+                        <div className="adminButtons">
+                          <button
+                            className="btn primary"
+                            onClick={() => atualizarStatusSuporte(item.id, "resolvido")}
+                          >
+                            Marcar resolvida
+                          </button>
+
+                          <button
+                            className="btn outline"
+                            onClick={() => atualizarStatusSuporte(item.id, "aberto")}
+                          >
+                            Reabrir
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </section>
           )}
