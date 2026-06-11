@@ -101,6 +101,10 @@ function App() {
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminUsersMessage, setAdminUsersMessage] = useState("");
 
+  const [adminFinancialData, setAdminFinancialData] = useState(null);
+  const [adminFinancialMessage, setAdminFinancialMessage] = useState("");
+  const [loadingFinancialDashboard, setLoadingFinancialDashboard] = useState(false);
+
   const [editingRecord, setEditingRecord] = useState(null);
   const [editRecordNome, setEditRecordNome] = useState("");
   const [editRecordCpf, setEditRecordCpf] = useState("");
@@ -200,6 +204,7 @@ function App() {
 
   useEffect(() => {
     if (session && profile?.role === "admin") {
+      carregarDashboardFinanceiro();
       carregarOcorrenciasAdmin();
       carregarUsuariosAdmin();
     }
@@ -663,6 +668,37 @@ function App() {
     setLoading(false);
   }
 
+  async function carregarDashboardFinanceiro() {
+    if (profile?.role !== "admin") return;
+
+    setLoadingFinancialDashboard(true);
+    setAdminFinancialMessage("");
+
+    const { data, error } = await supabase.rpc("admin_financial_dashboard");
+
+    if (error) {
+      console.log("Erro ao carregar dashboard financeiro:", error);
+      setAdminFinancialData(null);
+      setAdminFinancialMessage(
+        error.message || "Erro ao carregar dashboard financeiro."
+      );
+      setLoadingFinancialDashboard(false);
+      return;
+    }
+
+    if (!data?.success) {
+      setAdminFinancialData(null);
+      setAdminFinancialMessage(
+        data?.message || "Não foi possível carregar o dashboard financeiro."
+      );
+      setLoadingFinancialDashboard(false);
+      return;
+    }
+
+    setAdminFinancialData(data);
+    setLoadingFinancialDashboard(false);
+  }
+
   if (session && !profile) {
     return (
       <div className="page">
@@ -787,6 +823,146 @@ function App() {
               Suporte
             </button>
           </section>
+
+          {profile.role === "admin" && (
+            <section className="adminPanel">
+              <div className="adminHeader">
+                <div>
+                  <span>Financeiro</span>
+                  <h2>Dashboard Financeiro</h2>
+                  <p>Acompanhe receita, pagamentos, créditos vendidos e atividade da plataforma.</p>
+                </div>
+
+                <button
+                  className="btn secondary"
+                  onClick={carregarDashboardFinanceiro}
+                  disabled={loadingFinancialDashboard}
+                >
+                  {loadingFinancialDashboard ? "Atualizando..." : "Atualizar financeiro"}
+                </button>
+              </div>
+
+              {adminFinancialMessage && (
+                <div className="authMessage">{adminFinancialMessage}</div>
+              )}
+
+              {adminFinancialData && (
+                <>
+                  <section className="dashboardGrid">
+                    <div className="dashboardCard">
+                      <small>Receita total</small>
+                      <strong>
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(Number(adminFinancialData.total_revenue_cents || 0) / 100)}
+                      </strong>
+                    </div>
+
+                    <div className="dashboardCard">
+                      <small>Pagamentos pagos</small>
+                      <strong>{adminFinancialData.paid_payments || 0}</strong>
+                    </div>
+
+                    <div className="dashboardCard">
+                      <small>Pagamentos pendentes</small>
+                      <strong>{adminFinancialData.pending_payments || 0}</strong>
+                    </div>
+
+                    <div className="dashboardCard">
+                      <small>Pagamentos com falha</small>
+                      <strong>{adminFinancialData.failed_payments || 0}</strong>
+                    </div>
+
+                    <div className="dashboardCard">
+                      <small>Créditos vendidos</small>
+                      <strong>{adminFinancialData.total_credits_sold || 0}</strong>
+                    </div>
+
+                    <div className="dashboardCard">
+                      <small>Consultas realizadas</small>
+                      <strong>{adminFinancialData.total_consultations || 0}</strong>
+                    </div>
+
+                    <div className="dashboardCard">
+                      <small>Usuários cadastrados</small>
+                      <strong>{adminFinancialData.total_users || 0}</strong>
+                    </div>
+
+                    <div className="dashboardCard">
+                      <small>Ilimitados ativos</small>
+                      <strong>{adminFinancialData.unlimited_users || 0}</strong>
+                    </div>
+                  </section>
+
+                  <div className="adminHeader" style={{ marginTop: "24px" }}>
+                    <div>
+                      <span>Financeiro</span>
+                      <h2>Últimos pagamentos</h2>
+                      <p>Veja os pagamentos mais recentes gerados na plataforma.</p>
+                    </div>
+                  </div>
+
+                  <div className="adminList">
+                    {(!adminFinancialData.recent_payments ||
+                      adminFinancialData.recent_payments.length === 0) && (
+                      <div className="adminEmpty">Nenhum pagamento encontrado.</div>
+                    )}
+
+                    {(adminFinancialData.recent_payments || []).map((payment) => {
+                      const amountCents = Number(payment.amount_cents || 0);
+                      const statusLabel = traduzirStatusPagamento(payment.status);
+
+                      return (
+                        <div className="adminRecord" key={payment.id}>
+                          <div className="adminRecordTop">
+                            <h3>{payment.plan_type || "Pagamento"}</h3>
+                            <span
+                              className={`statusBadge ${
+                                payment.status === "paid"
+                                  ? "aprovado"
+                                  : payment.status === "failed"
+                                  ? "reprovado"
+                                  : "pendente"
+                              }`}
+                            >
+                              {statusLabel}
+                            </span>
+                          </div>
+
+                          <p>
+                            <strong>Valor:</strong>{" "}
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(amountCents / 100)}
+                          </p>
+
+                          <p>
+                            <strong>Créditos:</strong> {payment.credits || 0}
+                          </p>
+
+                          <p>
+                            <strong>Gerado em:</strong>{" "}
+                            {payment.created_at
+                              ? new Date(payment.created_at).toLocaleString("pt-BR")
+                              : "Não informado"}
+                          </p>
+
+                          <p>
+                            <strong>Pago em:</strong>{" "}
+                            {payment.paid_at
+                              ? new Date(payment.paid_at).toLocaleString("pt-BR")
+                              : "Ainda não pago"}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </section>
+          )}
 
           {profile.role === "admin" && (
             <section className="adminPanel">
