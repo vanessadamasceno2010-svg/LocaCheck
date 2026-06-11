@@ -18,7 +18,7 @@ const TIPOS_OCORRENCIA = [
 ];
 
 function formatMoneyFromPayment(payment) {
-  const cents = payment?.amount_cents ?? payment?.plans?.price_cents;
+  const cents = payment?.amount_cents;
 
   if (typeof cents === "number" && cents > 0) {
     return new Intl.NumberFormat("pt-BR", {
@@ -637,32 +637,19 @@ function App() {
 
     const { data, error } = await supabase
       .from("payments")
-      .select(`
-        id,
-        status,
-        amount,
-        amount_cents,
-        credits,
-        plan_type,
-        created_at,
-        paid_at,
-        processed_at,
-        pix_code,
-        plans (
-          name,
-          credits,
-          price_cents,
-          is_unlimited
-        )
-      `)
+      .select(
+        "id, status, amount, amount_cents, credits, plan_type, pix_code, created_at, paid_at, processed_at"
+      )
       .eq("user_id", session.user.id)
       .order("created_at", { ascending: false })
       .limit(50);
 
     if (error) {
-      console.log(error);
+      console.log("Erro ao carregar pagamentos:", error);
       setPaymentsHistory([]);
-      setPaymentsHistoryMessage("Erro ao carregar histórico de pagamentos.");
+      setPaymentsHistoryMessage(
+        error.message || "Erro ao carregar histórico de pagamentos."
+      );
       setLoading(false);
       return;
     }
@@ -1127,9 +1114,10 @@ function App() {
           {paymentsHistory.map((item) => {
             const statusClass = String(item.status || "pending").toLowerCase();
             const planName =
-              item.plans?.name ||
-              item.plan_type ||
-              (item.plans?.is_unlimited ? "Plano Ilimitado" : "Créditos");
+              item.plan_type === "unlimited"
+                ? "Plano Ilimitado Mensal"
+                : item.plan_type ||
+                  (item.credits ? `${item.credits} créditos` : "Plano de créditos");
 
             return (
               <div className="resultCard" key={item.id}>
@@ -1146,9 +1134,11 @@ function App() {
 
                 <p>
                   <strong>Créditos:</strong>{" "}
-                  {item.plans?.is_unlimited
+                  {item.plan_type === "unlimited"
                     ? "Plano ilimitado"
-                    : item.credits || item.plans?.credits || "Não informado"}
+                    : item.credits
+                    ? `${item.credits} créditos`
+                    : "Não informado"}
                 </p>
 
                 <p>
