@@ -84,6 +84,43 @@ function getStatusOcorrenciaInfo(status) {
   };
 }
 
+function csvSafe(value) {
+  if (value === null || value === undefined) return "";
+
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+
+  const text = String(value).replace(/"/g, '""');
+
+  if (text.includes(",") || text.includes("\n") || text.includes('"')) {
+    return `"${text}"`;
+  }
+
+  return text;
+}
+
+function baixarCsv(nomeArquivo, linhas) {
+  const csv = linhas.map((linha) => linha.map(csvSafe).join(",")).join("\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nomeArquivo;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function diasAte(dataIso) {
+  if (!dataIso) return null;
+  const hoje = new Date();
+  const alvo = new Date(dataIso);
+  const diff = alvo.getTime() - hoje.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -98,6 +135,7 @@ function App() {
   const [showMyRecords, setShowMyRecords] = useState(false);
   const [showProfileData, setShowProfileData] = useState(false);
   const [showTermsPrivacy, setShowTermsPrivacy] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -105,6 +143,8 @@ function App() {
   const [paymentsHistoryMessage, setPaymentsHistoryMessage] = useState("");
   const [myRecords, setMyRecords] = useState([]);
   const [myRecordsMessage, setMyRecordsMessage] = useState("");
+  const [notificationItems, setNotificationItems] = useState([]);
+  const [notificationMessage, setNotificationMessage] = useState("");
 
   const [profileNome, setProfileNome] = useState("");
   const [profileWhatsapp, setProfileWhatsapp] = useState("");
@@ -130,6 +170,8 @@ function App() {
   const [adminRecords, setAdminRecords] = useState([]);
   const [adminMessage, setAdminMessage] = useState("");
   const [adminRecordFilter, setAdminRecordFilter] = useState("todos");
+  const [adminRecordSearch, setAdminRecordSearch] = useState("");
+  const [adminExportMessage, setAdminExportMessage] = useState("");
 
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminUsersMessage, setAdminUsersMessage] = useState("");
@@ -900,6 +942,267 @@ function App() {
     carregarMensagensSuporteAdmin();
   }
 
+  function filtrarOcorrenciasAdmin() {
+    const termo = adminRecordSearch.trim().toLowerCase();
+
+    return adminRecords.filter((item) => {
+      const statusOk =
+        adminRecordFilter === "todos" ? true : item.status === adminRecordFilter;
+
+      if (!statusOk) return false;
+      if (!termo) return true;
+
+      const campos = [
+        item.nome,
+        item.cpf_full,
+        item.cpf4,
+        item.cidade,
+        item.status,
+        Array.isArray(item.tipos) ? item.tipos.join(" ") : item.tipos,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return campos.includes(termo);
+    });
+  }
+
+  async function exportarRelatorio(tipo) {
+    if (profile?.role !== "admin") return;
+
+    setAdminExportMessage("Gerando relatório...");
+
+    const configs = {
+      pagamentos: {
+        tabela: "payments",
+        nome: "locacheck-pagamentos.csv",
+        colunas: "id,user_id,status,amount,amount_cents,credits,plan_type,created_at,paid_at,processed_at",
+        cabecalho: [
+          "ID",
+          "Usuário",
+          "Status",
+          "Valor",
+          "Valor centavos",
+          "Créditos",
+          "Plano",
+          "Criado em",
+          "Pago em",
+          "Processado em",
+        ],
+        map: (item) => [
+          item.id,
+          item.user_id,
+          traduzirStatusPagamento(item.status),
+          formatMoneyFromPayment(item),
+          item.amount_cents || item.amount || 0,
+          item.credits || 0,
+          item.plan_type || "",
+          item.created_at || "",
+          item.paid_at || "",
+          item.processed_at || "",
+        ],
+      },
+      consultas: {
+        tabela: "consultation_logs",
+        nome: "locacheck-consultas.csv",
+        colunas: "id,user_id,searched_text,searched_cpf,results_count,credit_charged,used_unlimited,created_at",
+        cabecalho: [
+          "ID",
+          "Usuário",
+          "Termo pesquisado",
+          "CPF pesquisado",
+          "Resultados",
+          "Crédito cobrado",
+          "Plano ilimitado",
+          "Criado em",
+        ],
+        map: (item) => [
+          item.id,
+          item.user_id,
+          item.searched_text || "",
+          item.searched_cpf || "",
+          item.results_count || 0,
+          item.credit_charged ? "Sim" : "Não",
+          item.used_unlimited ? "Sim" : "Não",
+          item.created_at || "",
+        ],
+      },
+      usuarios: {
+        tabela: "profiles",
+        nome: "locacheck-usuarios.csv",
+        colunas: "id,nome,whatsapp,role,credits,consultas,unlimited_until,created_at",
+        cabecalho: [
+          "ID",
+          "Nome",
+          "WhatsApp",
+          "Perfil",
+          "Créditos",
+          "Consultas",
+          "Ilimitado até",
+          "Criado em",
+        ],
+        map: (item) => [
+          item.id,
+          item.nome || "",
+          item.whatsapp || "",
+          item.role || "",
+          item.credits || 0,
+          item.consultas || 0,
+          item.unlimited_until || "",
+          item.created_at || "",
+        ],
+      },
+      ocorrencias: {
+        tabela: "records",
+        nome: "locacheck-ocorrencias.csv",
+        colunas: "id,nome,cpf_full,cpf4,cidade,whatsapp_locatario,tipos,descricao,status,rejection_reason,created_at,approved_at",
+        cabecalho: [
+          "ID",
+          "Nome",
+          "CPF completo",
+          "CPF final",
+          "Cidade",
+          "WhatsApp",
+          "Tipos",
+          "Descrição",
+          "Status",
+          "Motivo reprovação",
+          "Criado em",
+          "Aprovado em",
+        ],
+        map: (item) => [
+          item.id,
+          item.nome || "",
+          item.cpf_full || "",
+          item.cpf4 || "",
+          item.cidade || "",
+          item.whatsapp_locatario || "",
+          Array.isArray(item.tipos) ? item.tipos.join(" | ") : item.tipos || "",
+          item.descricao || "",
+          item.status || "",
+          item.rejection_reason || "",
+          item.created_at || "",
+          item.approved_at || "",
+        ],
+      },
+    };
+
+    const config = configs[tipo];
+    if (!config) return;
+
+    const { data, error } = await supabase
+      .from(config.tabela)
+      .select(config.colunas)
+      .order("created_at", { ascending: false })
+      .limit(5000);
+
+    if (error) {
+      console.log("Erro ao exportar relatório:", error);
+      setAdminExportMessage(
+        error.message || "Erro ao exportar relatório. Verifique as permissões RLS."
+      );
+      return;
+    }
+
+    const linhas = [config.cabecalho, ...(data || []).map(config.map)];
+    baixarCsv(config.nome, linhas);
+    setAdminExportMessage(`Relatório exportado: ${config.nome}`);
+  }
+
+  async function carregarNotificacoes() {
+    if (!session?.user?.id || !profile) return;
+
+    setNotificationMessage("");
+
+    let ocorrencias = myRecords;
+
+    if (!ocorrencias || ocorrencias.length === 0) {
+      const { data, error } = await supabase
+        .from("records")
+        .select("id, nome, status, rejection_reason, created_at, approved_at")
+        .eq("created_by", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.log("Erro ao carregar notificações:", error);
+        setNotificationItems([]);
+        setNotificationMessage("Erro ao carregar notificações.");
+        return;
+      }
+
+      ocorrencias = data || [];
+    }
+
+    const itens = [];
+    const unlimitedActiveNow =
+      profile.unlimited_until && new Date(profile.unlimited_until) > new Date();
+
+    if (!unlimitedActiveNow && Number(profile.credits || 0) <= 2) {
+      itens.push({
+        id: "creditos-baixos",
+        title: "Créditos baixos",
+        message: `Você possui ${profile.credits || 0} crédito(s). Recarregue para continuar consultando.`,
+        status: "pendente",
+      });
+    }
+
+    if (unlimitedActiveNow) {
+      const dias = diasAte(profile.unlimited_until);
+
+      if (dias !== null && dias <= 3) {
+        itens.push({
+          id: "plano-vencendo",
+          title: "Plano ilimitado próximo do vencimento",
+          message: dias <= 0
+            ? "Seu plano ilimitado vence hoje."
+            : `Seu plano ilimitado vence em ${dias} dia(s).`,
+          status: "pendente",
+        });
+      }
+    }
+
+    (ocorrencias || []).slice(0, 10).forEach((item) => {
+      const status = String(item.status || "pendente").toLowerCase();
+
+      if (status === "aprovado") {
+        itens.push({
+          id: `ocorrencia-aprovada-${item.id}`,
+          title: "Ocorrência aprovada",
+          message: `${item.nome || "Uma ocorrência"} já está disponível para consulta.`,
+          status: "aprovado",
+        });
+      }
+
+      if (status === "reprovado") {
+        itens.push({
+          id: `ocorrencia-reprovada-${item.id}`,
+          title: "Ocorrência reprovada",
+          message: item.rejection_reason
+            ? `${item.nome || "Ocorrência"}: ${item.rejection_reason}`
+            : `${item.nome || "Ocorrência"}: verifique os dados enviados e tente novamente.`,
+          status: "reprovado",
+        });
+      }
+
+      if (status === "pendente") {
+        itens.push({
+          id: `ocorrencia-pendente-${item.id}`,
+          title: "Ocorrência em análise",
+          message: `${item.nome || "Ocorrência"} ainda está aguardando análise do administrador.`,
+          status: "pendente",
+        });
+      }
+    });
+
+    setNotificationItems(itens);
+
+    if (itens.length === 0) {
+      setNotificationMessage("Nenhuma notificação importante no momento.");
+    }
+  }
+
   if (session && !profile) {
     return (
       <div className="page">
@@ -1032,6 +1335,16 @@ function App() {
               onClick={abrirMeusDados}
             >
               Meus Dados
+            </button>
+
+            <button
+              className="btn outline large"
+              onClick={() => {
+                setShowNotifications(true);
+                carregarNotificacoes();
+              }}
+            >
+              Notificações
             </button>
 
             <button
@@ -1186,6 +1499,37 @@ function App() {
                   </div>
                 </>
               )}
+            </section>
+          )}
+
+          {profile.role === "admin" && (
+            <section className="adminPanel">
+              <div className="adminHeader">
+                <div>
+                  <span>Relatórios</span>
+                  <h2>Exportar CSV</h2>
+                  <p>Baixe relatórios para abrir no Excel ou Google Planilhas.</p>
+                </div>
+              </div>
+
+              {adminExportMessage && (
+                <div className="authMessage">{adminExportMessage}</div>
+              )}
+
+              <div className="adminButtons">
+                <button className="btn outline" onClick={() => exportarRelatorio("pagamentos")}>
+                  Exportar pagamentos
+                </button>
+                <button className="btn outline" onClick={() => exportarRelatorio("consultas")}>
+                  Exportar consultas
+                </button>
+                <button className="btn outline" onClick={() => exportarRelatorio("usuarios")}>
+                  Exportar usuários
+                </button>
+                <button className="btn outline" onClick={() => exportarRelatorio("ocorrencias")}>
+                  Exportar ocorrências
+                </button>
+              </div>
             </section>
           )}
 
@@ -1432,6 +1776,14 @@ function App() {
                 </div>
 
                 <div className="adminButtons">
+                  <input
+                    type="text"
+                    className="selectInput"
+                    placeholder="Buscar por nome, CPF, cidade ou status"
+                    value={adminRecordSearch}
+                    onChange={(e) => setAdminRecordSearch(e.target.value)}
+                  />
+
                   <select
                     className="selectInput"
                     value={adminRecordFilter}
@@ -1455,23 +1807,13 @@ function App() {
               {adminMessage && <div className="authMessage">{adminMessage}</div>}
 
               <div className="adminList">
-                {adminRecords.filter((item) =>
-                  adminRecordFilter === "todos"
-                    ? true
-                    : item.status === adminRecordFilter
-                ).length === 0 && (
+                {filtrarOcorrenciasAdmin().length === 0 && (
                   <div className="adminEmpty">
                     Nenhuma ocorrência encontrada para este filtro.
                   </div>
                 )}
 
-                {adminRecords
-                  .filter((item) =>
-                    adminRecordFilter === "todos"
-                      ? true
-                      : item.status === adminRecordFilter
-                  )
-                  .map((item) => (
+                {filtrarOcorrenciasAdmin().map((item) => (
                   <div className="adminRecord" key={item.id}>
                     <div className="adminRecordTop">
                       <h3>{item.nome}</h3>
@@ -1571,6 +1913,53 @@ function App() {
     session={session}
     onClose={() => setShowSupport(false)}
   />
+)}
+
+{showNotifications && (
+  <div className="modalOverlay">
+    <div className="recordModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowNotifications(false)}
+      >
+        ×
+      </button>
+
+      <h2>Notificações</h2>
+
+      <p>Veja avisos importantes sobre créditos, plano e ocorrências cadastradas.</p>
+
+      <button
+        className="btn secondary full"
+        onClick={carregarNotificacoes}
+        disabled={loading}
+        style={{ marginBottom: "16px" }}
+      >
+        Atualizar notificações
+      </button>
+
+      {notificationMessage && (
+        <div className="authMessage">{notificationMessage}</div>
+      )}
+
+      {notificationItems.length > 0 && (
+        <div className="resultsBox">
+          {notificationItems.map((item) => (
+            <div className="resultCard" key={item.id}>
+              <div className="adminRecordTop">
+                <h3>{item.title}</h3>
+                <span className={`statusBadge ${item.status}`}>
+                  {item.status}
+                </span>
+              </div>
+
+              <p>{item.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
 )}
 
 
