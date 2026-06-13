@@ -1,24 +1,126 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #f8fafc;
-  background: #020617;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  body {
+    @apply bg-bg text-gray-800 font-sans antialiased;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  input, textarea, select, button {
+    @apply text-base; /* Prevents iOS zoom on focus */
+  }
 }
 
-html, body, #root {
-  width: 100%;
-  min-height: 100%;
-  margin: 0;
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:active:scale-100 touch-manipulation;
+  }
+
+  .btn-primary {
+    @apply bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg shadow-gold/20;
+  }
+
+  .btn-dark {
+    @apply bg-primary text-white shadow-lg shadow-primary/20;
+  }
+
+  .btn-whats {
+    @apply bg-success text-white shadow-lg shadow-success/20;
+  }
+
+  .btn-outline {
+    @apply bg-white border-2 border-gray-200 text-primary hover:border-gold hover:text-gold;
+  }
+
+  .btn-danger {
+    @apply bg-red-50 text-danger border border-red-200 hover:bg-red-100;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-gray-600 hover:bg-gray-100;
+  }
+
+  .input {
+    @apply w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none transition-all duration-200 focus:border-gold focus:ring-4 focus:ring-gold/10;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl border border-gray-100 shadow-premium overflow-hidden;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide;
+  }
+
+  .gold-text {
+    @apply bg-gradient-to-r from-gold2 via-gold to-accent bg-clip-text text-transparent;
+  }
+
+  .brand-gradient {
+    @apply bg-gradient-to-br from-secondary via-primary to-[#020713];
+  }
+
+  /* Bottom Sheet Modal */
+  .bottom-sheet-backdrop {
+    @apply fixed inset-0 z-50 bg-black/50 backdrop-blur-sm transition-opacity;
+  }
+
+  .bottom-sheet {
+    @apply fixed bottom-0 left-0 right-0 z-50 max-h-[90vh] overflow-y-auto bg-white rounded-t-3xl shadow-2xl transition-transform duration-300 ease-out;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .bottom-sheet-handle {
+    @apply mx-auto my-3 h-1.5 w-12 rounded-full bg-gray-300;
+  }
+
+  /* Mobile Table Alternative */
+  .mobile-list {
+    @apply grid gap-3;
+  }
+
+  .mobile-list-item {
+    @apply card p-4 flex flex-col gap-3;
+  }
+
+  /* Hide scrollbar for clean UI */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
 
-body {
-  min-width: 320px;
-  background: #020617;
-}
+@layer utilities {
+  .fade-in {
+    animation: fadeIn 0.4s ease-out both;
+  }
 
-a { color: inherit; }
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

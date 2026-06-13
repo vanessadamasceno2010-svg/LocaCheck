@@ -1,14 +1,764 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#020617" />
-    <title>LocaCheck - Consulta de Locatários</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#061532" />
+  <title>Gráfica W Criações</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { primary: '#061532', secondary: '#09245a', gold: '#d79b26', gold2: '#f8c65a', accent: '#e2a536', success: '#10b981', danger: '#ef4444', bg: '#f8f9fa' },
+          fontFamily: { display: ['Poppins', 'sans-serif'], sans: ['Inter', 'sans-serif'] },
+          boxShadow: { premium: '0 10px 40px -10px rgba(6, 21, 50, 0.15)', 'bottom-nav': '0 -4px 20px rgba(6, 21, 50, 0.08)' }
+        }
+      }
+    }
+  </script>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/react-router-dom@6.20.0/umd/react-router-dom.production.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body { padding-bottom: env(safe-area-inset-bottom); -webkit-tap-highlight-color: transparent; }
+    .fade-in { animation: fadeIn 0.4s ease-out both; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .bottom-sheet-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+    .bottom-sheet { position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; max-height: 90vh; overflow-y: auto; background: white; border-radius: 1.5rem 1.5rem 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,0.2); padding-bottom: env(safe-area-inset-bottom); }
+    .bottom-sheet-handle { width: 3rem; height: 0.375rem; background: #d1d5db; border-radius: 999px; margin: 0.75rem auto; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .gold-text { background: linear-gradient(135deg, #f8c65a, #d79b26, #e2a536); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .brand-gradient { background: linear-gradient(135deg, #09245a, #061532, #020713); }
+  </style>
+</head>
+<body class="bg-bg text-gray-800 font-sans antialiased">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, createContext, useContext } = React;
+    const { BrowserRouter, Routes, Route, Link, useNavigate, useParams, useLocation, NavLink } = ReactRouterDOM;
+
+    // --- SECTION 1: MOCK DATA & UTILS ---
+    const BRAND = { nome: 'Gráfica W Criações', whatsapp: '(88) 99624-0470', whatsappNumber: '5588996240470', email: 'contato@graficawcriacoes.com' };
+    const formatMoney = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    const whatsappUrl = (msg) => `https://wa.me/${BRAND.whatsappNumber}?text=${encodeURIComponent(msg)}`;
+
+    const mockCategories = [
+      { id: '1', nome: 'Cartões de Visita', slug: 'cartoes' },
+      { id: '2', nome: 'Panfletos', slug: 'panfletos' },
+      { id: '3', nome: 'Brindes', slug: 'brindes' },
+      { id: '4', nome: 'Adesivos', slug: 'adesivos' }
+    ];
+
+    const mockProducts = [
+      { id: '1', nome: 'Cartão de Visita Premium', slug: 'cartao-premium', categoria_nome: 'Cartões de Visita', descricao: 'Acabamento fosco com verniz localizado.', descricao_completa: 'Papel Couché 300g com acabamento fosco e verniz UV.', preco: 89.90, preco_original: 120.00, estoque: 500, tempo_producao: 3, imagem_principal: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=800&q=80', imagens_adicionais: [], especificacoes: { 'Acabamento': ['Fosco', 'Brilhante'], 'Quantidade': ['500 un', '1000 un'] }, destaque: true, avaliacao_media: 4.8 },
+      { id: '2', nome: 'Panfletos A5 Coloridos', slug: 'panfletos-a5', categoria_nome: 'Panfletos', descricao: 'Impressão em alta resolução para promoções.', descricao_completa: 'Papel Couché 90g, frente colorida.', preco: 149.90, estoque: 1000, tempo_producao: 2, imagem_principal: 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=800&q=80', imagens_adicionais: [], especificacoes: { 'Papel': ['90g', '115g'], 'Quantidade': ['1000 un', '2500 un'] }, destaque: true, avaliacao_media: 4.6 },
+      { id: '3', nome: 'Caneca Personalizada', slug: 'caneca', categoria_nome: 'Brindes', descricao: 'Caneca de cerâmica branca com arte em HD.', descricao_completa: '325ml, sublimação de alta definição.', preco: 35.00, estoque: 200, tempo_producao: 4, imagem_principal: 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=800&q=80', imagens_adicionais: [], especificacoes: { 'Tipo': ['Branca', 'Mágica'] }, destaque: false, avaliacao_media: 4.9 },
+      { id: '4', nome: 'Adesivos Vinil', slug: 'adesivos-vinil', categoria_nome: 'Adesivos', descricao: 'Resistentes à água e sol, corte especial.', descricao_completa: 'Vinil de alta durabilidade, resistente a UV.', preco: 59.90, estoque: 300, tempo_producao: 3, imagem_principal: 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=800&q=80', imagens_adicionais: [], especificacoes: { 'Material': ['Branco', 'Transparente'] }, destaque: true, avaliacao_media: 4.7 }
+    ];
+
+    // --- SECTION 2: CONTEXT ---
+    const AppContext = createContext();
+    function AppProvider({ children }) {
+      const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('gp_user') || 'null'));
+      const [cart, setCart] = useState(() => JSON.parse(localStorage.getItem('gp_cart') || '[]'));
+
+      useEffect(() => { localStorage.setItem('gp_user', JSON.stringify(user)); }, [user]);
+      useEffect(() => { localStorage.setItem('gp_cart', JSON.stringify(cart)); }, [cart]);
+
+      const addToCart = (product, quantity, specs) => {
+        setCart(prev => {
+          const idx = prev.findIndex(i => i.id === product.id && JSON.stringify(i.especificacoes_selecionadas) === JSON.stringify(specs));
+          if (idx >= 0) { const u = [...prev]; u[idx].quantidade += quantity; return u; }
+          return [...prev, { ...product, quantidade: quantity, especificacoes_selecionadas: specs }];
+        });
+      };
+      const removeFromCart = (id, specs) => setCart(prev => prev.filter(i => !(i.id === id && JSON.stringify(i.especificacoes_selecionadas) === JSON.stringify(specs))));
+      const updateQuantity = (id, specs, qty) => {
+        if (qty <= 0) return removeFromCart(id, specs);
+        setCart(prev => prev.map(i => (i.id === id && JSON.stringify(i.especificacoes_selecionadas) === JSON.stringify(specs)) ? { ...i, quantidade: qty } : i));
+      };
+      const clearCart = () => setCart([]);
+
+      return <AppContext.Provider value={{ user, setUser, cart, addToCart, removeFromCart, updateQuantity, clearCart }}>{children}</AppContext.Provider>;
+    }
+    const useApp = () => useContext(AppContext);
+
+    // --- SECTION 3: COMPONENTS ---
+    function Icon({ name, size = 20, className = "" }) {
+      useEffect(() => { lucide.createIcons(); }, [name]);
+      return <i data-lucide={name} width={size} height={size} className={className}></i>;
+    }
+
+    function BottomSheet({ isOpen, onClose, title, children }) {
+      useEffect(() => { document.body.style.overflow = isOpen ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [isOpen]);
+      if (!isOpen) return null;
+      return (
+        <div className="bottom-sheet-backdrop" onClick={onClose}>
+          <div className="bottom-sheet" onClick={e => e.stopPropagation()}>
+            <div className="bottom-sheet-handle" />
+            <div className="px-5 pb-6">
+              {title && <div className="flex items-center justify-between mb-5"><h2 className="font-display text-xl font-bold text-primary">{title}</h2><button onClick={onClose} className="p-2 rounded-full bg-gray-100"><Icon name="x" size={20} /></button></div>}
+              {children}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Header() {
+      const { cart, user } = useApp();
+      const [menuOpen, setMenuOpen] = useState(false);
+      const cartCount = cart.reduce((s, i) => s + i.quantidade, 0);
+      return (
+        <>
+          <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100">
+            <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+              <Link to="/" className="flex items-center gap-2.5 min-w-0" onClick={() => setMenuOpen(false)}>
+                <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center flex-shrink-0"><span className="text-gold font-display font-bold text-lg">W</span></div>
+                <span className="font-display font-bold text-primary text-lg truncate hidden sm:block">Gráfica <span className="gold-text">W Criações</span></span>
+              </Link>
+              <div className="flex items-center gap-3">
+                <Link to="/login" className="p-2.5 rounded-xl bg-gray-50 text-gray-600 active:bg-gray-100"><Icon name="user" size={20} /></Link>
+                <Link to="/carrinho" className="relative p-2.5 rounded-xl bg-primary text-white active:bg-secondary">
+                  <Icon name="shopping-cart" size={20} />
+                  {cartCount > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-gold text-primary text-xs font-bold rounded-full flex items-center justify-center border-2 border-white">{cartCount}</span>}
+                </Link>
+                <button onClick={() => setMenuOpen(true)} className="p-2.5 rounded-xl bg-gray-50 text-gray-600 active:bg-gray-100 sm:hidden"><Icon name="menu" size={20} /></button>
+              </div>
+            </div>
+          </header>
+          <BottomSheet isOpen={menuOpen} onClose={() => setMenuOpen(false)} title="Menu">
+            <nav className="grid gap-2">
+              {[{to:'/', l:'Início'}, {to:'/catalogo', l:'Catálogo'}, {to:'/acompanhar', l:'Acompanhar'}, {to:'/sobre', l:'Sobre'}, {to:'/contato', l:'Contato'}].map(n => (
+                <Link key={n.to} to={n.to} onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3.5 rounded-xl font-semibold bg-gray-50 text-gray-700 active:bg-gray-100">{n.l}</Link>
+              ))}
+              <a href={`https://wa.me/${BRAND.whatsappNumber}`} target="_blank" className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl font-bold bg-success text-white mt-2">Chamar no WhatsApp</a>
+              {user?.role === 'admin' && <Link to="/admin" onClick={() => setMenuOpen(false)} className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl font-bold bg-gold/10 text-gold mt-2">Painel Admin</Link>}
+            </nav>
+          </BottomSheet>
+        </>
+      );
+    }
+
+    function BottomNav() {
+      const { cart } = useApp();
+      const location = useLocation();
+      if (location.pathname.startsWith('/admin') || location.pathname === '/checkout') return null;
+      const cartCount = cart.reduce((s, i) => s + i.quantidade, 0);
+      const items = [{to:'/', icon:'home', l:'Início'}, {to:'/catalogo', icon:'grid-3x3', l:'Catálogo'}, {to:'/carrinho', icon:'shopping-cart', l:'Carrinho', badge: cartCount}, {to:'/minha-conta', icon:'user', l:'Conta'}];
+      return (
+        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 shadow-bottom-nav sm:hidden">
+          <div className="max-w-5xl mx-auto flex items-center justify-around h-16 px-2">
+            {items.map(({to, icon, l, badge}) => {
+              const isActive = location.pathname === to;
+              return (
+                <Link key={to} to={to} className={`relative flex flex-col items-center justify-center flex-1 h-full gap-1 ${isActive ? 'text-primary' : 'text-gray-400'}`}>
+                  <div className="relative"><Icon name={icon} size={22} strokeWidth={isActive ? 2.5 : 2} />
+                  {badge > 0 && <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] bg-gold text-primary text-[10px] font-bold rounded-full flex items-center justify-center px-1 border border-white">{badge}</span>}</div>
+                  <span className="text-[10px] font-semibold">{l}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      );
+    }
+
+    function ProductCard({ product }) {
+      return (
+        <Link to={`/produto/${product.slug}`} className="group card flex flex-col h-full active:scale-[0.98] transition-transform duration-200">
+          <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden rounded-t-2xl">
+            <img src={product.imagem_principal} alt={product.nome} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+            {product.destaque && <span className="absolute top-3 left-3 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase bg-gold text-primary">Destaque</span>}
+          </div>
+          <div className="p-4 flex flex-col flex-1">
+            <p className="text-xs font-semibold text-gold uppercase tracking-wider mb-1">{product.categoria_nome}</p>
+            <h3 className="font-display font-bold text-primary text-lg leading-tight mb-2 line-clamp-2">{product.nome}</h3>
+            <p className="text-gray-500 text-sm line-clamp-2 mb-4 flex-1">{product.descricao}</p>
+            <div className="flex items-center gap-1.5 mb-3">
+              <Icon name="star" size={14} className="text-gold fill-current" />
+              <span className="text-sm font-bold text-gray-700">{product.avaliacao_media.toFixed(1)}</span>
+            </div>
+            <div className="mt-auto pt-3 border-t border-gray-100">
+              {product.preco_original && <p className="text-sm text-gray-400 line-through mb-1">{formatMoney(product.preco_original)}</p>}
+              <p className="font-display font-bold text-2xl text-primary">{formatMoney(product.preco)}</p>
+            </div>
+          </div>
+        </Link>
+      );
+    }
+
+    // --- SECTION 4: PAGES (PART 1) ---
+    function Home() {
+      return (
+        <div className="fade-in">
+          <section className="brand-gradient text-white relative overflow-hidden">
+            <div className="relative max-w-5xl mx-auto px-4 py-12 sm:py-20">
+              <div className="text-center sm:text-left sm:flex sm:items-center sm:gap-12">
+                <div className="sm:flex-1">
+                  <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 text-sm font-semibold mb-6 border border-white/10"><Icon name="sparkles" size={14} className="text-gold" /> Padrão visual premium</span>
+                  <h1 className="font-display text-4xl sm:text-5xl font-extrabold leading-tight mb-6">Produtos personalizados com <span className="gold-text">impacto real</span>.</h1>
+                  <p className="text-gray-300 text-lg mb-8 leading-relaxed max-w-xl">Escolha os produtos, monte seu carrinho e finalize o pedido diretamente pelo WhatsApp.</p>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Link to="/catalogo" className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg">Ver Catálogo</Link>
+                    <a href={`https://wa.me/${BRAND.whatsappNumber}`} target="_blank" className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-success text-white shadow-lg"><Icon name="message-circle" size={18} /> WhatsApp</a>
+                  </div>
+                </div>
+                <div className="mt-10 sm:mt-0 sm:flex-1 relative">
+                  <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10">
+                    <img src="https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=800&q=80" alt="Produtos" className="w-full h-64 sm:h-96 object-cover" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section className="max-w-5xl mx-auto px-4 py-12">
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-primary mb-6">Produtos em Destaque</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              {mockProducts.filter(p => p.destaque).slice(0, 3).map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
+          </section>
+        </div>
+      );
+    }
+
+    function Catalogo() {
+      const [search, setSearch] = useState('');
+      const [cat, setCat] = useState('');
+      const filtered = useMemo(() => mockProducts.filter(p => (!search || p.nome.toLowerCase().includes(search.toLowerCase())) && (!cat || p.categoria_nome.toLowerCase().includes(cat.toLowerCase()))), [search, cat]);
+      return (
+        <div className="fade-in max-w-5xl mx-auto px-4 py-6">
+          <h1 className="font-display text-3xl font-bold text-primary mb-6">Catálogo</h1>
+          <div className="flex gap-3 mb-6">
+            <input type="text" placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="input flex-1 rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold" />
+            <select value={cat} onChange={e => setCat(e.target.value)} className="rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold">
+              <option value="">Todas</option>
+              {mockCategories.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {filtered.map(p => <ProductCard key={p.id} product={p} />)}
+          </div>
+        </div>
+      );
+    }
+
+    function Produto() {
+      const { slug } = useParams();
+      const navigate = useNavigate();
+      const { addToCart } = useApp();
+      const p = mockProducts.find(x => x.slug === slug) || mockProducts[0];
+      const [qtd, setQtd] = useState(1);
+      const [specs, setSpecs] = useState(() => {
+        const s = {}; Object.entries(p.especificacoes || {}).forEach(([k, v]) => s[k] = v[0]); return s;
+      });
+      const [showCart, setShowCart] = useState(false);
+
+      const handleAdd = () => { addToCart(p, qtd, specs); setShowCart(false); navigate('/carrinho'); };
+      const handleBuy = () => { addToCart(p, qtd, specs); navigate('/checkout'); };
+
+      return (
+        <div className="fade-in max-w-5xl mx-auto pb-24 sm:pb-8">
+          <div className="relative bg-gray-100 sm:hidden aspect-square">
+            <img src={p.imagem_principal} alt={p.nome} className="w-full h-full object-cover" />
+            <Link to="/catalogo" className="absolute top-4 left-4 w-10 h-10 rounded-full bg-white/80 backdrop-blur flex items-center justify-center shadow-lg"><Icon name="chevron-left" size={20} className="text-primary" /></Link>
+          </div>
+          <div className="px-4 sm:px-0 sm:grid sm:grid-cols-2 sm:gap-10 sm:mt-8">
+            <div className="hidden sm:block">
+              <img src={p.imagem_principal} alt={p.nome} className="w-full aspect-square rounded-3xl object-cover bg-gray-100" />
+            </div>
+            <div className="sm:py-4">
+              <span className="inline-block px-3 py-1 rounded-full bg-gold/10 text-gold text-xs font-bold uppercase tracking-wider mb-3">{p.categoria_nome}</span>
+              <h1 className="font-display text-3xl sm:text-4xl font-bold text-primary mb-4">{p.nome}</h1>
+              <div className="mb-6">{p.preco_original && <span className="text-lg text-gray-400 line-through mr-3">{formatMoney(p.preco_original)}</span>}<span className="font-display text-4xl font-bold text-primary">{formatMoney(p.preco)}</span></div>
+              <p className="text-gray-600 leading-relaxed mb-8">{p.descricao}</p>
+              <div className="space-y-4 mb-8">
+                {Object.entries(p.especificacoes || {}).map(([k, vals]) => (
+                  <div key={k}>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">{k}</label>
+                    <div className="flex flex-wrap gap-2">
+                      {vals.map(v => <button key={v} onClick={() => setSpecs(s => ({...s, [k]: v}))} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${specs[k] === v ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'}`}>{v}</button>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden sm:flex gap-4">
+                <button onClick={() => { addToCart(p, qtd, specs); setShowCart(true); }} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold border-2 border-gray-200 text-primary hover:border-gold"><Icon name="shopping-cart" size={20} /> Adicionar</button>
+                <button onClick={handleBuy} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg"><Icon name="zap" size={20} /> Comprar</button>
+              </div>
+            </div>
+          </div>
+          <div className="sm:hidden fixed bottom-16 left-0 right-0 bg-white border-t border-gray-100 p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-30">
+            <div className="flex items-center justify-between mb-3">
+              <div><p className="text-xs text-gray-500">Total</p><p className="font-display text-2xl font-bold text-primary">{formatMoney(p.preco * qtd)}</p></div>
+              <div className="flex items-center gap-3 bg-gray-100 rounded-xl p-1">
+                <button onClick={() => setQtd(q => Math.max(1, q - 1))} className="w-9 h-9 rounded-lg bg-white flex items-center justify-center text-primary font-bold shadow-sm">-</button>
+                <span className="font-bold text-primary w-8 text-center">{qtd}</span>
+                <button onClick={() => setQtd(q => q + 1)} className="w-9 h-9 rounded-lg bg-white flex items-center justify-center text-primary font-bold shadow-sm">+</button>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => { addToCart(p, qtd, specs); setShowCart(true); }} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold border-2 border-gray-200 text-primary"><Icon name="shopping-cart" size={18} /></button>
+              <button onClick={handleBuy} className="flex-[2] inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg"><Icon name="zap" size={18} /> Comprar</button>
+            </div>
+          </div>
+          <BottomSheet isOpen={showCart} onClose={() => setShowCart(false)} title="Adicionado!">
+            <div className="text-center py-4">
+              <p className="text-gray-600 mb-6"><span className="font-bold text-primary">{p.nome}</span> foi adicionado.</p>
+              <div className="space-y-3">
+                <Link to="/carrinho" className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary" onClick={() => setShowCart(false)}>Ver Carrinho</Link>
+                <button onClick={() => setShowCart(false)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold border-2 border-gray-200 text-primary">Continuar Comprando</button>
+              </div>
+            </div>
+          </BottomSheet>
+        </div>
+      );
+    }
+
+    // --- SECTION 5: PAGES (PART 2) ---
+    function Carrinho() {
+      const { cart, removeFromCart, updateQuantity, clearCart } = useApp();
+      const navigate = useNavigate();
+      const subtotal = cart.reduce((s, i) => s + i.preco * i.quantidade, 0);
+
+      if (!cart.length) return (
+        <div className="fade-in max-w-5xl mx-auto px-4 py-12 text-center">
+          <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-6"><Icon name="message-circle" size={40} className="text-gray-400" /></div>
+          <h1 className="font-display text-2xl font-bold text-primary mb-3">Seu carrinho está vazio</h1>
+          <Link to="/catalogo" className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg mt-4">Ver Catálogo</Link>
+        </div>
+      );
+
+      return (
+        <div className="fade-in max-w-5xl mx-auto px-4 py-6 pb-32 sm:pb-8">
+          <h1 className="font-display text-3xl font-bold text-primary mb-6">Carrinho</h1>
+          <div className="lg:grid lg:grid-cols-3 lg:gap-8">
+            <div className="lg:col-span-2 space-y-4 mb-6">
+              {cart.map(i => (
+                <div key={`${i.id}-${JSON.stringify(i.especificacoes_selecionadas)}`} className="card p-4 flex gap-4 rounded-2xl border border-gray-100 bg-white shadow-premium">
+                  <img src={i.imagem_principal} alt={i.nome} className="w-24 h-24 rounded-xl object-cover flex-shrink-0 bg-gray-100" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-display font-bold text-primary truncate">{i.nome}</h3>
+                    <p className="text-sm text-gray-500 mt-1 mb-3">{Object.entries(i.especificacoes_selecionadas).map(([k,v]) => `${k}: ${v}`).join(' · ')}</p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 bg-gray-100 rounded-xl p-1">
+                        <button onClick={() => updateQuantity(i.id, i.especificacoes_selecionadas, i.quantidade - 1)} className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-primary shadow-sm">-</button>
+                        <span className="font-bold text-primary w-6 text-center text-sm">{i.quantidade}</span>
+                        <button onClick={() => updateQuantity(i.id, i.especificacoes_selecionadas, i.quantidade + 1)} className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-primary shadow-sm">+</button>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="font-display font-bold text-primary">{formatMoney(i.preco * i.quantidade)}</span>
+                        <button onClick={() => removeFromCart(i.id, i.especificacoes_selecionadas)} className="p-2 rounded-lg bg-red-50 text-danger"><Icon name="trash-2" size={18} /></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <button onClick={clearCart} className="w-full py-3 text-sm font-semibold text-danger hover:bg-red-50 rounded-xl">Limpar carrinho</button>
+            </div>
+            <div className="lg:col-span-1">
+              <div className="card p-6 sticky top-24 rounded-2xl border border-gray-100 bg-white shadow-premium">
+                <h2 className="font-display text-xl font-bold text-primary mb-5">Resumo</h2>
+                <div className="space-y-3 mb-6">
+                  <div className="flex justify-between text-gray-600"><span>Subtotal</span><span className="font-semibold">{formatMoney(subtotal)}</span></div>
+                  <div className="flex justify-between text-gray-600"><span>Frete</span><span className="font-semibold text-success">A combinar</span></div>
+                  <div className="h-px bg-gray-200 my-4" />
+                  <div className="flex justify-between items-baseline"><span className="font-display font-bold text-lg text-primary">Total</span><span className="font-display font-bold text-2xl text-primary">{formatMoney(subtotal)}</span></div>
+                </div>
+                <Link to="/checkout" className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg mb-3">Finalizar Pedido</Link>
+                <p className="text-xs text-gray-500 text-center leading-relaxed">O pagamento não é feito pelo site. Seu pedido será enviado para o WhatsApp da gráfica.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Checkout() {
+      const { cart, clearCart } = useApp();
+      const navigate = useNavigate();
+      const [form, setForm] = useState({ nome: '', telefone: '', email: '', endereco: '', obs: '' });
+      const subtotal = cart.reduce((s, i) => s + i.preco * i.quantidade, 0);
+
+      if (!cart.length) { navigate('/carrinho'); return null; }
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        const order = { numero: 'WC'+Date.now(), items: cart, cliente: form, subtotal, frete: 0, total: subtotal, created_at: new Date().toISOString() };
+        localStorage.setItem('gp_last_order', JSON.stringify(order));
+        const msg = `*Novo Pedido*\n\n*Cliente:* ${form.nome}\n*Tel:* ${form.telefone}\n*End:* ${form.endereco}\n\n*Itens:*\n${cart.map(i => `- ${i.quantidade}x ${i.nome} (${formatMoney(i.preco*i.quantidade)})`).join('\n')}\n\n*Total:* ${formatMoney(subtotal)}\n*Obs:* ${form.obs}`;
+        clearCart();
+        window.open(whatsappUrl(msg), '_blank');
+        navigate(`/pedido-confirmado/${order.numero}`);
+      };
+
+      return (
+        <div className="fade-in max-w-5xl mx-auto px-4 py-6 pb-32 sm:pb-8">
+          <button onClick={() => navigate('/carrinho')} className="flex items-center gap-2 text-gray-500 hover:text-primary mb-6"><Icon name="arrow-left" size={20} /> Voltar</button>
+          <h1 className="font-display text-3xl font-bold text-primary mb-3">Finalizar Pedido</h1>
+          <p className="text-gray-500 mb-8">O pedido será enviado para o WhatsApp da gráfica para confirmação.</p>
+          <form onSubmit={handleSubmit} className="lg:grid lg:grid-cols-3 lg:gap-8">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="card p-5 sm:p-6 rounded-2xl border border-gray-100 bg-white shadow-premium">
+                <h2 className="font-display text-lg font-bold text-primary mb-5">Dados Pessoais</h2>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <input required name="nome" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold sm:col-span-2" placeholder="Nome Completo *" />
+                  <input required name="telefone" value={form.telefone} onChange={e => setForm({...form, telefone: e.target.value})} className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold" placeholder="WhatsApp *" />
+                  <input name="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold" placeholder="Email" />
+                </div>
+              </div>
+              <div className="card p-5 sm:p-6 rounded-2xl border border-gray-100 bg-white shadow-premium">
+                <h2 className="font-display text-lg font-bold text-primary mb-5">Endereço</h2>
+                <input required name="endereco" value={form.endereco} onChange={e => setForm({...form, endereco: e.target.value})} className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold mb-4" placeholder="Endereço Completo *" />
+                <textarea required name="obs" value={form.obs} onChange={e => setForm({...form, obs: e.target.value})} className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold min-h-[100px] resize-none" placeholder="Observações" />
+              </div>
+            </div>
+            <div className="lg:col-span-1 mt-6 lg:mt-0">
+              <div className="card p-6 sticky top-24 rounded-2xl border border-gray-100 bg-white shadow-premium">
+                <h2 className="font-display text-lg font-bold text-primary mb-5">Resumo</h2>
+                <div className="space-y-3 mb-6 max-h-60 overflow-y-auto no-scrollbar">
+                  {cart.map(i => <div key={i.id} className="flex justify-between text-sm"><span className="font-medium text-gray-800">{i.quantidade}x {i.nome}</span><span className="font-semibold">{formatMoney(i.preco*i.quantidade)}</span></div>)}
+                </div>
+                <div className="h-px bg-gray-200 my-4" />
+                <div className="flex justify-between items-baseline mb-6"><span className="font-display font-bold text-lg text-primary">Total</span><span className="font-display font-bold text-2xl text-primary">{formatMoney(subtotal)}</span></div>
+                <button type="submit" className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-success text-white shadow-lg"><Icon name="message-circle" size={18} /> Enviar pelo WhatsApp</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    function Confirmacao() {
+      const { numero } = useParams();
+      const [order, setOrder] = useState(null);
+      useEffect(() => { setOrder(JSON.parse(localStorage.getItem('gp_last_order') || 'null')); }, []);
+      if (!order) return <div className="p-12 text-center">Carregando...</div>;
+
+      return (
+        <div className="fade-in max-w-3xl mx-auto px-4 py-8 sm:py-12">
+          <div className="card p-6 sm:p-10 rounded-2xl border border-gray-100 bg-white shadow-premium">
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-5"><Icon name="check-circle" size={40} className="text-success" /></div>
+              <h1 className="font-display text-3xl sm:text-4xl font-bold text-primary mb-3">Pedido Recebido!</h1>
+              <p className="text-gray-600 mb-2">Número: <span className="font-bold text-primary">{order.numero}</span></p>
+            </div>
+            <div className="bg-gray-50 rounded-2xl p-5 sm:p-6 mb-6 print:bg-white print:border print:border-gray-300">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-14 h-14 rounded-xl bg-primary flex items-center justify-center flex-shrink-0"><span className="text-gold font-display font-bold text-2xl">W</span></div>
+                <div><h2 className="font-display text-xl font-bold text-primary">Recibo</h2><p className="text-sm text-gray-500">{BRAND.nome}</p></div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4 text-sm mb-6">
+                <div><p className="text-gray-500 mb-1">Cliente</p><p className="font-semibold">{order.cliente.nome}</p></div>
+                <div><p className="text-gray-500 mb-1">Telefone</p><p className="font-semibold">{order.cliente.telefone}</p></div>
+                <div className="sm:col-span-2"><p className="text-gray-500 mb-1">Endereço</p><p className="font-semibold">{order.cliente.endereco}</p></div>
+              </div>
+              <div className="border-t border-gray-200 pt-4 mb-4">
+                {order.items.map(i => <div key={i.id} className="flex justify-between py-2.5 text-sm"><span className="font-semibold">{i.quantidade}x {i.nome}</span><span className="font-semibold">{formatMoney(i.preco*i.quantidade)}</span></div>)}
+              </div>
+              <div className="border-t border-gray-200 pt-4 flex justify-between items-baseline"><span className="font-display font-bold text-lg text-primary">Total</span><span className="font-display font-bold text-2xl text-primary">{formatMoney(order.total)}</span></div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center no-print">
+              <button onClick={() => window.print()} className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold border-2 border-gray-200 text-primary hover:border-gold flex-1 sm:flex-none"><Icon name="printer" size={18} /> Imprimir</button>
+              <Link to="/acompanhar" className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-primary text-white flex-1 sm:flex-none">Acompanhar</Link>
+              <Link to="/catalogo" className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg flex-1 sm:flex-none">Voltar ao Catálogo</Link>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Acompanhar() {
+      const [num, setNum] = useState('');
+      const [status, setStatus] = useState('idle');
+      const handleSearch = () => { if(!num.trim()) return; setStatus('loading'); setTimeout(() => setStatus('found'), 800); };
+      return (
+        <div className="fade-in max-w-3xl mx-auto px-4 py-8 sm:py-12">
+          <h1 className="font-display text-3xl font-bold text-primary mb-2 text-center sm:text-left">Acompanhar Pedido</h1>
+          <p className="text-gray-500 mb-8 text-center sm:text-left">Digite o número do seu pedido.</p>
+          <div className="card p-5 sm:p-6 mb-8 rounded-2xl border border-gray-100 bg-white shadow-premium">
+            <div className="grid sm:grid-cols-3 gap-4">
+              <div className="sm:col-span-2"><label className="block text-sm font-semibold text-gray-700 mb-1.5">Número do Pedido</label><input type="text" value={num} onChange={e => setNum(e.target.value)} className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold" placeholder="Ex: WC123456" /></div>
+              <div className="flex items-end"><button onClick={handleSearch} disabled={status==='loading' || !num.trim()} className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg disabled:opacity-70">{status==='loading' ? 'Buscando...' : <><Icon name="search" size={18} /> Buscar</>}</button></div>
+            </div>
+          </div>
+          {status === 'found' && (
+            <div className="card p-6 sm:p-8 fade-in rounded-2xl border border-gray-100 bg-white shadow-premium">
+              <div className="text-center mb-8">
+                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gold/10 text-gold text-sm font-bold mb-4">Em Produção</span>
+                <h2 className="font-display text-2xl font-bold text-primary mb-2">Pedido {num}</h2>
+                <p className="text-gray-500">Previsão: <span className="font-semibold text-primary">7 dias úteis</span></p>
+              </div>
+              <div className="space-y-6 relative">
+                <div className="absolute left-6 sm:left-1/2 top-0 bottom-0 w-0.5 bg-gray-200 -translate-x-1/2" />
+                {['Pendente', 'Confirmado', 'Em Produção', 'Pronto', 'Entregue'].map((step, i) => (
+                  <div key={step} className="flex items-center gap-4 sm:gap-6 relative z-10">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 border-4 ${i <= 2 ? 'bg-gold border-gold/20 text-primary' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                      <Icon name={i <= 2 ? 'check-circle' : 'clock'} size={20} />
+                    </div>
+                    <div className="flex-1 pt-1"><h3 className={`font-bold ${i <= 2 ? 'text-primary' : 'text-gray-400'}`}>{step}</h3>{i === 2 && <p className="text-sm text-gray-500 mt-1">Seu pedido está sendo produzido.</p>}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // --- SECTION 6: PAGES (PART 3) ---
+    function Login() {
+      const [isAdmin, setIsAdmin] = useState(false);
+      const { setUser } = useApp();
+      const navigate = useNavigate();
+      const handleLogin = (e) => {
+        e.preventDefault();
+        setUser({ id: '1', nome: isAdmin ? 'Administrador' : 'Cliente', email: isAdmin ? 'admin@grafica.com' : 'cliente@email.com', role: isAdmin ? 'admin' : 'user' });
+        navigate(isAdmin ? '/admin' : '/minha-conta');
+      };
+      return (
+        <div className="fade-in max-w-md mx-auto px-4 py-12">
+          <div className="card p-6 sm:p-8 rounded-2xl border border-gray-100 bg-white shadow-premium">
+            <div className="text-center mb-8"><div className="w-16 h-16 rounded-2xl bg-primary/5 flex items-center justify-center mx-auto mb-4"><Icon name="shield-check" size={32} className="text-primary" /></div><h1 className="font-display text-3xl font-bold text-primary">Acessar Conta</h1></div>
+            <div className="flex p-1 bg-gray-100 rounded-xl mb-6">
+              <button onClick={() => setIsAdmin(false)} className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${!isAdmin ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>Cliente</button>
+              <button onClick={() => setIsAdmin(true)} className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${isAdmin ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>Admin</button>
+            </div>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <input required type="email" className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold" placeholder="Email" />
+              <input required type="password" className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold" placeholder="Senha" />
+              <button type="submit" className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg">Entrar</button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    function MinhaConta() {
+      const { user, setUser } = useApp();
+      const navigate = useNavigate();
+      if (!user) { navigate('/login'); return null; }
+      return (
+        <div className="fade-in max-w-3xl mx-auto px-4 py-8 sm:py-12">
+          <h1 className="font-display text-3xl font-bold text-primary mb-8">Minha Conta</h1>
+          <div className="card p-6 mb-6 bg-gradient-to-br from-primary to-secondary text-white rounded-2xl shadow-premium">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0"><Icon name="user" size={32} className="text-gold" /></div>
+              <div><h2 className="font-display text-xl font-bold">{user.nome}</h2><p className="text-gray-300 text-sm">{user.email}</p></div>
+            </div>
+          </div>
+          <div className="grid gap-4 mb-8">
+            {['Dados Pessoais', 'Endereços Salvos', 'Histórico de Pedidos'].map(t => (
+              <button key={t} className="card p-5 flex items-center gap-4 text-left active:scale-[0.98] transition-transform rounded-2xl border border-gray-100 bg-white shadow-premium">
+                <div className="w-12 h-12 rounded-xl bg-gold/10 flex items-center justify-center flex-shrink-0"><Icon name="chevron-right" size={22} className="text-gold" /></div>
+                <div className="flex-1 min-w-0"><h3 className="font-bold text-primary">{t}</h3></div>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => { setUser(null); localStorage.removeItem('gp_user'); navigate('/'); }} className="w-full card p-5 flex items-center justify-center gap-3 text-danger font-bold hover:bg-red-50 transition-colors active:scale-[0.98] rounded-2xl border border-gray-100 bg-white shadow-premium"><Icon name="log-out" size={20} /> Sair da Conta</button>
+        </div>
+      );
+    }
+
+    function Sobre() {
+      return (
+        <div className="fade-in max-w-5xl mx-auto px-4 py-8 sm:py-12">
+          <h1 className="font-display text-3xl sm:text-4xl font-bold text-primary mb-6 text-center sm:text-left">Sobre a Empresa</h1>
+          <div className="card p-6 sm:p-8 rounded-2xl border border-gray-100 bg-white shadow-premium">
+            <p className="text-gray-600 leading-relaxed text-lg mb-6">Somos uma gráfica moderna focada em impressos personalizados, atendimento ágil e acabamento premium. Unimos tecnologia, design e produção para entregar materiais que valorizam marcas e negócios.</p>
+            <div className="grid sm:grid-cols-3 gap-4">
+              {['Missão', 'Visão', 'Valores'].map(t => <div key={t} className="bg-gray-50 rounded-2xl p-5"><b className="text-primary">{t}</b><p className="text-sm text-gray-600 mt-2">Qualidade, compromisso e inovação.</p></div>)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Contato() {
+      const [sent, setSent] = useState(false);
+      const handleSubmit = (e) => { e.preventDefault(); setSent(true); setTimeout(() => setSent(false), 3000); };
+      return (
+        <div className="fade-in max-w-5xl mx-auto px-4 py-8 sm:py-12">
+          <h1 className="font-display text-3xl sm:text-4xl font-bold text-primary mb-8 text-center sm:text-left">Contato</h1>
+          <div className="grid lg:grid-cols-2 gap-6 lg:gap-8">
+            <form onSubmit={handleSubmit} className="card p-6 sm:p-8 space-y-5 rounded-2xl border border-gray-100 bg-white shadow-premium">
+              <h2 className="font-display text-xl font-bold text-primary mb-2">Envie uma Mensagem</h2>
+              <input required className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold" placeholder="Nome *" />
+              <input required type="email" className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold" placeholder="Email *" />
+              <textarea required className="input rounded-xl border-2 border-gray-200 bg-white px-4 py-3.5 outline-none focus:border-gold min-h-[140px] resize-none" placeholder="Mensagem *" />
+              <button type="submit" disabled={sent} className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg disabled:opacity-70">{sent ? 'Enviado!' : <><Icon name="send" size={18} /> Enviar</>}</button>
+            </form>
+            <div className="space-y-4">
+              <div className="card p-5 flex items-start gap-4 rounded-2xl border border-gray-100 bg-white shadow-premium">
+                <div className="w-12 h-12 rounded-xl bg-gold/10 flex items-center justify-center flex-shrink-0"><Icon name="phone" size={22} className="text-gold" /></div>
+                <div><p className="text-sm text-gray-500 mb-1">WhatsApp</p><p className="font-semibold text-primary">{BRAND.whatsapp}</p></div>
+              </div>
+              <div className="card p-5 flex items-start gap-4 rounded-2xl border border-gray-100 bg-white shadow-premium">
+                <div className="w-12 h-12 rounded-xl bg-gold/10 flex items-center justify-center flex-shrink-0"><Icon name="mail" size={22} className="text-gold" /></div>
+                <div><p className="text-sm text-gray-500 mb-1">Email</p><p className="font-semibold text-primary">{BRAND.email}</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function AdminLayout() {
+      const { setUser } = useApp();
+      const navigate = useNavigate();
+      const [open, setOpen] = useState(false);
+      const handleLogout = () => { setUser(null); localStorage.removeItem('gp_user'); navigate('/login'); };
+      const links = [{to:'/admin', l:'Dashboard', icon:'layout-dashboard'}, {to:'/admin/produtos', l:'Produtos', icon:'package'}, {to:'/admin/pedidos', l:'Pedidos', icon:'shopping-cart'}];
+      return (
+        <div className="min-h-screen bg-gray-50 flex">
+          <header className="sm:hidden fixed top-0 left-0 right-0 z-40 bg-primary text-white">
+            <div className="flex items-center justify-between px-4 h-16">
+              <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center"><span className="text-gold font-display font-bold text-lg">W</span></div><div><p className="font-display font-bold text-sm">Painel Admin</p></div></div>
+              <button onClick={() => setOpen(!open)} className="p-2 rounded-xl bg-white/10"><Icon name={open ? 'x' : 'menu'} size={20} /></button>
+            </div>
+            {open && <nav className="border-t border-white/10 px-4 py-4 space-y-2">{links.map(n => <Link key={n.to} to={n.to} onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-white/80 hover:bg-white/10"><Icon name={n.icon} size={18} />{n.l}</Link>)}<button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-red-300 hover:bg-red-500/20 mt-4 border-t border-white/10 pt-4"><Icon name="log-out" size={18} />Sair</button></nav>}
+          </header>
+          <aside className="hidden sm:flex flex-col w-64 bg-primary text-white fixed top-0 bottom-0 left-0 z-30">
+            <div className="p-6 border-b border-white/10"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"><span className="text-gold font-display font-bold text-xl">W</span></div><div><p className="font-display font-bold">Painel Admin</p></div></div></div>
+            <nav className="flex-1 p-4 space-y-2">{links.map(n => <Link key={n.to} to={n.to} className="flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-white/80 hover:bg-white/10"><Icon name={n.icon} size={18} />{n.l}</Link>)}</nav>
+            <div className="p-4 border-t border-white/10"><button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-red-300 hover:bg-red-500/20"><Icon name="log-out" size={18} />Sair</button></div>
+          </aside>
+          <main className="flex-1 sm:ml-64 pt-16 sm:pt-0"><div className="max-w-6xl mx-auto p-4 sm:p-8"><OutletContext /></div></main>
+        </div>
+      );
+    }
+    
+    // Simple Outlet replacement for single file
+    function OutletContext() {
+      const location = useLocation();
+      if (location.pathname === '/admin' || location.pathname === '/admin/') return <AdminDashboard />;
+      if (location.pathname === '/admin/produtos') return <AdminProdutos />;
+      if (location.pathname === '/admin/pedidos') return <AdminPedidos />;
+      return <AdminDashboard />;
+    }
+
+    function AdminDashboard() {
+      const stats = [{ l: 'Vendas', v: 'R$ 28.450', icon: 'dollar-sign', c: 'text-success', bg: 'bg-success/10' }, { l: 'Pedidos', v: '184', icon: 'shopping-cart', c: 'text-primary', bg: 'bg-primary/10' }, { l: 'Clientes', v: '72', icon: 'users', c: 'text-blue-500', bg: 'bg-blue-500/10' }];
+      return (
+        <div className="fade-in">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-primary mb-6">Dashboard</h1>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {stats.map(s => <div key={s.l} className="card p-5 rounded-2xl border border-gray-100 bg-white shadow-premium"><div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center mb-4`}><Icon name={s.icon} size={20} className={s.c} /></div><p className="text-sm text-gray-500 mb-1">{s.l}</p><p className="font-display text-xl sm:text-2xl font-bold text-primary">{s.v}</p></div>)}
+          </div>
+          <div className="card p-6 rounded-2xl border border-gray-100 bg-white shadow-premium">
+            <h2 className="font-display text-lg font-bold text-primary mb-4">Pedidos Recentes</h2>
+            <div className="divide-y divide-gray-100">
+              {[{id:'WC123', c:'João', s:'Em Produção', t:'R$ 245'}, {id:'WC124', c:'Maria', s:'Pendente', t:'R$ 89'}].map(o => (
+                <div key={o.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                  <div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-primary/5 flex items-center justify-center"><Icon name="package" size={18} className="text-primary" /></div><div><p className="font-semibold text-primary">{o.id}</p><p className="text-sm text-gray-500">{o.c}</p></div></div>
+                  <div className="text-right"><p className="font-bold text-primary">{o.t}</p><span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-gold/10 text-gold text-xs font-semibold">{o.s}</span></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function AdminProdutos() {
+      return (
+        <div className="fade-in">
+          <div className="flex items-center justify-between mb-6"><h1 className="font-display text-2xl sm:text-3xl font-bold text-primary">Produtos</h1><button className="inline-flex items-center gap-2 rounded-xl px-5 py-3.5 font-bold bg-gradient-to-br from-gold to-gold2 text-primary shadow-lg"><Icon name="plus" size={18} /> Novo</button></div>
+          <div className="card overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-premium">
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm"><thead className="bg-gray-50 border-b border-gray-200"><tr><th className="text-left px-6 py-4 font-semibold text-gray-600">Produto</th><th className="text-left px-6 py-4 font-semibold text-gray-600">Preço</th><th className="text-left px-6 py-4 font-semibold text-gray-600">Estoque</th></tr></thead>
+              <tbody className="divide-y divide-gray-100">{mockProducts.map(p => <tr key={p.id} className="hover:bg-gray-50"><td className="px-6 py-4 flex items-center gap-3"><img src={p.imagem_principal} className="w-10 h-10 rounded-lg object-cover bg-gray-100" /><span className="font-semibold text-primary">{p.nome}</span></td><td className="px-6 py-4 font-semibold">{formatMoney(p.preco)}</td><td className="px-6 py-4 text-gray-600">{p.estoque}</td></tr>)}</tbody>
+              </table>
+            </div>
+            <div className="sm:hidden divide-y divide-gray-100">{mockProducts.map(p => <div key={p.id} className="p-4 flex gap-4"><img src={p.imagem_principal} className="w-16 h-16 rounded-xl object-cover bg-gray-100 flex-shrink-0" /><div className="flex-1"><h3 className="font-semibold text-primary">{p.nome}</h3><p className="text-sm text-gray-500 mb-2">{p.categoria_nome}</p><div className="flex justify-between"><span className="font-bold text-primary">{formatMoney(p.preco)}</span></div></div></div>)}</div>
+          </div>
+        </div>
+      );
+    }
+
+    function AdminPedidos() {
+      const orders = [{id:'WC1001', c:'João', s:'em_producao', t: 245}, {id:'WC1002', c:'Maria', s:'pendente', t: 89.9}];
+      const sColors = { pendente: 'bg-yellow-100 text-yellow-700', em_producao: 'bg-purple-100 text-purple-700', pronto: 'bg-success/10 text-success' };
+      const sLabels = { pendente: 'Pendente', em_producao: 'Em Produção', pronto: 'Pronto' };
+      return (
+        <div className="fade-in">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-primary mb-6">Pedidos</h1>
+          <div className="card overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-premium">
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm"><thead className="bg-gray-50 border-b border-gray-200"><tr><th className="text-left px-6 py-4 font-semibold text-gray-600">Número</th><th className="text-left px-6 py-4 font-semibold text-gray-600">Cliente</th><th className="text-left px-6 py-4 font-semibold text-gray-600">Status</th><th className="text-left px-6 py-4 font-semibold text-gray-600">Total</th></tr></thead>
+              <tbody className="divide-y divide-gray-100">{orders.map(o => <tr key={o.id} className="hover:bg-gray-50"><td className="px-6 py-4 font-mono font-semibold text-primary">{o.id}</td><td className="px-6 py-4">{o.c}</td><td className="px-6 py-4"><span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold ${sColors[o.s]}`}>{sLabels[o.s]}</span></td><td className="px-6 py-4 font-bold">{formatMoney(o.t)}</td></tr>)}</tbody>
+              </table>
+            </div>
+            <div className="sm:hidden divide-y divide-gray-100">{orders.map(o => <div key={o.id} className="p-4"><div className="flex justify-between mb-2"><span className="font-mono font-bold text-primary">{o.id}</span><span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold ${sColors[o.s]}`}>{sLabels[o.s]}</span></div><div className="flex justify-between"><span className="text-sm text-gray-500">{o.c}</span><span className="font-bold text-primary">{formatMoney(o.t)}</span></div></div>)}</div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- SECTION 7: APP & ROUTER ---
+    function Layout() {
+      return (
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <main className="flex-1 pb-20 sm:pb-0"><OutletContextMain /></main>
+          <BottomNav />
+          <footer className="hidden sm:block bg-primary text-white mt-16">
+            <div className="max-w-5xl mx-auto px-4 py-12 grid md:grid-cols-4 gap-8">
+              <div><div className="flex items-center gap-2.5 mb-4"><div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"><span className="text-gold font-display font-bold text-xl">W</span></div><span className="font-display font-bold text-xl">Gráfica <span className="gold-text">W Criações</span></span></div><p className="text-gray-400 text-sm">Impressos, brindes e personalizados com padrão premium.</p></div>
+              <div><h4 className="font-display font-bold mb-4">Loja</h4><ul className="space-y-2 text-sm text-gray-400"><li><Link to="/catalogo" className="hover:text-gold">Catálogo</Link></li><li><Link to="/carrinho" className="hover:text-gold">Carrinho</Link></li></ul></div>
+              <div><h4 className="font-display font-bold mb-4">Atendimento</h4><ul className="space-y-2 text-sm text-gray-400"><li>WhatsApp: {BRAND.whatsapp}</li><li>{BRAND.email}</li></ul></div>
+              <div><h4 className="font-display font-bold mb-4">Legal</h4><ul className="space-y-2 text-sm text-gray-400"><li><Link to="/sobre" className="hover:text-gold">Sobre</Link></li><li><Link to="/contato" className="hover:text-gold">Contato</Link></li></ul></div>
+            </div>
+            <div className="border-t border-white/10 py-6 text-center text-sm text-gray-500">© {new Date().getFullYear()} Gráfica W Criações.</div>
+          </footer>
+        </div>
+      );
+    }
+
+    function OutletContextMain() {
+      const location = useLocation();
+      if (location.pathname === '/') return <Home />;
+      if (location.pathname === '/catalogo') return <Catalogo />;
+      if (location.pathname.startsWith('/produto/')) return <Produto />;
+      if (location.pathname === '/carrinho') return <Carrinho />;
+      if (location.pathname === '/checkout') return <Checkout />;
+      if (location.pathname.startsWith('/pedido-confirmado/')) return <Confirmacao />;
+      if (location.pathname === '/acompanhar') return <Acompanhar />;
+      if (location.pathname === '/login') return <Login />;
+      if (location.pathname === '/minha-conta') return <MinhaConta />;
+      if (location.pathname === '/sobre') return <Sobre />;
+      if (location.pathname === '/contato') return <Contato />;
+      return <Home />;
+    }
+
+    function App() {
+      useEffect(() => { lucide.createIcons(); }, []);
+      return (
+        <AppProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/*" element={<Layout />} />
+              <Route path="/admin/*" element={<AdminLayout />} />
+            </Routes>
+          </BrowserRouter>
+        </AppProvider>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
 </html>
