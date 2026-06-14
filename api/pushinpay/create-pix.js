@@ -91,9 +91,9 @@ export default async function handler(req, res) {
 
     const { data: plan, error: planError } = await supabaseAdmin
       .from('plans')
-      .select('id, name, credits, price_cents, is_unlimited, duration_days, active')
+      .select('*')
       .eq('id', planId)
-      .eq('active', true)
+      .neq('active', false)
       .single();
 
     if (planError || !plan) {
@@ -103,10 +103,16 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!plan.price_cents || plan.price_cents < 50) {
+    const priceCents = Number(plan.price_cents || 0) > 0
+      ? Number(plan.price_cents)
+      : Math.round(Number(plan.price || 0) * 100);
+
+    const planType = plan.plan_type || (plan.is_unlimited ? 'unlimited' : 'credits');
+
+    if (!priceCents || priceCents < 50) {
       return res.status(400).json({
         success: false,
-        message: 'Valor do plano inválido',
+        message: 'Valor do plano inválido. Edite o plano no painel admin e informe um preço maior que R$ 0,50.',
       });
     }
 
@@ -116,8 +122,10 @@ export default async function handler(req, res) {
         user_id: user.id,
         plan_id: plan.id,
         gateway: 'pushinpay',
-        amount_cents: plan.price_cents,
-        amount: plan.price_cents,
+        amount_cents: priceCents,
+        amount: priceCents,
+        credits: Number(plan.credits || 0),
+        plan_type: planType,
         status: 'pending',
       })
       .select('id')
@@ -143,7 +151,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        value: plan.price_cents,
+        value: priceCents,
         webhook_url: webhookUrl,
       }),
     });
@@ -198,7 +206,7 @@ export default async function handler(req, res) {
         id: plan.id,
         name: plan.name,
         credits: plan.credits,
-        price_cents: plan.price_cents,
+        price_cents: priceCents,
         is_unlimited: plan.is_unlimited,
       },
       pix: {

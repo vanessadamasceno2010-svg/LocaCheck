@@ -53,6 +53,50 @@ function formatMoneyCents(cents) {
   }).format(Number(cents || 0) / 100);
 }
 
+
+function normalizePlanRow(plan) {
+  const priceFromCents = Number(plan?.price_cents || 0);
+  const priceFromReais =
+    plan?.price !== null && plan?.price !== undefined
+      ? Math.round(Number(plan.price || 0) * 100)
+      : 0;
+  const planType = String(plan?.plan_type || "").toLowerCase();
+  const isUnlimited =
+    Boolean(plan?.is_unlimited) ||
+    planType === "unlimited" ||
+    String(plan?.name || "").toLowerCase().includes("ilimit");
+
+  return {
+    ...plan,
+    credits: Number(plan?.credits || 0),
+    price_cents: priceFromCents > 0 ? priceFromCents : priceFromReais,
+    price: plan?.price !== undefined ? plan.price : (priceFromCents > 0 ? priceFromCents / 100 : null),
+    plan_type: plan?.plan_type || (isUnlimited ? "unlimited" : "credits"),
+    is_unlimited: isUnlimited,
+    duration_days: Number(plan?.duration_days || (isUnlimited ? 30 : 0)),
+    active: plan?.active !== false,
+  };
+}
+
+function getPaymentCredits(payment) {
+  return Number(payment?.credits || payment?.plan_credits || payment?.plan?.credits || 0);
+}
+
+function getPaymentPlanName(payment) {
+  return payment?.plan_name || payment?.plan?.name || payment?.plan_type || "Pagamento";
+}
+
+function getPaymentUserName(payment) {
+  return (
+    payment?.user_name ||
+    payment?.profile_nome ||
+    payment?.profiles?.nome ||
+    payment?.nome ||
+    payment?.user_id ||
+    "Usuário não identificado"
+  );
+}
+
 function traduzirStatusPagamento(status) {
   const normalized = String(status || "").toLowerCase();
 
@@ -903,8 +947,8 @@ function App() {
 
     const { data, error } = await supabase
       .from("plans")
-      .select("id, name, credits, price_cents, is_unlimited, duration_days, active, created_at")
-      .order("price_cents", { ascending: true });
+      .select("*")
+      .order("name", { ascending: true });
 
     if (error) {
       console.log("Erro ao carregar planos:", error);
@@ -916,7 +960,7 @@ function App() {
       return;
     }
 
-    setAdminPlans(data || []);
+    setAdminPlans((data || []).map(normalizePlanRow));
 
     if (!data || data.length === 0) {
       setAdminPlansMessage("Nenhum plano encontrado. Crie um plano para aparecer na tela de compra.");
@@ -950,6 +994,8 @@ function App() {
       name: String(plano.name || "").trim(),
       credits: Math.max(0, Number(plano.credits || 0)),
       price_cents: Math.max(0, Number(plano.price_cents || 0)),
+      price: Math.max(0, Number(plano.price_cents || 0)) / 100,
+      plan_type: Boolean(plano.is_unlimited) ? "unlimited" : "credits",
       is_unlimited: Boolean(plano.is_unlimited),
       duration_days: Math.max(0, Number(plano.duration_days || 0)),
       active: Boolean(plano.active),
@@ -1013,6 +1059,8 @@ function App() {
       name: "Novo plano",
       credits: 10,
       price_cents: 1990,
+      price: 19.9,
+      plan_type: "credits",
       is_unlimited: false,
       duration_days: 0,
       active: false,
@@ -1924,13 +1972,16 @@ function App() {
                     )}
 
                     {(showAllRecentPayments ? (adminFinancialData.recent_payments || []) : (adminFinancialData.recent_payments || []).slice(0, 5)).map((payment) => {
-                      const amountCents = Number(payment.amount_cents || 0);
+                      const amountCents = Number(payment.amount_cents || (Number(payment.amount || 0) >= 100 ? payment.amount : Number(payment.amount || 0) * 100) || 0);
                       const statusLabel = traduzirStatusPagamento(payment.status);
+                      const paymentCredits = getPaymentCredits(payment);
+                      const paymentPlanName = getPaymentPlanName(payment);
+                      const paymentUserName = getPaymentUserName(payment);
 
                       return (
                         <div className="adminRecord" key={payment.id}>
                           <div className="adminRecordTop">
-                            <h3>{payment.plan_type || "Pagamento"}</h3>
+                            <h3>{paymentPlanName}</h3>
                             <span
                               className={`statusBadge ${
                                 payment.status === "paid"
@@ -1945,6 +1996,10 @@ function App() {
                           </div>
 
                           <p>
+                            <strong>Usuário:</strong> {paymentUserName}
+                          </p>
+
+                          <p>
                             <strong>Valor:</strong>{" "}
                             {new Intl.NumberFormat("pt-BR", {
                               style: "currency",
@@ -1953,7 +2008,7 @@ function App() {
                           </p>
 
                           <p>
-                            <strong>Créditos:</strong> {payment.credits || 0}
+                            <strong>Créditos:</strong> {paymentCredits}
                           </p>
 
                           <p>

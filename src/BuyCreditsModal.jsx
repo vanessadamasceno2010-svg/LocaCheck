@@ -9,6 +9,30 @@ function formatMoney(cents) {
   }).format(Number(cents || 0) / 100);
 }
 
+
+function normalizePlanRow(plan) {
+  const priceFromCents = Number(plan?.price_cents || 0);
+  const priceFromReais =
+    plan?.price !== null && plan?.price !== undefined
+      ? Math.round(Number(plan.price || 0) * 100)
+      : 0;
+  const planType = String(plan?.plan_type || "").toLowerCase();
+  const isUnlimited =
+    Boolean(plan?.is_unlimited) ||
+    planType === "unlimited" ||
+    String(plan?.name || "").toLowerCase().includes("ilimit");
+
+  return {
+    ...plan,
+    credits: Number(plan?.credits || 0),
+    price_cents: priceFromCents > 0 ? priceFromCents : priceFromReais,
+    plan_type: plan?.plan_type || (isUnlimited ? "unlimited" : "credits"),
+    is_unlimited: isUnlimited,
+    duration_days: Number(plan?.duration_days || (isUnlimited ? 30 : 0)),
+    active: plan?.active !== false,
+  };
+}
+
 function getQrCodeImageSrc(qrCodeBase64) {
   if (!qrCodeBase64) return "";
 
@@ -41,9 +65,9 @@ function BuyCreditsModal({ onClose }) {
 
     const { data, error: plansError } = await supabase
       .from("plans")
-      .select("id, name, credits, price_cents, is_unlimited, duration_days, active")
-      .eq("active", true)
-      .order("price_cents", { ascending: true });
+      .select("*")
+      .neq("active", false)
+      .order("name", { ascending: true });
 
     if (plansError) {
       console.error("Erro ao carregar planos:", plansError);
@@ -54,7 +78,7 @@ function BuyCreditsModal({ onClose }) {
       return;
     }
 
-    setPlans(data || []);
+    setPlans((data || []).map(normalizePlanRow));
 
     if (data && data.length > 0) {
       setSelectedPlanId(data[0].id);
