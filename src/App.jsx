@@ -186,6 +186,20 @@ function diasAte(dataIso) {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
+function isImageUrl(url) {
+  const cleanUrl = String(url || "").split("?")[0].toLowerCase();
+  return /\.(png|jpg|jpeg|gif|webp|bmp|svg|avif)$/.test(cleanUrl);
+}
+
+function getDocumentoLabel(url) {
+  const cleanUrl = String(url || "").split("?")[0].toLowerCase();
+
+  if (cleanUrl.endsWith(".pdf")) return "Abrir PDF";
+  if (isImageUrl(cleanUrl)) return "Abrir imagem";
+
+  return "Abrir documento";
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -2794,11 +2808,13 @@ function App() {
 
                     {item.imagem_url && (
                       <div className="imagePreviewBox">
-                        <strong>Imagem/comprovante:</strong>
+                        <strong>Documento/comprovante:</strong>
                         <a href={item.imagem_url} target="_blank" rel="noreferrer">
-                          Abrir imagem
+                          {getDocumentoLabel(item.imagem_url)}
                         </a>
-                        <img src={item.imagem_url} alt="Comprovante" />
+                        {isImageUrl(item.imagem_url) && (
+                          <img src={item.imagem_url} alt="Documento/comprovante" />
+                        )}
                       </div>
                     )}
 
@@ -3207,11 +3223,13 @@ function App() {
 
               {item.imagem_url && (
                 <div className="imagePreviewBox">
-                  <strong>Imagem/comprovante:</strong>
+                  <strong>Documento/comprovante:</strong>
                   <a href={item.imagem_url} target="_blank" rel="noreferrer">
-                    Abrir imagem
+                    {getDocumentoLabel(item.imagem_url)}
                   </a>
-                  <img src={item.imagem_url} alt="Comprovante" />
+                  {isImageUrl(item.imagem_url) && (
+                    <img src={item.imagem_url} alt="Documento/comprovante" />
+                  )}
                 </div>
               )}
             </div>
@@ -3481,29 +3499,31 @@ function App() {
 
                 {editingRecord.imagem_url && (
                   <div className="imagePreviewBox">
-                    <strong>Imagem atual:</strong>
+                    <strong>Documento atual:</strong>
                     <a
                       href={editingRecord.imagem_url}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Abrir imagem atual
+                      {getDocumentoLabel(editingRecord.imagem_url)}
                     </a>
-                    <img src={editingRecord.imagem_url} alt="Comprovante atual" />
+                    {isImageUrl(editingRecord.imagem_url) && (
+                      <img src={editingRecord.imagem_url} alt="Documento atual" />
+                    )}
                   </div>
                 )}
 
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   onChange={(e) =>
                     setEditRecordImage(e.target.files?.[0] || null)
                   }
                 />
 
                 <small className="fieldHelp">
-                  Envie uma nova imagem apenas se quiser substituir/adicionar
-                  comprovante.
+                  Envie uma nova imagem ou PDF apenas se quiser substituir/adicionar
+                  documento/comprovante.
                 </small>
 
                 <textarea
@@ -3601,15 +3621,18 @@ function App() {
 
                       {item.imagem_url && (
                         <div className="imagePreviewBox">
-                          <strong>Imagem/comprovante:</strong>
+                          <strong>Documento/comprovante:</strong>
                           <a
                             href={item.imagem_url}
                             target="_blank"
                             rel="noreferrer"
                           >
-                            Abrir imagem
+                            {getDocumentoLabel(item.imagem_url)}
                           </a>
-                          <img src={item.imagem_url} alt="Comprovante" />
+                          <p className="documentPublicNotice">Documento disponível para usuários que realizarem uma consulta com resultado aprovado.</p>
+                          {isImageUrl(item.imagem_url) && (
+                            <img src={item.imagem_url} alt="Documento/comprovante" />
+                          )}
                         </div>
                       )}
                     </div>
@@ -3634,7 +3657,7 @@ function App() {
 
               <p>
                 Cadastre uma ocorrência relacionada a um locatário de veículo.
-                O CPF será exibido futuramente apenas pelos 4 últimos números.
+                O CPF será exibido futuramente apenas pelos 4 últimos números. O documento/comprovante ficará disponível para quem consultar uma ocorrência aprovada.
               </p>
 
               <form onSubmit={cadastrarOcorrencia} className="recordForm">
@@ -3694,12 +3717,12 @@ function App() {
 
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   onChange={(e) => setRecordImage(e.target.files?.[0] || null)}
                 />
 
                 <small className="fieldHelp">
-                  Envie uma foto ou comprovante, se houver.
+                  Envie uma foto, PDF ou comprovante, se houver.
                 </small>
 
                 <textarea

@@ -2581,3 +2581,29 @@ body {
     grid-template-columns: 1fr !important;
   }
 }
+
+
+/* V9 - documentos/comprovantes públicos nas consultas */
+.imagePreviewBox a {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, .14);
+  border: 1px solid rgba(37, 99, 235, .35);
+  text-decoration: none;
+}
+
+.imagePreviewBox a::before {
+  content: "↗";
+  font-weight: 900;
+}
+
+.documentPublicNotice {
+  margin: 0 !important;
+  color: #94a3b8 !important;
+  font-size: 13px;
+}
