@@ -1164,8 +1164,9 @@ function App() {
     const termo = adminRecordSearch.trim().toLowerCase();
 
     return adminRecords.filter((item) => {
+      const statusAtual = String(item.status || "pendente").toLowerCase();
       const statusOk =
-        adminRecordFilter === "todos" ? true : item.status === adminRecordFilter;
+        adminRecordFilter === "todos" ? true : statusAtual === adminRecordFilter;
 
       if (!statusOk) return false;
       if (!termo) return true;
@@ -1174,6 +1175,11 @@ function App() {
         item.nome,
         item.cpf_full,
         item.cpf4,
+        item.cidade,
+        item.status,
+        item.whatsapp_locatario,
+        item.descricao,
+        Array.isArray(item.tipos) ? item.tipos.join(" ") : item.tipos,
       ]
         .filter(Boolean)
         .join(" ")
@@ -1436,6 +1442,24 @@ function App() {
     const unlimitedActive =
       profile.unlimited_until && new Date(profile.unlimited_until) > new Date();
 
+    const normalizarStatus = (status) => String(status || "pendente").toLowerCase();
+    const filteredAdminRecords = filtrarOcorrenciasAdmin();
+    const adminRecordStats = {
+      total: adminRecords.length,
+      pendentes: adminRecords.filter((item) => normalizarStatus(item.status) === "pendente").length,
+      aprovadas: adminRecords.filter((item) => normalizarStatus(item.status) === "aprovado").length,
+      reprovadas: adminRecords.filter((item) => normalizarStatus(item.status) === "reprovado").length,
+      comComprovante: adminRecords.filter((item) => Boolean(item.imagem_url)).length,
+    };
+    const adminUserStats = {
+      total: adminUsers.length,
+      comuns: adminUsers.filter((user) => String(user.role || "user").toLowerCase() !== "admin").length,
+      admins: adminUsers.filter((user) => String(user.role || "").toLowerCase() === "admin").length,
+      ilimitados: adminUsers.filter((user) => user.unlimited_until && new Date(user.unlimited_until) > new Date()).length,
+      creditos: adminUsers.reduce((total, user) => total + Number(user.credits || 0), 0),
+      consultas: adminUsers.reduce((total, user) => total + Number(user.consultas || 0), 0),
+    };
+
     return (
       <div className="page">
         {toast && (
@@ -1463,12 +1487,11 @@ function App() {
         </header>
 
         <main className="dashboard">
-          <section className="dashboardHero">
+          <section className="dashboardHero compactHero">
             <span>Painel LocaCheck</span>
-            <h1>Bem-vindo, {profile.nome || "Usuário"}</h1>
+            <h1>Olá, {profile.nome || "Usuário"}</h1>
             <p>
-              Consulte locatários, registre ocorrências e acompanhe seus créditos
-              em um só lugar.
+              Consulte, registre e acompanhe tudo em um painel rápido e otimizado para celular.
             </p>
           </section>
 
@@ -1491,7 +1514,7 @@ function App() {
 
           <section className="dashboardActions">
             <button
-              className="btn primary large"
+              className="btn primary large actionConsult"
               onClick={() => {
                 setSearchMessage("");
                 setSearchResults([]);
@@ -1503,7 +1526,7 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionRecord"
               onClick={() => {
                 setRecordMessage("");
                 setShowRecordForm(true);
@@ -1513,7 +1536,7 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionRecords"
               onClick={() => {
                 setShowMyRecords(true);
                 carregarMinhasOcorrencias();
@@ -1523,7 +1546,7 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionCredits"
               onClick={() => {
                 setShowBuyCredits(true);
               }}
@@ -1532,7 +1555,7 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionHistory"
               onClick={() => {
                 setShowConsultationHistory(true);
                 carregarHistoricoConsultas();
@@ -1542,7 +1565,7 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionPayments"
               onClick={() => {
                 setShowPaymentsHistory(true);
                 carregarHistoricoPagamentos();
@@ -1552,14 +1575,14 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionProfile"
               onClick={abrirMeusDados}
             >
               Meus Dados
             </button>
 
             <button
-              className="btn outline large notificationButton"
+              className="btn outline large notificationButton actionNotifications"
               onClick={() => {
                 setShowNotifications(true);
                 carregarNotificacoes();
@@ -1572,14 +1595,14 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionTerms"
               onClick={() => setShowTermsPrivacy(true)}
             >
               Termos e Privacidade
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionSupport"
               onClick={() => setShowSupport(true)}
             >
               Suporte
@@ -1587,7 +1610,24 @@ function App() {
           </section>
 
           {profile.role === "admin" && (
-            <section className="adminPanel">
+            <section className="adminOverviewNav" aria-label="Atalhos do painel administrativo">
+              <a href="#admin-financeiro" className="financeShortcut">
+                <span>Financeiro</span>
+                <strong>Receita, PIX e pagamentos</strong>
+              </a>
+              <a href="#admin-usuarios" className="usersShortcut">
+                <span>Usuários</span>
+                <strong>Créditos, planos e contas</strong>
+              </a>
+              <a href="#admin-ocorrencias" className="recordsShortcut">
+                <span>Ocorrências</span>
+                <strong>Aprovação, análise e registros</strong>
+              </a>
+            </section>
+          )}
+
+          {profile.role === "admin" && (
+            <section className="adminPanel adminArea financialArea" id="admin-financeiro">
               <div className="adminHeader">
                 <div>
                   <span>Financeiro</span>
@@ -1737,7 +1777,7 @@ function App() {
           )}
 
           {profile.role === "admin" && (
-            <section className="adminPanel">
+            <section className="adminPanel adminArea reportsArea">
               <div className="adminHeader">
                 <div>
                   <span>Relatórios</span>
@@ -1768,17 +1808,62 @@ function App() {
           )}
 
           {profile.role === "admin" && (
-            <section className="adminPanel">
+            <section className="adminPanel adminArea usersArea" id="admin-usuarios">
               <div className="adminHeader">
                 <div>
-                  <span>Administração</span>
-                  <h2>Usuários cadastrados</h2>
-                  <p>Gerencie créditos e plano ilimitado dos usuários.</p>
+                  <span>Usuários</span>
+                  <h2>Dashboard de Usuários</h2>
+                  <p>Veja o resumo das contas cadastradas antes de gerenciar créditos e planos.</p>
                 </div>
 
                 <button className="btn secondary" onClick={carregarUsuariosAdmin}>
                   Atualizar usuários
                 </button>
+              </div>
+
+              <section className="adminMiniDashboard usersMiniDashboard" aria-label="Resumo dos usuários cadastrados">
+                <div className="adminStatCard featured">
+                  <small>Total de usuários</small>
+                  <strong>{adminUserStats.total}</strong>
+                  <span>Contas cadastradas</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Usuários comuns</small>
+                  <strong>{adminUserStats.comuns}</strong>
+                  <span>Clientes e locadoras</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Administradores</small>
+                  <strong>{adminUserStats.admins}</strong>
+                  <span>Acessos internos</span>
+                </div>
+
+                <div className="adminStatCard success">
+                  <small>Ilimitados ativos</small>
+                  <strong>{adminUserStats.ilimitados}</strong>
+                  <span>Planos em vigor</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Créditos em contas</small>
+                  <strong>{adminUserStats.creditos}</strong>
+                  <span>Saldo total disponível</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Consultas dos usuários</small>
+                  <strong>{adminUserStats.consultas}</strong>
+                  <span>Total registrado nos perfis</span>
+                </div>
+              </section>
+
+              <div className="adminSubHeader">
+                <div>
+                  <h3>Lista de usuários</h3>
+                  <p>Gerencie saldo, créditos e plano ilimitado de cada conta.</p>
+                </div>
               </div>
 
               {adminUsersMessage && (
@@ -1867,7 +1952,7 @@ function App() {
           )}
 
           {profile.role === "admin" && (
-            <section className="adminPanel">
+            <section className="adminPanel adminArea supportArea">
               <div className="adminHeader">
                 <div>
                   <span>Suporte</span>
@@ -2001,7 +2086,7 @@ function App() {
           )}
 
           {profile.role === "admin" && (
-            <section className="adminPanel">
+            <section className="adminPanel adminArea auditArea">
               <div className="adminHeader">
                 <div>
                   <span>Auditoria</span>
@@ -2050,19 +2135,71 @@ function App() {
           )}
 
           {profile.role === "admin" && (
-            <section className="adminPanel">
+            <section className="adminPanel adminArea recordsArea" id="admin-ocorrencias">
               <div className="adminHeader">
                 <div>
-                  <span>Administração</span>
-                  <h2>Ocorrências cadastradas</h2>
-                  <p>Aprove, reprove, edite ou exclua ocorrências enviadas.</p>
+                  <span>Ocorrências</span>
+                  <h2>Dashboard de Ocorrências</h2>
+                  <p>Acompanhe o volume de registros e separe rapidamente o que precisa de análise.</p>
+                </div>
+
+                <button
+                  className="btn secondary"
+                  onClick={carregarOcorrenciasAdmin}
+                >
+                  Atualizar ocorrências
+                </button>
+              </div>
+
+              <section className="adminMiniDashboard recordsMiniDashboard" aria-label="Resumo das ocorrências cadastradas">
+                <div className="adminStatCard featured">
+                  <small>Total de ocorrências</small>
+                  <strong>{adminRecordStats.total}</strong>
+                  <span>Registros recebidos</span>
+                </div>
+
+                <div className="adminStatCard warning">
+                  <small>Pendentes</small>
+                  <strong>{adminRecordStats.pendentes}</strong>
+                  <span>Aguardando análise</span>
+                </div>
+
+                <div className="adminStatCard success">
+                  <small>Aprovadas</small>
+                  <strong>{adminRecordStats.aprovadas}</strong>
+                  <span>Visíveis nas consultas</span>
+                </div>
+
+                <div className="adminStatCard danger">
+                  <small>Reprovadas</small>
+                  <strong>{adminRecordStats.reprovadas}</strong>
+                  <span>Fora das consultas</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Com comprovante</small>
+                  <strong>{adminRecordStats.comComprovante}</strong>
+                  <span>Arquivos anexados</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Resultado do filtro</small>
+                  <strong>{filteredAdminRecords.length}</strong>
+                  <span>Itens listados abaixo</span>
+                </div>
+              </section>
+
+              <div className="adminSubHeader withFilters">
+                <div>
+                  <h3>Lista de ocorrências</h3>
+                  <p>Use a busca e os filtros para aprovar, reprovar, editar ou excluir registros.</p>
                 </div>
 
                 <div className="adminButtons">
                   <input
                     type="text"
                     className="selectInput"
-                    placeholder="Buscar por nome, CPF, cidade ou status"
+                    placeholder="Buscar por nome, CPF, cidade, tipo ou status"
                     value={adminRecordSearch}
                     onChange={(e) => setAdminRecordSearch(e.target.value)}
                   />
@@ -2077,26 +2214,19 @@ function App() {
                     <option value="aprovado">Aprovadas</option>
                     <option value="reprovado">Reprovadas</option>
                   </select>
-
-                  <button
-                    className="btn secondary"
-                    onClick={carregarOcorrenciasAdmin}
-                  >
-                    Atualizar
-                  </button>
                 </div>
               </div>
 
               {adminMessage && <div className="authMessage">{adminMessage}</div>}
 
               <div className="adminList">
-                {filtrarOcorrenciasAdmin().length === 0 && (
+                {filteredAdminRecords.length === 0 && (
                   <div className="adminEmpty">
                     Nenhuma ocorrência encontrada para este filtro.
                   </div>
                 )}
 
-                {filtrarOcorrenciasAdmin().map((item) => (
+                {filteredAdminRecords.map((item) => (
                   <div className="adminRecord" key={item.id}>
                     <div className="adminRecordTop">
                       <h3>{item.nome}</h3>
@@ -2187,6 +2317,36 @@ function App() {
             </section>
           )}
         </main>
+
+        <nav className="mobileBottomNav" aria-label="Navegação rápida">
+          <button type="button" className="active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+            <span>⌂</span>
+            Início
+          </button>
+
+          <button type="button" onClick={() => {
+            setSearchMessage("");
+            setSearchResults([]);
+            setSearchText("");
+            setShowSearchForm(true);
+          }}>
+            <span>⌕</span>
+            Consultar
+          </button>
+
+          <button type="button" onClick={() => {
+            setRecordMessage("");
+            setShowRecordForm(true);
+          }}>
+            <span>＋</span>
+            Registrar
+          </button>
+
+          <button type="button" onClick={abrirMeusDados}>
+            <span>◎</span>
+            Perfil
+          </button>
+        </nav>
 {showBuyCredits && (
   <BuyCreditsModal onClose={() => setShowBuyCredits(false)} />
 )}
@@ -3024,7 +3184,7 @@ function App() {
 
           <h1>
             Consulte antes de alugar. <br />
-            Proteja sua frota de prejuízos.
+            <span className="gradientText">Proteja sua frota.</span>
           </h1>
 
           <p>

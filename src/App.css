@@ -1360,3 +1360,787 @@ button:disabled { opacity: .65; cursor: not-allowed; }
   .adminButtons { flex-direction: column; }
   .adminButtons .btn { width: 100%; }
 }
+
+/* =========================================================
+   LocaCheck Premium Mobile-First - ajuste seguro 14/06/2026
+   Inspirado no layout enviado em HTML e prints do usuário.
+   Mantém Supabase/PushinPay intactos: alteração visual.
+   ========================================================= */
+:root {
+  --lc-dark-bg: #020617;
+  --lc-dark-card: #0f172a;
+  --lc-dark-card-2: #111c31;
+  --lc-dark-input: #1e293b;
+  --lc-dark-border: #1e293b;
+  --lc-dark-border-2: #334155;
+  --lc-blue: #2563eb;
+  --lc-blue-2: #60a5fa;
+  --lc-green: #10b981;
+  --lc-yellow: #f59e0b;
+  --lc-red: #ef4444;
+  --lc-white: #f8fafc;
+  --lc-muted: #94a3b8;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  background: var(--lc-dark-bg) !important;
+}
+
+body {
+  overflow-x: hidden;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.page {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.22), transparent 30%),
+    radial-gradient(circle at 90% 8%, rgba(96, 165, 250, 0.12), transparent 28%),
+    var(--lc-dark-bg) !important;
+}
+
+.header {
+  min-height: 64px;
+  background: rgba(15, 23, 42, 0.82) !important;
+  border-bottom: 1px solid var(--lc-dark-border) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.logo {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 12px !important;
+  font-size: 14px;
+  background: linear-gradient(135deg, var(--lc-blue), var(--lc-blue-2)) !important;
+  box-shadow: 0 14px 34px rgba(37, 99, 235, .34) !important;
+}
+
+.brand strong { font-size: 16px !important; }
+.brand span { color: var(--lc-muted) !important; }
+
+.btn {
+  min-height: 46px;
+  border-radius: 12px !important;
+  font-size: 14px;
+  font-weight: 800 !important;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.btn.primary {
+  background: var(--lc-blue) !important;
+  color: white !important;
+  box-shadow: 0 16px 38px rgba(37, 99, 235, .28) !important;
+}
+
+.btn.secondary {
+  background: rgba(30, 41, 59, 0.92) !important;
+  color: var(--lc-white) !important;
+  border: 1px solid var(--lc-dark-border-2) !important;
+}
+
+.btn.outline {
+  background: rgba(15, 23, 42, 0.88) !important;
+  color: #dbeafe !important;
+  border: 1px solid var(--lc-dark-border-2) !important;
+}
+
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: scale(.98) !important; }
+
+.hero {
+  padding-top: 84px !important;
+  padding-bottom: 46px !important;
+}
+
+.badge {
+  color: var(--lc-blue-2) !important;
+  border-color: rgba(37, 99, 235, .3) !important;
+  background: rgba(37, 99, 235, .12) !important;
+}
+
+.gradientText {
+  background: linear-gradient(135deg, var(--lc-blue-2), var(--lc-blue));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero h1 {
+  color: white !important;
+  letter-spacing: -0.06em !important;
+}
+
+.hero p,
+.sectionTitle p,
+.how p,
+.trustBox span {
+  color: #cbd5e1 !important;
+}
+
+.cards,
+.planGrid,
+.useCaseGrid,
+.steps,
+.dashboardGrid {
+  gap: 14px !important;
+}
+
+.card,
+.planCard,
+.useCaseCard,
+.dashboardHero,
+.adminPanel,
+.how,
+.trustBox {
+  background: rgba(15, 23, 42, 0.86) !important;
+  border: 1px solid var(--lc-dark-border) !important;
+  color: white !important;
+  box-shadow: 0 22px 70px rgba(2, 6, 23, .35) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.card,
+.planCard,
+.useCaseCard { border-radius: 20px !important; }
+.card h3,
+.planCard h3,
+.useCaseCard h3,
+.how h2,
+.how h4,
+.adminHeader h2,
+.dashboardHero h1 { color: white !important; }
+.card p,
+.planCard p,
+.useCaseCard p { color: #cbd5e1 !important; }
+.card.featured,
+.planCard.unlimited { background: linear-gradient(135deg, #2563eb, #172554) !important; }
+
+.dashboard {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-bottom: 112px !important;
+}
+
+.dashboardHero.compactHero {
+  padding: 24px !important;
+  margin-bottom: 16px !important;
+}
+
+.dashboardHero.compactHero h1 {
+  font-size: clamp(26px, 5vw, 42px) !important;
+  margin: 8px 0 !important;
+}
+
+.dashboardCard {
+  background: var(--lc-dark-card) !important;
+  color: white !important;
+  border: 1px solid var(--lc-dark-border) !important;
+  border-radius: 16px !important;
+  box-shadow: none !important;
+  padding: 18px !important;
+}
+
+.dashboardCard small {
+  color: var(--lc-muted) !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 13px !important;
+}
+
+.dashboardCard strong {
+  color: white !important;
+  font-size: 30px !important;
+  line-height: 1;
+}
+
+.dashboardActions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  margin-top: 14px !important;
+}
+
+.dashboardActions .btn {
+  position: relative;
+  min-height: 76px;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  padding: 16px 14px 16px 58px !important;
+  background: var(--lc-dark-card) !important;
+  border: 1px solid var(--lc-dark-border) !important;
+  color: white !important;
+  box-shadow: none !important;
+}
+
+.dashboardActions .btn.primary {
+  background: var(--lc-blue) !important;
+  border-color: transparent !important;
+}
+
+.dashboardActions .btn::before {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(37, 99, 235, .13);
+  color: var(--lc-blue-2);
+  font-size: 18px;
+}
+
+.actionConsult::before { content: "⌕"; background: rgba(255,255,255,.18) !important; color: white !important; }
+.actionRecord::before { content: "▣"; }
+.actionRecords::before { content: "☷"; }
+.actionCredits::before { content: "+"; color: var(--lc-green) !important; background: rgba(16, 185, 129, .12) !important; }
+.actionHistory::before { content: "◷"; }
+.actionPayments::before { content: "R$"; font-size: 12px !important; font-weight: 900; }
+.actionProfile::before { content: "◎"; }
+.actionNotifications::before { content: "!"; color: var(--lc-yellow) !important; background: rgba(245, 158, 11, .12) !important; }
+.actionTerms::before { content: "§"; }
+.actionSupport::before { content: "?"; }
+
+.adminPanel {
+  border-radius: 20px !important;
+  margin-top: 20px !important;
+}
+
+.adminRecord,
+.adminEmpty,
+.resultCard,
+.buyPlanCard,
+.pixResultBox,
+.selectedPlanSummary {
+  background: rgba(15, 23, 42, .92) !important;
+  color: white !important;
+  border: 1px solid var(--lc-dark-border) !important;
+  box-shadow: none !important;
+}
+
+.adminRecord p,
+.resultCard p,
+.buyPlanCard p,
+.pixResultBox p,
+.selectedPlanSummary p {
+  color: #cbd5e1 !important;
+}
+
+.adminRecord strong,
+.resultCard strong { color: white !important; }
+
+.statusBadge.aprovado,
+.statusBadge.paid { background: rgba(16, 185, 129, .12) !important; color: var(--lc-green) !important; }
+.statusBadge.pendente { background: rgba(245, 158, 11, .12) !important; color: var(--lc-yellow) !important; }
+.statusBadge.reprovado { background: rgba(239, 68, 68, .12) !important; color: var(--lc-red) !important; }
+
+.modalOverlay {
+  background: rgba(0, 0, 0, .72) !important;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  align-items: flex-end !important;
+  padding: 0 !important;
+}
+
+.authModal,
+.recordModal {
+  position: relative;
+  background: var(--lc-dark-card) !important;
+  color: white !important;
+  border: 1px solid var(--lc-dark-border) !important;
+  border-bottom: 0 !important;
+  border-radius: 24px 24px 0 0 !important;
+  width: min(920px, 100%) !important;
+  max-height: 92vh !important;
+  margin: 0 auto !important;
+  box-shadow: 0 -22px 80px rgba(0,0,0,.55) !important;
+  padding-top: 34px !important;
+  padding-bottom: max(24px, env(safe-area-inset-bottom)) !important;
+}
+
+.authModal::before,
+.recordModal::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 46px;
+  height: 5px;
+  border-radius: 999px;
+  background: #334155;
+}
+
+.authModal h2,
+.recordModal h2 { color: white !important; }
+.authModal p,
+.recordModal p { color: var(--lc-muted) !important; }
+
+.authModal input,
+.recordForm input,
+.recordForm textarea,
+.recordForm select,
+.selectInput,
+.pixTextarea {
+  background: var(--lc-dark-input) !important;
+  color: white !important;
+  border: 1px solid var(--lc-dark-border-2) !important;
+  border-radius: 12px !important;
+  font-size: 16px !important;
+  outline: none !important;
+}
+
+.authModal input:focus,
+.recordForm input:focus,
+.recordForm textarea:focus,
+.recordForm select:focus,
+.selectInput:focus,
+.pixTextarea:focus {
+  border-color: var(--lc-blue) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .22) !important;
+}
+
+.authModal input::placeholder,
+.recordForm input::placeholder,
+.recordForm textarea::placeholder { color: #94a3b8 !important; }
+
+.closeModal {
+  top: 16px !important;
+  right: 16px !important;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 999px !important;
+  background: #1e293b !important;
+  color: #cbd5e1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+}
+
+.checkboxBox {
+  background: rgba(30, 41, 59, .55) !important;
+  border-color: var(--lc-dark-border-2) !important;
+  color: white !important;
+}
+
+.checkboxGrid label,
+.fieldHelp { color: #cbd5e1 !important; }
+
+.authMessage {
+  background: rgba(37, 99, 235, .12) !important;
+  color: #93c5fd !important;
+  border: 1px solid rgba(96, 165, 250, .22) !important;
+}
+
+.toastPopup {
+  top: 14px !important;
+  left: 14px !important;
+  right: 14px !important;
+  width: auto !important;
+  background: var(--lc-dark-card) !important;
+  color: white !important;
+  border: 1px solid var(--lc-dark-border) !important;
+}
+.toastPopup strong { color: white !important; }
+.toastPopup span { color: #cbd5e1 !important; }
+
+.mobileBottomNav {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .header {
+    padding: 0 12px !important;
+  }
+
+  .brand { min-height: 58px !important; }
+  .brand span { display: none !important; }
+  .actions .btn,
+  .header > .btn.secondary {
+    min-height: 36px !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+  }
+
+  .hero {
+    padding: 64px 16px 28px !important;
+  }
+
+  .hero h1 {
+    font-size: clamp(32px, 10vw, 44px) !important;
+    line-height: 1.04 !important;
+  }
+
+  .hero p {
+    font-size: 15px !important;
+  }
+
+  .heroActions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+
+  .heroActions .btn {
+    width: 100% !important;
+    padding: 12px 10px !important;
+    min-height: 48px !important;
+    font-size: 13px !important;
+  }
+
+  .cards,
+  .planGrid,
+  .useCaseGrid,
+  .steps {
+    grid-template-columns: 1fr !important;
+    padding-inline: 14px !important;
+  }
+
+  .card,
+  .planCard,
+  .useCaseCard {
+    padding: 18px !important;
+  }
+
+  .sectionTitle h2,
+  .how h2 {
+    font-size: 28px !important;
+  }
+
+  .dashboard {
+    padding: 14px 12px 96px !important;
+  }
+
+  .dashboardHero.compactHero {
+    display: none !important;
+  }
+
+  .dashboardGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .dashboardGrid .dashboardCard:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .dashboardCard {
+    padding: 16px !important;
+    border-radius: 14px !important;
+  }
+
+  .dashboardCard strong {
+    font-size: 26px !important;
+  }
+
+  .dashboardActions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .dashboardActions .btn {
+    min-height: 68px !important;
+    padding: 12px 10px 12px 48px !important;
+    font-size: 12px !important;
+    line-height: 1.15 !important;
+  }
+
+  .dashboardActions .btn::before {
+    left: 10px;
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
+
+  .adminPanel {
+    padding: 16px !important;
+    border-radius: 18px !important;
+  }
+
+  .adminHeader,
+  .adminRecordTop {
+    gap: 10px !important;
+  }
+
+  .adminButtons {
+    flex-direction: column !important;
+  }
+
+  .adminButtons .btn,
+  .adminButtons .selectInput {
+    width: 100% !important;
+  }
+
+  .authModal,
+  .recordModal {
+    padding-inline: 16px !important;
+    border-radius: 22px 22px 0 0 !important;
+  }
+
+  .authModal h2,
+  .recordModal h2 {
+    font-size: 20px !important;
+    padding-right: 40px !important;
+  }
+
+  .mobileBottomNav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 42;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    min-height: 66px;
+    padding: 6px 6px max(6px, env(safe-area-inset-bottom));
+    background: rgba(15, 23, 42, .96);
+    border-top: 1px solid var(--lc-dark-border);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .mobileBottomNav button {
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 800;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border-radius: 12px;
+    min-width: 0;
+  }
+
+  .mobileBottomNav button span {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .mobileBottomNav button.active,
+  .mobileBottomNav button:active {
+    color: var(--lc-blue-2);
+    background: rgba(37, 99, 235, .08);
+  }
+}
+
+/* ===== Ajustes v4: organização premium do painel administrativo ===== */
+.adminOverviewNav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0 8px;
+}
+
+.adminOverviewNav a {
+  text-decoration: none;
+  min-height: 86px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, .9);
+  border: 1px solid var(--lc-dark-border);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 16px 40px rgba(2, 6, 23, .24);
+  transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.adminOverviewNav a:hover,
+.adminOverviewNav a:active {
+  transform: translateY(-2px);
+  border-color: rgba(96, 165, 250, .45);
+  background: rgba(30, 41, 59, .94);
+}
+
+.adminOverviewNav span {
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--lc-blue-2);
+}
+
+.adminOverviewNav strong {
+  font-size: 15px;
+  line-height: 1.25;
+  color: #e5e7eb;
+}
+
+.financeShortcut { border-left: 4px solid var(--lc-blue) !important; }
+.usersShortcut { border-left: 4px solid var(--lc-green) !important; }
+.recordsShortcut { border-left: 4px solid var(--lc-yellow) !important; }
+
+.adminArea {
+  position: relative;
+  overflow: hidden;
+  scroll-margin-top: 82px;
+}
+
+.adminArea::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--lc-blue), transparent);
+}
+
+.financialArea::before { background: linear-gradient(90deg, var(--lc-blue), transparent); }
+.usersArea::before { background: linear-gradient(90deg, var(--lc-green), transparent); }
+.recordsArea::before { background: linear-gradient(90deg, var(--lc-yellow), transparent); }
+.reportsArea::before { background: linear-gradient(90deg, #8b5cf6, transparent); }
+.supportArea::before { background: linear-gradient(90deg, #06b6d4, transparent); }
+.auditArea::before { background: linear-gradient(90deg, #64748b, transparent); }
+
+.adminMiniDashboard {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 22px;
+}
+
+.adminStatCard {
+  min-height: 126px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(2, 6, 23, .34);
+  border: 1px solid var(--lc-dark-border);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.adminStatCard small {
+  color: var(--lc-muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.adminStatCard strong {
+  color: white;
+  font-size: clamp(26px, 4vw, 38px);
+  line-height: 1;
+  font-weight: 900;
+}
+
+.adminStatCard span {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.adminStatCard.featured {
+  background: linear-gradient(135deg, rgba(37, 99, 235, .35), rgba(15, 23, 42, .92));
+  border-color: rgba(96, 165, 250, .36);
+}
+
+.adminStatCard.success {
+  border-color: rgba(16, 185, 129, .35);
+  background: linear-gradient(135deg, rgba(16, 185, 129, .18), rgba(15, 23, 42, .92));
+}
+
+.adminStatCard.warning {
+  border-color: rgba(245, 158, 11, .36);
+  background: linear-gradient(135deg, rgba(245, 158, 11, .18), rgba(15, 23, 42, .92));
+}
+
+.adminStatCard.danger {
+  border-color: rgba(239, 68, 68, .36);
+  background: linear-gradient(135deg, rgba(239, 68, 68, .18), rgba(15, 23, 42, .92));
+}
+
+.adminSubHeader {
+  margin: 12px 0 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(2, 6, 23, .28);
+  border: 1px solid rgba(148, 163, 184, .14);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.adminSubHeader h3 {
+  margin: 0 0 4px;
+  color: white;
+  font-size: 20px;
+}
+
+.adminSubHeader p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.adminSubHeader.withFilters {
+  align-items: flex-start;
+}
+
+.recordsArea .adminRecordTop h3,
+.usersArea .adminRecordTop h3,
+.financialArea .adminRecordTop h3 {
+  color: white !important;
+}
+
+@media (max-width: 820px) {
+  .adminOverviewNav {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .adminOverviewNav a {
+    min-height: 72px;
+    padding: 14px;
+  }
+
+  .adminMiniDashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .adminStatCard {
+    min-height: 112px;
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .adminStatCard strong {
+    font-size: 28px;
+  }
+
+  .adminSubHeader,
+  .adminSubHeader.withFilters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 430px) {
+  .adminMiniDashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .adminStatCard {
+    min-height: auto;
+  }
+}
