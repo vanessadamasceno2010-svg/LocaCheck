@@ -46,6 +46,13 @@ function formatMoneyFromPayment(payment) {
   return "Não informado";
 }
 
+function formatMoneyCents(cents) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(cents || 0) / 100);
+}
+
 function traduzirStatusPagamento(status) {
   const normalized = String(status || "").toLowerCase();
 
@@ -141,6 +148,10 @@ function App() {
   const [notificationReadIds, setNotificationReadIds] = useState([]);
   const [showAllRecentPayments, setShowAllRecentPayments] = useState(false);
   const [adminActiveSection, setAdminActiveSection] = useState("financeiro");
+  const [adminPlans, setAdminPlans] = useState([]);
+  const [adminPlansMessage, setAdminPlansMessage] = useState("");
+  const [loadingAdminPlans, setLoadingAdminPlans] = useState(false);
+  const [savingAdminPlanId, setSavingAdminPlanId] = useState("");
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -296,6 +307,7 @@ function App() {
       carregarDashboardFinanceiro();
       carregarOcorrenciasAdmin();
       carregarUsuariosAdmin();
+      carregarPlanosAdmin();
       carregarMensagensSuporteAdmin();
       carregarLogsSistema();
     }
@@ -883,6 +895,142 @@ function App() {
     setLoading(false);
   }
 
+  async function carregarPlanosAdmin() {
+    if (profile?.role !== "admin") return;
+
+    setLoadingAdminPlans(true);
+    setAdminPlansMessage("");
+
+    const { data, error } = await supabase
+      .from("plans")
+      .select("id, name, credits, price_cents, is_unlimited, duration_days, active, created_at")
+      .order("price_cents", { ascending: true });
+
+    if (error) {
+      console.log("Erro ao carregar planos:", error);
+      setAdminPlans([]);
+      setAdminPlansMessage(
+        error.message || "Erro ao carregar planos. Verifique a tabela plans e as permissões RLS."
+      );
+      setLoadingAdminPlans(false);
+      return;
+    }
+
+    setAdminPlans(data || []);
+
+    if (!data || data.length === 0) {
+      setAdminPlansMessage("Nenhum plano encontrado. Crie um plano para aparecer na tela de compra.");
+    }
+
+    setLoadingAdminPlans(false);
+  }
+
+  function atualizarPlanoLocal(planId, campo, valor) {
+    setAdminPlans((planos) =>
+      planos.map((plano) =>
+        plano.id === planId
+          ? {
+              ...plano,
+              [campo]: valor,
+            }
+          : plano
+      )
+    );
+  }
+
+  async function salvarPlanoAdmin(plano) {
+    if (profile?.role !== "admin" || !plano?.id) return;
+
+    if (!String(plano.name || "").trim()) {
+      setAdminPlansMessage("Informe o nome do plano antes de salvar.");
+      return;
+    }
+
+    const payload = {
+      name: String(plano.name || "").trim(),
+      credits: Math.max(0, Number(plano.credits || 0)),
+      price_cents: Math.max(0, Number(plano.price_cents || 0)),
+      is_unlimited: Boolean(plano.is_unlimited),
+      duration_days: Math.max(0, Number(plano.duration_days || 0)),
+      active: Boolean(plano.active),
+    };
+
+    setSavingAdminPlanId(plano.id);
+    setAdminPlansMessage("");
+
+    const { error } = await supabase.from("plans").update(payload).eq("id", plano.id);
+
+    if (error) {
+      console.log("Erro ao salvar plano:", error);
+      setAdminPlansMessage(error.message || "Erro ao salvar plano. Verifique as permissões RLS da tabela plans.");
+      setSavingAdminPlanId("");
+      return;
+    }
+
+    setAdminPlansMessage("Plano salvo com sucesso.");
+    showToast("success", "Plano atualizado", "As alterações do plano foram salvas.");
+    await registrarLogAdmin("plano_editado", { plan_id: plano.id, name: payload.name, active: payload.active });
+    await carregarPlanosAdmin();
+    setSavingAdminPlanId("");
+  }
+
+  async function alternarStatusPlano(plano) {
+    if (profile?.role !== "admin" || !plano?.id) return;
+
+    setSavingAdminPlanId(plano.id);
+    setAdminPlansMessage("");
+
+    const novoStatus = !Boolean(plano.active);
+    const { error } = await supabase
+      .from("plans")
+      .update({ active: novoStatus })
+      .eq("id", plano.id);
+
+    if (error) {
+      console.log("Erro ao alterar status do plano:", error);
+      setAdminPlansMessage(error.message || "Erro ao ativar/desativar plano.");
+      setSavingAdminPlanId("");
+      return;
+    }
+
+    showToast(
+      "success",
+      novoStatus ? "Plano ativado" : "Plano desativado",
+      novoStatus ? "O plano voltou a aparecer na compra." : "O plano foi ocultado da tela de compra."
+    );
+    await registrarLogAdmin("plano_status_alterado", { plan_id: plano.id, active: novoStatus });
+    await carregarPlanosAdmin();
+    setSavingAdminPlanId("");
+  }
+
+  async function criarPlanoAdmin() {
+    if (profile?.role !== "admin") return;
+
+    setLoadingAdminPlans(true);
+    setAdminPlansMessage("");
+
+    const { error } = await supabase.from("plans").insert({
+      name: "Novo plano",
+      credits: 10,
+      price_cents: 1990,
+      is_unlimited: false,
+      duration_days: 0,
+      active: false,
+    });
+
+    if (error) {
+      console.log("Erro ao criar plano:", error);
+      setAdminPlansMessage(error.message || "Erro ao criar plano. Verifique as permissões da tabela plans.");
+      setLoadingAdminPlans(false);
+      return;
+    }
+
+    showToast("success", "Plano criado", "Um novo plano inativo foi criado para edição.");
+    await registrarLogAdmin("plano_criado", { name: "Novo plano" });
+    await carregarPlanosAdmin();
+    setLoadingAdminPlans(false);
+  }
+
   async function carregarUsuariosAdmin() {
     const { data, error } = await supabase
       .from("profiles")
@@ -1460,6 +1608,19 @@ function App() {
       creditos: adminUsers.reduce((total, user) => total + Number(user.credits || 0), 0),
       consultas: adminUsers.reduce((total, user) => total + Number(user.consultas || 0), 0),
     };
+    const adminPlanStats = {
+      total: adminPlans.length,
+      ativos: adminPlans.filter((plan) => plan.active === true).length,
+      inativos: adminPlans.filter((plan) => plan.active !== true).length,
+      ilimitados: adminPlans.filter((plan) => plan.is_unlimited === true).length,
+      creditos: adminPlans.reduce((total, plan) => total + Number(plan.credits || 0), 0),
+      ticketMedio: adminPlans.length
+        ? Math.round(
+            adminPlans.reduce((total, plan) => total + Number(plan.price_cents || 0), 0) /
+              adminPlans.length
+          )
+        : 0,
+    };
 
     return (
       <div className="page">
@@ -1619,6 +1780,15 @@ function App() {
               >
                 <span>Financeiro</span>
                 <strong>Receita, PIX e pagamentos</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "planos" ? "active plansShortcut" : "plansShortcut"}
+                onClick={() => setAdminActiveSection("planos")}
+              >
+                <span>Planos</span>
+                <strong>Preços, créditos e ativação</strong>
               </button>
 
               <button
@@ -1814,6 +1984,207 @@ function App() {
                     )}
                   </div>
                 </>
+              )}
+            </section>
+          )}
+
+          {profile.role === "admin" && adminActiveSection === "planos" && (
+            <section className="adminPanel adminArea plansArea" id="admin-planos">
+              <div className="adminHeader">
+                <div>
+                  <span>Planos</span>
+                  <h2>Gerenciar Planos</h2>
+                  <p>Edite preços, quantidade de créditos, plano ilimitado e quais planos aparecem para compra.</p>
+                </div>
+
+                <div className="adminButtons">
+                  <button
+                    className="btn secondary"
+                    onClick={carregarPlanosAdmin}
+                    disabled={loadingAdminPlans}
+                    type="button"
+                  >
+                    {loadingAdminPlans ? "Atualizando..." : "Atualizar planos"}
+                  </button>
+
+                  <button
+                    className="btn primary"
+                    onClick={criarPlanoAdmin}
+                    disabled={loadingAdminPlans}
+                    type="button"
+                  >
+                    Criar plano
+                  </button>
+                </div>
+              </div>
+
+              <section className="adminMiniDashboard plansMiniDashboard" aria-label="Resumo dos planos cadastrados">
+                <div className="adminStatCard featured">
+                  <small>Total de planos</small>
+                  <strong>{adminPlanStats.total}</strong>
+                  <span>Cadastrados na tabela plans</span>
+                </div>
+
+                <div className="adminStatCard success">
+                  <small>Ativos</small>
+                  <strong>{adminPlanStats.ativos}</strong>
+                  <span>Aparecem na compra</span>
+                </div>
+
+                <div className="adminStatCard warning">
+                  <small>Inativos</small>
+                  <strong>{adminPlanStats.inativos}</strong>
+                  <span>Ocultos para usuários</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Ilimitados</small>
+                  <strong>{adminPlanStats.ilimitados}</strong>
+                  <span>Planos por período</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Créditos somados</small>
+                  <strong>{adminPlanStats.creditos}</strong>
+                  <span>Total dos pacotes com créditos</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Ticket médio</small>
+                  <strong>{formatMoneyCents(adminPlanStats.ticketMedio)}</strong>
+                  <span>Média dos preços cadastrados</span>
+                </div>
+              </section>
+
+              {adminPlansMessage && (
+                <div className="authMessage">{adminPlansMessage}</div>
+              )}
+
+              {loadingAdminPlans && (
+                <div className="adminEmpty">Carregando planos...</div>
+              )}
+
+              {!loadingAdminPlans && adminPlans.length === 0 && (
+                <div className="adminEmpty">Nenhum plano encontrado. Clique em criar plano para começar.</div>
+              )}
+
+              {!loadingAdminPlans && adminPlans.length > 0 && (
+                <div className="adminPlanEditorGrid">
+                  {adminPlans.map((plano) => {
+                    const isSaving = savingAdminPlanId === plano.id;
+                    const isUnlimited = plano.is_unlimited === true;
+
+                    return (
+                      <div className="adminPlanEditorCard" key={plano.id}>
+                        <div className="adminRecordTop">
+                          <h3>{plano.name || "Plano sem nome"}</h3>
+                          <span className={`statusBadge ${plano.active ? "aprovado" : "pendente"}`}>
+                            {plano.active ? "Ativo" : "Inativo"}
+                          </span>
+                        </div>
+
+                        <div className="adminPlanFormGrid">
+                          <label>
+                            <span>Nome do plano</span>
+                            <input
+                              type="text"
+                              value={plano.name || ""}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "name", e.target.value)}
+                              placeholder="Ex: 50 Créditos"
+                            />
+                          </label>
+
+                          <label>
+                            <span>Preço em R$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={(Number(plano.price_cents || 0) / 100).toFixed(2)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "price_cents", Math.round(Number(e.target.value || 0) * 100))}
+                              placeholder="39.90"
+                            />
+                          </label>
+
+                          <label>
+                            <span>Créditos</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={Number(plano.credits || 0)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "credits", Number(e.target.value || 0))}
+                              disabled={isUnlimited}
+                            />
+                          </label>
+
+                          <label>
+                            <span>Duração em dias</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={Number(plano.duration_days || 0)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "duration_days", Number(e.target.value || 0))}
+                              placeholder="30"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="adminPlanChecks">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(plano.is_unlimited)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "is_unlimited", e.target.checked)}
+                            />
+                            Plano ilimitado
+                          </label>
+
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(plano.active)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "active", e.target.checked)}
+                            />
+                            Visível para compra
+                          </label>
+                        </div>
+
+                        <div className="adminPlanPreview">
+                          <strong>{formatMoneyCents(plano.price_cents)}</strong>
+                          <span>
+                            {isUnlimited
+                              ? `${Number(plano.duration_days || 30)} dias de consultas ilimitadas`
+                              : `${Number(plano.credits || 0)} consultas`}
+                          </span>
+                        </div>
+
+                        <div className="adminButtons">
+                          <button
+                            className="btn primary"
+                            onClick={() => salvarPlanoAdmin(plano)}
+                            disabled={isSaving}
+                            type="button"
+                          >
+                            {isSaving ? "Salvando..." : "Salvar plano"}
+                          </button>
+
+                          <button
+                            className="btn outline"
+                            onClick={() => alternarStatusPlano(plano)}
+                            disabled={isSaving}
+                            type="button"
+                          >
+                            {plano.active ? "Desativar" : "Ativar"}
+                          </button>
+                        </div>
+
+                        <small className="fieldHelp">
+                          Planos ativos aparecem automaticamente em Comprar Créditos. Planos inativos ficam ocultos.
+                        </small>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </section>
           )}
@@ -2360,7 +2731,7 @@ function App() {
           )}
         </main>
 
-        <nav className="mobileBottomNav" aria-label="Navegação rápida">
+        <nav className={`mobileBottomNav ${profile.role === "admin" ? "adminMobileNav" : ""}`} aria-label="Navegação rápida">
           {profile.role === "admin" ? (
             <>
               <button
@@ -2370,6 +2741,15 @@ function App() {
               >
                 <span>▣</span>
                 Financeiro
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "planos" ? "active" : ""}
+                onClick={() => setAdminActiveSection("planos")}
+              >
+                <span>R$</span>
+                Planos
               </button>
 
               <button
