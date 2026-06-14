@@ -140,6 +140,7 @@ function App() {
   const [toast, setToast] = useState(null);
   const [notificationReadIds, setNotificationReadIds] = useState([]);
   const [showAllRecentPayments, setShowAllRecentPayments] = useState(false);
+  const [adminActiveSection, setAdminActiveSection] = useState("financeiro");
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -1610,23 +1611,64 @@ function App() {
           </section>
 
           {profile.role === "admin" && (
-            <section className="adminOverviewNav" aria-label="Atalhos do painel administrativo">
-              <a href="#admin-financeiro" className="financeShortcut">
+            <section className="adminCategoryMenu" aria-label="Menus separados do painel administrativo">
+              <button
+                type="button"
+                className={adminActiveSection === "financeiro" ? "active financeShortcut" : "financeShortcut"}
+                onClick={() => setAdminActiveSection("financeiro")}
+              >
                 <span>Financeiro</span>
                 <strong>Receita, PIX e pagamentos</strong>
-              </a>
-              <a href="#admin-usuarios" className="usersShortcut">
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "usuarios" ? "active usersShortcut" : "usersShortcut"}
+                onClick={() => setAdminActiveSection("usuarios")}
+              >
                 <span>Usuários</span>
                 <strong>Créditos, planos e contas</strong>
-              </a>
-              <a href="#admin-ocorrencias" className="recordsShortcut">
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "ocorrencias" ? "active recordsShortcut" : "recordsShortcut"}
+                onClick={() => setAdminActiveSection("ocorrencias")}
+              >
                 <span>Ocorrências</span>
                 <strong>Aprovação, análise e registros</strong>
-              </a>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "relatorios" ? "active reportsShortcut" : "reportsShortcut"}
+                onClick={() => setAdminActiveSection("relatorios")}
+              >
+                <span>Relatórios</span>
+                <strong>Exportações em CSV</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "suporte" ? "active supportShortcut" : "supportShortcut"}
+                onClick={() => setAdminActiveSection("suporte")}
+              >
+                <span>Suporte</span>
+                <strong>Mensagens recebidas</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "auditoria" ? "active auditShortcut" : "auditShortcut"}
+                onClick={() => setAdminActiveSection("auditoria")}
+              >
+                <span>Auditoria</span>
+                <strong>Logs do sistema</strong>
+              </button>
             </section>
           )}
 
-          {profile.role === "admin" && (
+          {profile.role === "admin" && adminActiveSection === "financeiro" && (
             <section className="adminPanel adminArea financialArea" id="admin-financeiro">
               <div className="adminHeader">
                 <div>
@@ -1776,7 +1818,7 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
+          {profile.role === "admin" && adminActiveSection === "relatorios" && (
             <section className="adminPanel adminArea reportsArea">
               <div className="adminHeader">
                 <div>
@@ -1807,7 +1849,7 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
+          {profile.role === "admin" && adminActiveSection === "usuarios" && (
             <section className="adminPanel adminArea usersArea" id="admin-usuarios">
               <div className="adminHeader">
                 <div>
@@ -1951,7 +1993,7 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
+          {profile.role === "admin" && adminActiveSection === "suporte" && (
             <section className="adminPanel adminArea supportArea">
               <div className="adminHeader">
                 <div>
@@ -2085,7 +2127,7 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
+          {profile.role === "admin" && adminActiveSection === "auditoria" && (
             <section className="adminPanel adminArea auditArea">
               <div className="adminHeader">
                 <div>
@@ -2134,7 +2176,7 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
+          {profile.role === "admin" && adminActiveSection === "ocorrencias" && (
             <section className="adminPanel adminArea recordsArea" id="admin-ocorrencias">
               <div className="adminHeader">
                 <div>
@@ -2319,33 +2361,75 @@ function App() {
         </main>
 
         <nav className="mobileBottomNav" aria-label="Navegação rápida">
-          <button type="button" className="active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-            <span>⌂</span>
-            Início
-          </button>
+          {profile.role === "admin" ? (
+            <>
+              <button
+                type="button"
+                className={adminActiveSection === "financeiro" ? "active" : ""}
+                onClick={() => setAdminActiveSection("financeiro")}
+              >
+                <span>▣</span>
+                Financeiro
+              </button>
 
-          <button type="button" onClick={() => {
-            setSearchMessage("");
-            setSearchResults([]);
-            setSearchText("");
-            setShowSearchForm(true);
-          }}>
-            <span>⌕</span>
-            Consultar
-          </button>
+              <button
+                type="button"
+                className={adminActiveSection === "usuarios" ? "active" : ""}
+                onClick={() => setAdminActiveSection("usuarios")}
+              >
+                <span>◎</span>
+                Usuários
+              </button>
 
-          <button type="button" onClick={() => {
-            setRecordMessage("");
-            setShowRecordForm(true);
-          }}>
-            <span>＋</span>
-            Registrar
-          </button>
+              <button
+                type="button"
+                className={adminActiveSection === "ocorrencias" ? "active" : ""}
+                onClick={() => setAdminActiveSection("ocorrencias")}
+              >
+                <span>!</span>
+                Ocorrências
+              </button>
 
-          <button type="button" onClick={abrirMeusDados}>
-            <span>◎</span>
-            Perfil
-          </button>
+              <button
+                type="button"
+                className={adminActiveSection === "relatorios" || adminActiveSection === "suporte" || adminActiveSection === "auditoria" ? "active" : ""}
+                onClick={() => setAdminActiveSection(adminActiveSection === "relatorios" ? "suporte" : adminActiveSection === "suporte" ? "auditoria" : "relatorios")}
+              >
+                <span>☰</span>
+                Mais
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+                <span>⌂</span>
+                Início
+              </button>
+
+              <button type="button" onClick={() => {
+                setSearchMessage("");
+                setSearchResults([]);
+                setSearchText("");
+                setShowSearchForm(true);
+              }}>
+                <span>⌕</span>
+                Consultar
+              </button>
+
+              <button type="button" onClick={() => {
+                setRecordMessage("");
+                setShowRecordForm(true);
+              }}>
+                <span>＋</span>
+                Registrar
+              </button>
+
+              <button type="button" onClick={abrirMeusDados}>
+                <span>◎</span>
+                Perfil
+              </button>
+            </>
+          )}
         </nav>
 {showBuyCredits && (
   <BuyCreditsModal onClose={() => setShowBuyCredits(false)} />
