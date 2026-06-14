@@ -78,6 +78,20 @@ function normalizePlanRow(plan) {
   };
 }
 
+function sortPlansByPrice(a, b) {
+  const priceA = Number(a?.price_cents || 0);
+  const priceB = Number(b?.price_cents || 0);
+
+  if (priceA !== priceB) return priceA - priceB;
+
+  const creditsA = Number(a?.credits || 0);
+  const creditsB = Number(b?.credits || 0);
+
+  if (creditsA !== creditsB) return creditsA - creditsB;
+
+  return String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR");
+}
+
 function getPaymentCredits(payment) {
   return Number(payment?.credits || payment?.plan_credits || payment?.plan?.credits || 0);
 }
@@ -948,6 +962,8 @@ function App() {
     const { data, error } = await supabase
       .from("plans")
       .select("*")
+      .order("price_cents", { ascending: true })
+      .order("credits", { ascending: true })
       .order("name", { ascending: true });
 
     if (error) {
@@ -960,7 +976,7 @@ function App() {
       return;
     }
 
-    setAdminPlans((data || []).map(normalizePlanRow));
+    setAdminPlans((data || []).map(normalizePlanRow).sort(sortPlansByPrice));
 
     if (!data || data.length === 0) {
       setAdminPlansMessage("Nenhum plano encontrado. Crie um plano para aparecer na tela de compra.");
@@ -1045,6 +1061,37 @@ function App() {
       novoStatus ? "O plano voltou a aparecer na compra." : "O plano foi ocultado da tela de compra."
     );
     await registrarLogAdmin("plano_status_alterado", { plan_id: plano.id, active: novoStatus });
+    await carregarPlanosAdmin();
+    setSavingAdminPlanId("");
+  }
+
+  async function excluirPlanoAdmin(plano) {
+    if (profile?.role !== "admin" || !plano?.id) return;
+
+    const confirmar = window.confirm(
+      `Tem certeza que deseja excluir o plano "${plano.name || "sem nome"}"? Essa ação remove o plano da tabela. Se ele já foi usado em pagamentos antigos, prefira desativar para manter o histórico mais organizado.`
+    );
+
+    if (!confirmar) return;
+
+    setSavingAdminPlanId(plano.id);
+    setAdminPlansMessage("");
+
+    const { error } = await supabase.from("plans").delete().eq("id", plano.id);
+
+    if (error) {
+      console.log("Erro ao excluir plano:", error);
+      setAdminPlansMessage(
+        error.message ||
+          "Erro ao excluir plano. Se esse plano já estiver ligado a pagamentos, desative em vez de excluir."
+      );
+      showToast("error", "Erro ao excluir", "Não foi possível excluir este plano.");
+      setSavingAdminPlanId("");
+      return;
+    }
+
+    showToast("success", "Plano excluído", "O plano foi removido da lista.");
+    await registrarLogAdmin("plano_excluido", { plan_id: plano.id, name: plano.name || "" });
     await carregarPlanosAdmin();
     setSavingAdminPlanId("");
   }
@@ -2230,6 +2277,15 @@ function App() {
                             type="button"
                           >
                             {plano.active ? "Desativar" : "Ativar"}
+                          </button>
+
+                          <button
+                            className="btn danger"
+                            onClick={() => excluirPlanoAdmin(plano)}
+                            disabled={isSaving}
+                            type="button"
+                          >
+                            Excluir
                           </button>
                         </div>
 

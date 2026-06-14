@@ -33,6 +33,20 @@ function normalizePlanRow(plan) {
   };
 }
 
+function sortPlansByPrice(a, b) {
+  const priceA = Number(a?.price_cents || 0);
+  const priceB = Number(b?.price_cents || 0);
+
+  if (priceA !== priceB) return priceA - priceB;
+
+  const creditsA = Number(a?.credits || 0);
+  const creditsB = Number(b?.credits || 0);
+
+  if (creditsA !== creditsB) return creditsA - creditsB;
+
+  return String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR");
+}
+
 function getQrCodeImageSrc(qrCodeBase64) {
   if (!qrCodeBase64) return "";
 
@@ -67,6 +81,8 @@ function BuyCreditsModal({ onClose }) {
       .from("plans")
       .select("*")
       .neq("active", false)
+      .order("price_cents", { ascending: true })
+      .order("credits", { ascending: true })
       .order("name", { ascending: true });
 
     if (plansError) {
@@ -78,10 +94,11 @@ function BuyCreditsModal({ onClose }) {
       return;
     }
 
-    setPlans((data || []).map(normalizePlanRow));
+    const orderedPlans = (data || []).map(normalizePlanRow).sort(sortPlansByPrice);
+    setPlans(orderedPlans);
 
-    if (data && data.length > 0) {
-      setSelectedPlanId(data[0].id);
+    if (orderedPlans.length > 0) {
+      setSelectedPlanId(orderedPlans[0].id);
     }
 
     setLoadingPlans(false);
