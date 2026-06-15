@@ -1155,6 +1155,48 @@ function App() {
     setLoading(false);
   }
 
+  async function entrarComGoogle() {
+    if (loading) return;
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const referralCode = getStoredReferralCode();
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin,
+          queryParams: {
+            prompt: "select_account",
+          },
+        },
+      });
+
+      if (error) {
+        setMessage(
+          error.message ||
+            "Não foi possível iniciar o login com Google. Verifique se o provedor Google está configurado no Supabase."
+        );
+        setLoading(false);
+        return;
+      }
+
+      if (referralCode) {
+        try {
+          localStorage.setItem("locacheck-referral-code", referralCode);
+        } catch {
+          // Mantém o fluxo mesmo se o navegador bloquear localStorage.
+        }
+      }
+    } catch (error) {
+      console.log("Erro ao iniciar login com Google:", error);
+      setMessage("Não foi possível iniciar o login com Google. Tente novamente.");
+      setLoading(false);
+    }
+  }
+
   async function sair() {
     await supabase.auth.signOut();
     setSession(null);
@@ -4609,6 +4651,20 @@ function App() {
             >
               Ver Termos de Uso e Política de Privacidade
             </button>
+
+            <button
+              type="button"
+              className="btn googleAuthButton full"
+              onClick={entrarComGoogle}
+              disabled={loading}
+            >
+              <span className="googleAuthIcon">G</span>
+              {loading ? "Aguarde..." : "Entrar com Google"}
+            </button>
+
+            <div className="authDivider">
+              <span>ou continue com e-mail</span>
+            </div>
 
             <form
               onSubmit={authMode === "login" ? entrarUsuario : cadastrarUsuario}
