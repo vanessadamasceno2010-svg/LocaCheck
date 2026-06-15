@@ -1777,6 +1777,70 @@ function App() {
     setAdminUsers(data || []);
   }
 
+  async function alterarRoleUsuario(userId, novoRole) {
+    if (loading) return;
+
+    if (!session?.user?.id || profile?.role !== "admin") {
+      setAdminUsersMessage("Apenas administradores podem alterar o perfil de acesso.");
+      return;
+    }
+
+    const usuario = adminUsers.find((item) => item.id === userId);
+    if (!usuario) return;
+
+    const roleAtual = String(usuario.role || "user").toLowerCase();
+    const roleDestino = String(novoRole || "user").toLowerCase();
+
+    if (roleAtual === roleDestino) {
+      setAdminUsersMessage("Este usuário já está com este perfil.");
+      return;
+    }
+
+    if (userId === session.user.id && roleDestino !== "admin") {
+      setAdminUsersMessage("Por segurança, você não pode remover seu próprio acesso de administrador pelo painel.");
+      showToast("warning", "Ação bloqueada", "Use outro administrador para alterar seu próprio perfil.");
+      return;
+    }
+
+    const confirmar = window.confirm(
+      roleDestino === "admin"
+        ? `Deseja transformar ${usuario.nome || usuario.email || "este usuário"} em administrador?`
+        : `Deseja remover o acesso de administrador de ${usuario.nome || usuario.email || "este usuário"}?`
+    );
+
+    if (!confirmar) return;
+
+    setLoading(true);
+    setAdminUsersMessage("");
+
+    const { data, error } = await supabase.rpc("admin_set_user_role", {
+      p_user_id: userId,
+      p_role: roleDestino,
+    });
+
+    if (error || data?.success === false) {
+      console.log("Erro ao alterar perfil:", error || data);
+      setAdminUsersMessage(error?.message || data?.message || "Erro ao alterar o perfil do usuário.");
+      showToast("error", "Erro ao alterar perfil", "Verifique as permissões no Supabase.");
+      setLoading(false);
+      return;
+    }
+
+    setAdminUsersMessage(
+      roleDestino === "admin"
+        ? "Usuário promovido para administrador com sucesso."
+        : "Usuário alterado para usuário comum com sucesso."
+    );
+    showToast("success", "Perfil atualizado", roleDestino === "admin" ? "Acesso admin liberado." : "Acesso admin removido.");
+    await carregarUsuariosAdmin();
+
+    if (userId === session.user.id) {
+      await loadProfile(session.user.id);
+    }
+
+    setLoading(false);
+  }
+
   async function alterarCreditosUsuario(userId, quantidade) {
     if (loading) return;
 
@@ -3066,6 +3130,11 @@ function App() {
                       </div>
 
                       <p>
+                        <strong>E-mail:</strong>{" "}
+                        {user.email || "Não informado"}
+                      </p>
+
+                      <p>
                         <strong>WhatsApp:</strong>{" "}
                         {user.whatsapp || "Não informado"}
                       </p>
@@ -3115,6 +3184,25 @@ function App() {
                         >
                           Cancelar ilimitado
                         </button>
+
+                        {String(user.role || "user").toLowerCase() === "admin" ? (
+                          <button
+                            className="btn outline"
+                            onClick={() => alterarRoleUsuario(user.id, "user")}
+                            disabled={user.id === session.user.id || loading}
+                            title={user.id === session.user.id ? "Você não pode remover seu próprio admin pelo painel" : "Remover acesso admin"}
+                          >
+                            Tornar usuário comum
+                          </button>
+                        ) : (
+                          <button
+                            className="btn primary"
+                            onClick={() => alterarRoleUsuario(user.id, "admin")}
+                            disabled={loading}
+                          >
+                            Tornar admin
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
