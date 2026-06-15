@@ -174,6 +174,26 @@ function formatWhatsappInput(value) {
     .replace(/(\d{5})(\d)/, "$1-$2");
 }
 
+function isValidWhatsapp(value) {
+  const digits = onlyDigits(value);
+
+  if (digits.length !== 10 && digits.length !== 11) return false;
+  if (digits.length === 11 && digits[2] !== "9") return false;
+  if (/^(\d)\1+$/.test(digits)) return false;
+
+  return true;
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  const emailText = normalizeEmail(value);
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailText);
+}
+
 function looksLikeCpfSearch(value) {
   const text = String(value || "").trim();
   const digits = onlyDigits(text);
@@ -700,8 +720,8 @@ function App() {
   useEffect(() => {
     if (profile) {
       setProfileNome(profile.nome || "");
-      setProfileWhatsapp(profile.whatsapp || "");
-      setProfileEmail(session?.user?.email || "");
+      setProfileWhatsapp(formatWhatsappInput(profile.whatsapp || ""));
+      setProfileEmail(normalizeEmail(session?.user?.email || ""));
     }
   }, [profile]);
   useEffect(() => {
@@ -876,8 +896,8 @@ function App() {
 
   function abrirMeusDados() {
     setProfileNome(profile?.nome || "");
-    setProfileWhatsapp(profile?.whatsapp || "");
-    setProfileEmail(session?.user?.email || "");
+    setProfileWhatsapp(formatWhatsappInput(profile?.whatsapp || ""));
+    setProfileEmail(normalizeEmail(session?.user?.email || ""));
     setProfileNewPassword("");
     setProfileMessage("");
     setShowProfileData(true);
@@ -951,8 +971,21 @@ function App() {
       return;
     }
 
-    if (!profileWhatsapp.trim()) {
+    const profileWhatsappDigits = onlyDigits(profileWhatsapp);
+    const profileEmailNormalized = normalizeEmail(profileEmail);
+
+    if (!profileWhatsappDigits) {
       setProfileMessage("Informe seu WhatsApp.");
+      return;
+    }
+
+    if (!isValidWhatsapp(profileWhatsappDigits)) {
+      setProfileMessage("Informe um WhatsApp válido com DDD. Exemplo: (88) 99999-9999.");
+      return;
+    }
+
+    if (!isValidEmail(profileEmailNormalized)) {
+      setProfileMessage("Informe um e-mail válido.");
       return;
     }
 
@@ -963,7 +996,7 @@ function App() {
       .from("profiles")
       .update({
         nome: profileNome.trim(),
-        whatsapp: profileWhatsapp.trim(),
+        whatsapp: profileWhatsappDigits,
       })
       .eq("id", session.user.id);
 
@@ -977,8 +1010,8 @@ function App() {
 
     const authPayload = {};
 
-    if (profileEmail.trim() && profileEmail.trim() !== session.user.email) {
-      authPayload.email = profileEmail.trim();
+    if (profileEmailNormalized && profileEmailNormalized !== normalizeEmail(session.user.email)) {
+      authPayload.email = profileEmailNormalized;
     }
 
     if (profileNewPassword.trim()) {
@@ -1024,15 +1057,42 @@ function App() {
       return;
     }
 
+    const cadastroWhatsappDigits = onlyDigits(whatsapp);
+    const cadastroEmailNormalized = normalizeEmail(email);
+
+    if (!nome.trim()) {
+      setMessage("Informe seu nome ou nome da empresa.");
+      setLoading(false);
+      return;
+    }
+
+    if (!isValidWhatsapp(cadastroWhatsappDigits)) {
+      setMessage("Informe um WhatsApp válido com DDD. Exemplo: (88) 99999-9999.");
+      setLoading(false);
+      return;
+    }
+
+    if (!isValidEmail(cadastroEmailNormalized)) {
+      setMessage("Informe um e-mail válido.");
+      setLoading(false);
+      return;
+    }
+
+    if (senha.trim().length < 6) {
+      setMessage("A senha precisa ter pelo menos 6 caracteres.");
+      setLoading(false);
+      return;
+    }
+
     const referralCode = getStoredReferralCode();
 
     const { data: signUpData, error } = await supabase.auth.signUp({
-      email,
+      email: cadastroEmailNormalized,
       password: senha,
       options: {
         data: {
-          nome,
-          whatsapp,
+          nome: nome.trim(),
+          whatsapp: cadastroWhatsappDigits,
           referral_code: referralCode || null,
           terms_accepted: true,
           terms_version: "2026-06-14",
@@ -1070,8 +1130,16 @@ function App() {
     setLoading(true);
     setMessage("");
 
+    const loginEmailNormalized = normalizeEmail(email);
+
+    if (!isValidEmail(loginEmailNormalized)) {
+      setMessage("Informe um e-mail válido.");
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: loginEmailNormalized,
       password: senha,
     });
 
@@ -3602,18 +3670,24 @@ function App() {
         />
 
         <input
-          type="text"
-          placeholder="WhatsApp"
+          type="tel"
+          inputMode="numeric"
+          placeholder="WhatsApp com DDD"
           value={profileWhatsapp}
-          onChange={(e) => setProfileWhatsapp(e.target.value)}
+          onChange={(e) => setProfileWhatsapp(formatWhatsappInput(e.target.value))}
+          maxLength={15}
           required
         />
+
+        <small className="fieldHelp">Use DDD + número. Exemplo: (88) 99999-9999.</small>
 
         <input
           type="email"
           placeholder="E-mail de acesso"
           value={profileEmail}
           onChange={(e) => setProfileEmail(e.target.value)}
+          onBlur={() => setProfileEmail(normalizeEmail(profileEmail))}
+          autoComplete="email"
           required
         />
 
@@ -4550,12 +4624,15 @@ function App() {
                   />
 
                   <input
-                    type="text"
-                    placeholder="WhatsApp"
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="WhatsApp com DDD"
                     value={whatsapp}
-                    onChange={(e) => setWhatsapp(e.target.value)}
+                    onChange={(e) => setWhatsapp(formatWhatsappInput(e.target.value))}
+                    maxLength={15}
                     required
                   />
+                  <small className="fieldHelp">Use DDD + número. Exemplo: (88) 99999-9999.</small>
                 </>
               )}
 
@@ -4564,6 +4641,8 @@ function App() {
                 placeholder="E-mail"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setEmail(normalizeEmail(email))}
+                autoComplete={authMode === "login" ? "email" : "email"}
                 required
               />
 
