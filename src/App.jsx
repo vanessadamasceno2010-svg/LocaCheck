@@ -92,6 +92,29 @@ function sortPlansByPrice(a, b) {
   return String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR");
 }
 
+function getStoredReferralCode() {
+  try {
+    return localStorage.getItem("locacheck-referral-code") || "";
+  } catch {
+    return "";
+  }
+}
+
+function getReferralCodeFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return String(params.get("ref") || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function buildReferralLink(code) {
+  if (!code) return "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/?ref=${encodeURIComponent(code)}`;
+}
+
 function getPaymentCredits(payment) {
   return Number(payment?.credits || payment?.plan_credits || payment?.plan?.credits || 0);
 }
@@ -348,6 +371,9 @@ function App() {
   const [savingAdminPlanId, setSavingAdminPlanId] = useState("");
   const [publicPlans, setPublicPlans] = useState([]);
   const [landingMessage, setLandingMessage] = useState("");
+  const [showReferralPanel, setShowReferralPanel] = useState(false);
+  const [referralMovements, setReferralMovements] = useState([]);
+  const [referralMessage, setReferralMessage] = useState("");
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -452,6 +478,11 @@ function App() {
       return;
     }
 
+    const referralCode =
+      user?.user_metadata?.referral_code ||
+      user?.user_metadata?.ref ||
+      getStoredReferralCode();
+
     const { data: newProfile, error } = await supabase
       .from("profiles")
       .insert({
@@ -461,6 +492,7 @@ function App() {
         role: "user",
         credits: 20,
         consultas: 0,
+        referred_by_code: referralCode || null,
       })
       .select()
       .single();
@@ -539,6 +571,15 @@ function App() {
   }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
 
   useEffect(() => {
+    const code = getReferralCodeFromUrl();
+    if (code) {
+      try {
+        localStorage.setItem("locacheck-referral-code", code);
+      } catch {
+        // Navegadores em modo restrito podem bloquear o localStorage.
+      }
+    }
+
     carregarDadosPublicosLanding();
   }, []);
 
@@ -686,6 +727,62 @@ function App() {
     setShowProfileData(true);
   }
 
+  async function carregarMovimentacoesIndicacao() {
+    if (!session?.user?.id) return;
+
+    setReferralMessage("");
+
+    const { data, error } = await supabase
+      .from("credit_movements")
+      .select("id, amount, movement_type, description, related_user_id, created_at")
+      .eq("user_id", session.user.id)
+      .eq("movement_type", "referral_bonus")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.log("Erro ao carregar indicações:", error);
+      setReferralMovements([]);
+      setReferralMessage(
+        error.message || "Não foi possível carregar os bônus de indicação."
+      );
+      return;
+    }
+
+    setReferralMovements(data || []);
+
+    if (!data || data.length === 0) {
+      setReferralMessage("Nenhum bônus de indicação recebido ainda.");
+    }
+  }
+
+  function abrirPainelIndicacoes() {
+    setShowReferralPanel(true);
+    carregarMovimentacoesIndicacao();
+  }
+
+  async function copiarLinkIndicacao() {
+    const link = buildReferralLink(profile?.referral_code);
+
+    if (!link) {
+      showToast("warning", "Link indisponível", "Atualize a página ou entre novamente para gerar seu link.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(link);
+      showToast("success", "Link copiado", "Agora é só compartilhar com outra locadora.");
+    } catch {
+      showToast("warning", "Copie manualmente", "Seu navegador bloqueou a cópia automática.");
+    }
+  }
+
+  function compartilharLinkIndicacaoWhatsApp() {
+    const link = buildReferralLink(profile?.referral_code);
+    const texto = `Conheça a LocaCheck. Consulte ocorrências antes de alugar e proteja sua frota: ${link}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
+  }
+
   async function salvarMeusDados(e) {
     e.preventDefault();
 
@@ -771,6 +868,8 @@ function App() {
       return;
     }
 
+    const referralCode = getStoredReferralCode();
+
     const { error } = await supabase.auth.signUp({
       email,
       password: senha,
@@ -778,6 +877,7 @@ function App() {
         data: {
           nome,
           whatsapp,
+          referral_code: referralCode || null,
           terms_accepted: true,
           terms_version: "2026-06-14",
           terms_accepted_at: new Date().toISOString(),
@@ -1943,6 +2043,11 @@ function App() {
               <small>Plano ilimitado</small>
               <strong>{unlimitedActive ? "Ativo" : "Inativo"}</strong>
             </div>
+
+            <div className="dashboardCard referralSummaryCard">
+              <small>Bônus por indicação</small>
+              <strong>{profile.referral_bonus_credits || 0}</strong>
+            </div>
           </section>
 
           <section className="dashboardActions">
@@ -1976,6 +2081,13 @@ function App() {
               }}
             >
               Minhas Ocorrências
+            </button>
+
+            <button
+              className="btn outline large actionReferral"
+              onClick={abrirPainelIndicacoes}
+            >
+              Indique e ganhe créditos
             </button>
 
             <button
@@ -3093,6 +3205,11 @@ function App() {
                 Registrar
               </button>
 
+              <button type="button" onClick={abrirPainelIndicacoes}>
+                <span>↗</span>
+                Indicar
+              </button>
+
               <button type="button" onClick={abrirMeusDados}>
                 <span>◎</span>
                 Perfil
@@ -3100,6 +3217,79 @@ function App() {
             </>
           )}
         </nav>
+{showReferralPanel && (
+  <div className="modalOverlay">
+    <div className="recordModal referralModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowReferralPanel(false)}
+      >
+        ×
+      </button>
+
+      <h2>Indique e ganhe créditos</h2>
+
+      <p>
+        Compartilhe seu link. Quando uma nova conta for criada por ele, você recebe
+        <strong> 2 créditos de bônus</strong> automaticamente.
+      </p>
+
+      <div className="referralLinkBox">
+        <small>Seu link de indicação</small>
+        <code>{buildReferralLink(profile?.referral_code) || "Gerando link..."}</code>
+      </div>
+
+      <div className="modalActionsRow">
+        <button className="btn primary" type="button" onClick={copiarLinkIndicacao}>
+          Copiar link
+        </button>
+
+        <button className="btn outline" type="button" onClick={compartilharLinkIndicacaoWhatsApp}>
+          Compartilhar no WhatsApp
+        </button>
+      </div>
+
+      <div className="referralRulesBox">
+        <strong>Como funciona</strong>
+        <p>1 cadastro válido pelo seu link = 2 créditos liberados para você.</p>
+        <p>Os créditos aparecem abaixo em movimentações e também ficam registrados no log administrativo.</p>
+      </div>
+
+      <div className="adminSubHeader">
+        <div>
+          <span>Movimentações</span>
+          <h3>Bônus recebidos por indicação</h3>
+        </div>
+        <button className="btn secondary" type="button" onClick={carregarMovimentacoesIndicacao}>
+          Atualizar
+        </button>
+      </div>
+
+      {referralMessage && <div className="authMessage">{referralMessage}</div>}
+
+      {referralMovements.length > 0 && (
+        <div className="resultsBox">
+          {referralMovements.map((item) => (
+            <div className="resultCard referralMovementCard" key={item.id}>
+              <div className="adminRecordTop">
+                <h3>+{item.amount} créditos</h3>
+                <span className="statusBadge aprovado">Bônus</span>
+              </div>
+              <p>{item.description || "Bônus recebido por indicação."}</p>
+              <p>
+                <strong>Data:</strong>{" "}
+                {item.created_at
+                  ? new Date(item.created_at).toLocaleString("pt-BR")
+                  : "Não informado"}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
 {showBuyCredits && (
   <BuyCreditsModal onClose={() => setShowBuyCredits(false)} />
 )}
@@ -4116,6 +4306,12 @@ function App() {
                 ? "Acesse seu painel para consultar locatários."
                 : "Cadastre-se e receba 20 créditos grátis."}
             </p>
+
+            {authMode === "cadastro" && getStoredReferralCode() && (
+              <div className="authMessage successMessage">
+                Cadastro com indicação ativo. Após sua conta ser criada, quem indicou recebe 2 créditos.
+              </div>
+            )}
 
             <button
               type="button"

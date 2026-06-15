@@ -2791,3 +2791,98 @@ body {
     padding: 18px;
   }
 }
+
+/* ===== V13 - Indicações e bônus por compartilhamento ===== */
+.referralSummaryCard {
+  background: linear-gradient(135deg, rgba(37, 99, 235, .16), rgba(16, 185, 129, .10));
+  border-color: rgba(96, 165, 250, .34);
+}
+
+.actionReferral {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(96, 165, 250, .42) !important;
+  background: linear-gradient(135deg, rgba(37, 99, 235, .18), rgba(15, 23, 42, .96)) !important;
+}
+
+.actionReferral::after {
+  content: "+2 créditos";
+  position: absolute;
+  right: 14px;
+  top: 12px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, .14);
+  color: #34d399;
+  font-size: 11px;
+  font-weight: 900;
+  border: 1px solid rgba(16, 185, 129, .24);
+}
+
+.referralModal .modalActionsRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.referralLinkBox {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, .86);
+  border: 1px solid rgba(96, 165, 250, .25);
+  display: grid;
+  gap: 8px;
+}
+
+.referralLinkBox small {
+  color: #93c5fd;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: 11px;
+}
+
+.referralLinkBox code {
+  color: #e0f2fe;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-all;
+  white-space: normal;
+}
+
+.referralRulesBox {
+  margin: 14px 0 18px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(16, 185, 129, .10);
+  border: 1px solid rgba(16, 185, 129, .24);
+}
+
+.referralRulesBox strong {
+  color: #d1fae5;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.referralRulesBox p {
+  margin: 4px 0;
+  color: #cbd5e1;
+}
+
+.referralMovementCard h3 {
+  color: #34d399;
+}
+
+.successMessage {
+  background: rgba(16, 185, 129, .12) !important;
+  border-color: rgba(16, 185, 129, .28) !important;
+  color: #bbf7d0 !important;
+}
+
+@media (max-width: 640px) {
+  .referralModal .modalActionsRow {
+    grid-template-columns: 1fr;
+  }
+}
