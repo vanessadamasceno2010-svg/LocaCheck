@@ -46,6 +46,217 @@ function formatMoneyFromPayment(payment) {
   return "Não informado";
 }
 
+function formatMoneyCents(cents) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(cents || 0) / 100);
+}
+
+
+function normalizePlanRow(plan) {
+  const priceFromCents = Number(plan?.price_cents || 0);
+  const priceFromReais =
+    plan?.price !== null && plan?.price !== undefined
+      ? Math.round(Number(plan.price || 0) * 100)
+      : 0;
+  const planType = String(plan?.plan_type || "").toLowerCase();
+  const isUnlimited =
+    Boolean(plan?.is_unlimited) ||
+    planType === "unlimited" ||
+    String(plan?.name || "").toLowerCase().includes("ilimit");
+
+  return {
+    ...plan,
+    credits: Number(plan?.credits || 0),
+    price_cents: priceFromCents > 0 ? priceFromCents : priceFromReais,
+    price: plan?.price !== undefined ? plan.price : (priceFromCents > 0 ? priceFromCents / 100 : null),
+    plan_type: plan?.plan_type || (isUnlimited ? "unlimited" : "credits"),
+    is_unlimited: isUnlimited,
+    duration_days: Number(plan?.duration_days || (isUnlimited ? 30 : 0)),
+    active: plan?.active !== false,
+  };
+}
+
+function sortPlansByPrice(a, b) {
+  const priceA = Number(a?.price_cents || 0);
+  const priceB = Number(b?.price_cents || 0);
+
+  if (priceA !== priceB) return priceA - priceB;
+
+  const creditsA = Number(a?.credits || 0);
+  const creditsB = Number(b?.credits || 0);
+
+  if (creditsA !== creditsB) return creditsA - creditsB;
+
+  return String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR");
+}
+
+function getStoredReferralCode() {
+  try {
+    return localStorage.getItem("locacheck-referral-code") || "";
+  } catch {
+    return "";
+  }
+}
+
+function getReferralCodeFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return String(params.get("ref") || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function buildReferralLink(code) {
+  if (!code) return "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/?ref=${encodeURIComponent(code)}`;
+}
+
+function removeStoredReferralCode() {
+  try {
+    localStorage.removeItem("locacheck-referral-code");
+  } catch {
+    // Ignora bloqueio de localStorage em navegador restrito.
+  }
+}
+
+
+function onlyDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function isValidCpf(value) {
+  const cpf = onlyDigits(value);
+
+  if (cpf.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i += 1) {
+    sum += Number(cpf[i]) * (10 - i);
+  }
+  let firstDigit = (sum * 10) % 11;
+  if (firstDigit === 10) firstDigit = 0;
+  if (firstDigit !== Number(cpf[9])) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i += 1) {
+    sum += Number(cpf[i]) * (11 - i);
+  }
+  let secondDigit = (sum * 10) % 11;
+  if (secondDigit === 10) secondDigit = 0;
+
+  return secondDigit === Number(cpf[10]);
+}
+
+function formatCpfInput(value) {
+  const digits = onlyDigits(value).slice(0, 11);
+  return digits
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+}
+
+function formatWhatsappInput(value) {
+  const digits = onlyDigits(value).slice(0, 11);
+
+  if (digits.length <= 10) {
+    return digits
+      .replace(/(\d{2})(\d)/, "($1) $2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  }
+
+  return digits
+    .replace(/(\d{2})(\d)/, "($1) $2")
+    .replace(/(\d{5})(\d)/, "$1-$2");
+}
+
+function looksLikeCpfSearch(value) {
+  const text = String(value || "").trim();
+  const digits = onlyDigits(text);
+
+  if (digits.length === 0) return false;
+  if (/^\d+$/.test(text)) return true;
+  return digits.length !== text.length || digits.length >= 8;
+}
+
+async function solicitarBonusIndicacao(referralCode, newUserId) {
+  const code = String(referralCode || "").trim();
+
+  if (!code || !newUserId) {
+    return { success: false, message: "Indicação incompleta." };
+  }
+
+  let apiPayload = null;
+
+  try {
+    const response = await fetch("/api/referrals/claim", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        referralCode: code,
+        newUserId,
+      }),
+    });
+
+    apiPayload = await response.json().catch(() => ({}));
+
+    if (response.ok && (apiPayload?.success || apiPayload?.already_applied)) {
+      return apiPayload;
+    }
+
+    console.log("Indicação não aplicada pela rota segura. Tentando fallback RPC:", apiPayload);
+  } catch (error) {
+    console.log("Rota segura de indicação indisponível. Tentando fallback RPC:", error);
+  }
+
+  try {
+    const { data, error } = await supabase.rpc("claim_referral_bonus", {
+      p_referral_code: code,
+    });
+
+    if (error) {
+      console.log("Fallback RPC de indicação não aplicado:", error);
+      return {
+        success: false,
+        message: apiPayload?.message || error.message || "Não foi possível aplicar a indicação.",
+      };
+    }
+
+    return data || { success: false, message: "Indicação não aplicada." };
+  } catch (error) {
+    console.log("Erro inesperado no fallback de indicação:", error);
+    return {
+      success: false,
+      message: apiPayload?.message || "Falha ao aplicar indicação.",
+    };
+  }
+}
+
+function getPaymentCredits(payment) {
+  return Number(payment?.credits || payment?.plan_credits || payment?.plan?.credits || 0);
+}
+
+function getPaymentPlanName(payment) {
+  return payment?.plan_name || payment?.plan?.name || payment?.plan_type || "Pagamento";
+}
+
+function getPaymentUserName(payment) {
+  return (
+    payment?.user_name ||
+    payment?.profile_nome ||
+    payment?.profiles?.nome ||
+    payment?.nome ||
+    payment?.user_id ||
+    "Usuário não identificado"
+  );
+}
+
 function traduzirStatusPagamento(status) {
   const normalized = String(status || "").toLowerCase();
 
@@ -121,6 +332,141 @@ function diasAte(dataIso) {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
+function isImageUrl(url) {
+  const cleanUrl = String(url || "").split("?")[0].toLowerCase();
+  return /\.(png|jpg|jpeg|gif|webp|bmp|svg|avif)$/.test(cleanUrl);
+}
+
+function getDocumentoLabel(url) {
+  const cleanUrl = String(url || "").split("?")[0].toLowerCase();
+
+  if (cleanUrl.endsWith(".pdf")) return "Abrir PDF";
+  if (isImageUrl(cleanUrl)) return "Abrir imagem";
+
+  return "Abrir documento";
+}
+
+function formatLandingNumber(value) {
+  const number = Number(value || 0);
+
+  if (number >= 1000000) {
+    return `${(number / 1000000).toFixed(number >= 10000000 ? 0 : 1).replace(".", ",")} mi`;
+  }
+
+  if (number >= 1000) {
+    return new Intl.NumberFormat("pt-BR").format(number);
+  }
+
+  return String(number);
+}
+
+function getPlanDescription(plan) {
+  if (plan?.is_unlimited) {
+    return `${plan.duration_days || 30} dias de consultas ilimitadas.`;
+  }
+
+  const credits = Number(plan?.credits || 0);
+  return credits === 1 ? "1 consulta disponível." : `${credits} consultas disponíveis.`;
+}
+
+
+function LegalTermsContent() {
+  return (
+    <div className="resultsBox legalTermsBox">
+      <div className="legalIntroCard">
+        <strong>Versão vigente: 14/06/2026</strong>
+        <p>
+          Este resumo organiza os principais pontos de uso da LocaCheck. Ele não substitui orientação jurídica personalizada, mas deixa claro como a plataforma deve ser usada com responsabilidade, boa-fé e proteção de dados.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>1. Finalidade da LocaCheck</h3>
+        <p>
+          A LocaCheck é uma ferramenta de apoio para locadoras, frotistas e empresas que trabalham com locação de veículos. A plataforma permite registrar, consultar e acompanhar ocorrências relacionadas a locações, como inadimplência, multas não pagas, avarias, não devolução do veículo, quebra de contrato, uso indevido e situações semelhantes.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>2. Uso permitido</h3>
+        <p>
+          O usuário deve utilizar a plataforma apenas para finalidade legítima ligada à análise de risco, prevenção de prejuízos, segurança da frota, gestão contratual e registro de ocorrências reais. É proibido usar a LocaCheck para perseguição, exposição indevida, constrangimento, discriminação ou qualquer finalidade diferente da atividade de locação.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>3. Responsabilidade de quem cadastra ocorrência</h3>
+        <p>
+          Quem registra uma ocorrência declara que as informações são verdadeiras, necessárias, proporcionais e relacionadas a uma locação real. O usuário é responsável pelos dados, documentos, imagens, descrições e comprovantes enviados. É proibido cadastrar informação falsa, ofensiva, sem prova, exagerada ou sem relação com contrato de locação.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>4. Análise e aprovação pelo administrador</h3>
+        <p>
+          Ocorrências enviadas por usuários comuns entram para análise. O administrador pode aprovar, reprovar, editar ou remover registros quando identificar dados incompletos, indevidos, sem comprovação ou incompatíveis com a finalidade da plataforma. Somente ocorrências aprovadas aparecem nas consultas.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>5. Consultas, créditos e histórico</h3>
+        <p>
+          As consultas podem consumir créditos, salvo nos casos de plano ilimitado ativo. O histórico de consultas pode ser registrado para auditoria, prevenção de uso indevido, segurança da plataforma e solução de contestação. O usuário entende que os resultados são apoio à decisão e não substituem análise contratual própria.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>6. Dados pessoais e LGPD</h3>
+        <p>
+          A plataforma trata dados pessoais como nome, CPF, cidade, WhatsApp, histórico de consulta, informações de ocorrência e comprovantes enviados. O tratamento deve ocorrer com base em finalidade legítima, necessidade, segurança, prevenção a fraudes, proteção de crédito, exercício regular de direitos e apoio à atividade de locação, sempre respeitando a legislação aplicável.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>7. CPF e dados sensíveis da ocorrência</h3>
+        <p>
+          O CPF completo pode ser usado internamente para cadastro, validação e busca, mas a exibição ao usuário comum deve ser limitada ou mascarada sempre que possível. O administrador pode ter acesso ampliado para análise, correção, auditoria e gestão da base.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>8. Documentos e comprovantes públicos da consulta</h3>
+        <p>
+          Quando uma ocorrência aprovada possuir imagem, PDF ou comprovante vinculado, esse documento poderá ser exibido ao usuário autenticado que realizar a consulta. Como o bucket de documentos está configurado como público, qualquer pessoa que possua o link direto do arquivo poderá acessá-lo. Por isso, o usuário deve enviar apenas documentos necessários e relacionados à ocorrência.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>9. Pagamentos e planos</h3>
+        <p>
+          Os pagamentos são processados por plataforma integrada de pagamento. A liberação de créditos ou plano ilimitado depende da confirmação do pagamento. A LocaCheck pode manter registros de pagamento, status, data, plano adquirido e logs de processamento para conferência financeira e auditoria.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>10. Solicitação de correção, revisão ou remoção</h3>
+        <p>
+          Caso uma pessoa ou empresa identifique informação incorreta, desatualizada, indevida ou sem relação com locação, poderá solicitar análise pelo suporte. O administrador poderá revisar documentos, corrigir dados, reprovar ocorrência, remover informações ou solicitar comprovação adicional ao usuário responsável pelo cadastro.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>11. Segurança da conta</h3>
+        <p>
+          Cada usuário é responsável por manter sigilo de seu acesso. É proibido compartilhar conta com terceiros, tentar acessar área administrativa, manipular créditos, alterar status de pagamentos, burlar consultas ou explorar falhas do sistema.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>12. Aceite</h3>
+        <p>
+          Ao criar conta, registrar ocorrência, consultar locatário, comprar créditos ou usar qualquer recurso da LocaCheck, o usuário declara estar ciente e de acordo com estes Termos de Uso e Política de Privacidade.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -135,11 +481,22 @@ function App() {
   const [showMyRecords, setShowMyRecords] = useState(false);
   const [showProfileData, setShowProfileData] = useState(false);
   const [showTermsPrivacy, setShowTermsPrivacy] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSystemLogs, setShowSystemLogs] = useState(false);
   const [toast, setToast] = useState(null);
   const [notificationReadIds, setNotificationReadIds] = useState([]);
   const [showAllRecentPayments, setShowAllRecentPayments] = useState(false);
+  const [adminActiveSection, setAdminActiveSection] = useState("financeiro");
+  const [adminPlans, setAdminPlans] = useState([]);
+  const [adminPlansMessage, setAdminPlansMessage] = useState("");
+  const [loadingAdminPlans, setLoadingAdminPlans] = useState(false);
+  const [savingAdminPlanId, setSavingAdminPlanId] = useState("");
+  const [publicPlans, setPublicPlans] = useState([]);
+  const [landingMessage, setLandingMessage] = useState("");
+  const [showReferralPanel, setShowReferralPanel] = useState(false);
+  const [referralMovements, setReferralMovements] = useState([]);
+  const [referralMessage, setReferralMessage] = useState("");
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -233,6 +590,42 @@ function App() {
     const { data: userData } = await supabase.auth.getUser();
     const user = userData?.user;
 
+    const referralCode =
+      user?.user_metadata?.referral_code ||
+      user?.user_metadata?.ref ||
+      getStoredReferralCode();
+
+    async function aplicarIndicacaoPendente(profileData) {
+      if (!profileData) return profileData;
+
+      if (profileData.referred_by) {
+        removeStoredReferralCode();
+        return profileData;
+      }
+
+      if (!referralCode) return profileData;
+
+      try {
+        const claimData = await solicitarBonusIndicacao(referralCode, userId);
+
+        if (claimData?.success || claimData?.already_applied) {
+          removeStoredReferralCode();
+
+          const { data: refreshedProfile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .maybeSingle();
+
+          return refreshedProfile || profileData;
+        }
+      } catch (error) {
+        console.log("Erro inesperado ao aplicar indicação:", error);
+      }
+
+      return profileData;
+    }
+
     const { data } = await supabase
       .from("profiles")
       .select("*")
@@ -240,7 +633,8 @@ function App() {
       .maybeSingle();
 
     if (data) {
-      setProfile(data);
+      const updatedProfile = await aplicarIndicacaoPendente(data);
+      setProfile(updatedProfile);
       return;
     }
 
@@ -253,12 +647,14 @@ function App() {
         role: "user",
         credits: 20,
         consultas: 0,
+        referred_by_code: referralCode || null,
       })
       .select()
       .single();
 
     if (!error) {
-      setProfile(newProfile);
+      const updatedProfile = await aplicarIndicacaoPendente(newProfile);
+      setProfile(updatedProfile);
     } else {
       console.log("Erro ao criar perfil:", error);
     }
@@ -295,6 +691,7 @@ function App() {
       carregarDashboardFinanceiro();
       carregarOcorrenciasAdmin();
       carregarUsuariosAdmin();
+      carregarPlanosAdmin();
       carregarMensagensSuporteAdmin();
       carregarLogsSistema();
     }
@@ -329,6 +726,19 @@ function App() {
     }
   }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
 
+  useEffect(() => {
+    const code = getReferralCodeFromUrl();
+    if (code) {
+      try {
+        localStorage.setItem("locacheck-referral-code", code);
+      } catch {
+        // Navegadores em modo restrito podem bloquear o localStorage.
+      }
+    }
+
+    carregarDadosPublicosLanding();
+  }, []);
+
 
   function showToast(type, title, messageText) {
     setToast({ type, title, message: messageText });
@@ -343,6 +753,30 @@ function App() {
 
     setMessage("Entre ou cadastre-se para comprar créditos via PIX.");
     setAuthMode("login");
+  }
+
+  async function carregarDadosPublicosLanding() {
+    setLandingMessage("");
+
+    try {
+      const { data: plansData, error: plansError } = await supabase
+        .from("plans")
+        .select("*")
+        .neq("active", false)
+        .order("price_cents", { ascending: true })
+        .order("credits", { ascending: true })
+        .order("name", { ascending: true });
+
+      if (!plansError) {
+        setPublicPlans((plansData || []).map(normalizePlanRow).sort(sortPlansByPrice));
+      } else {
+        console.log("Planos públicos indisponíveis:", plansError);
+        setLandingMessage("Os planos serão carregados após a configuração pública no Supabase.");
+      }
+    } catch (error) {
+      console.log("Erro ao carregar dados públicos da landing:", error);
+      setLandingMessage("Alguns dados públicos não puderam ser carregados agora.");
+    }
   }
 
   async function verificarPagamentosAprovadosRecentes() {
@@ -449,6 +883,62 @@ function App() {
     setShowProfileData(true);
   }
 
+  async function carregarMovimentacoesIndicacao() {
+    if (!session?.user?.id) return;
+
+    setReferralMessage("");
+
+    const { data, error } = await supabase
+      .from("credit_movements")
+      .select("id, amount, movement_type, description, related_user_id, created_at")
+      .eq("user_id", session.user.id)
+      .eq("movement_type", "referral_bonus")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.log("Erro ao carregar indicações:", error);
+      setReferralMovements([]);
+      setReferralMessage(
+        error.message || "Não foi possível carregar os bônus de indicação."
+      );
+      return;
+    }
+
+    setReferralMovements(data || []);
+
+    if (!data || data.length === 0) {
+      setReferralMessage("Nenhum bônus de indicação recebido ainda.");
+    }
+  }
+
+  function abrirPainelIndicacoes() {
+    setShowReferralPanel(true);
+    carregarMovimentacoesIndicacao();
+  }
+
+  async function copiarLinkIndicacao() {
+    const link = buildReferralLink(profile?.referral_code);
+
+    if (!link) {
+      showToast("warning", "Link indisponível", "Atualize a página ou entre novamente para gerar seu link.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(link);
+      showToast("success", "Link copiado", "Agora é só compartilhar com outra locadora.");
+    } catch {
+      showToast("warning", "Copie manualmente", "Seu navegador bloqueou a cópia automática.");
+    }
+  }
+
+  function compartilharLinkIndicacaoWhatsApp() {
+    const link = buildReferralLink(profile?.referral_code);
+    const texto = `Conheça a LocaCheck. Consulte ocorrências antes de alugar e proteja sua frota: ${link}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
+  }
+
   async function salvarMeusDados(e) {
     e.preventDefault();
 
@@ -528,13 +1018,25 @@ function App() {
     setLoading(true);
     setMessage("");
 
-    const { error } = await supabase.auth.signUp({
+    if (!termsAccepted) {
+      setMessage("Para criar sua conta, aceite os Termos de Uso e a Política de Privacidade.");
+      setLoading(false);
+      return;
+    }
+
+    const referralCode = getStoredReferralCode();
+
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email,
       password: senha,
       options: {
         data: {
           nome,
           whatsapp,
+          referral_code: referralCode || null,
+          terms_accepted: true,
+          terms_version: "2026-06-14",
+          terms_accepted_at: new Date().toISOString(),
         },
       },
     });
@@ -542,6 +1044,14 @@ function App() {
     if (error) {
       setMessage(error.message);
     } else {
+      if (referralCode && signUpData?.user?.id) {
+        const referralResult = await solicitarBonusIndicacao(referralCode, signUpData.user.id);
+
+        if (referralResult?.success || referralResult?.already_applied) {
+          removeStoredReferralCode();
+        }
+      }
+
       setMessage("Cadastro realizado com sucesso. Você já pode entrar.");
       showToast("success", "Cadastro realizado", "Sua conta foi criada com 20 créditos iniciais.");
       setAuthMode("login");
@@ -549,6 +1059,7 @@ function App() {
       setWhatsapp("");
       setEmail("");
       setSenha("");
+      setTermsAccepted(false);
     }
 
     setLoading(false);
@@ -607,11 +1118,42 @@ function App() {
     setLoading(true);
     setRecordMessage("");
 
-    const cpfLimpo = recordCpf.replace(/\D/g, "");
+    const cpfLimpo = onlyDigits(recordCpf);
     const cpf4 = cpfLimpo.slice(-4);
+    const whatsappLimpo = onlyDigits(recordWhatsapp);
+
+    if (!recordNome.trim() || recordNome.trim().length < 3) {
+      setRecordMessage("Informe o nome completo do locatário.");
+      setLoading(false);
+      return;
+    }
+
+    if (!isValidCpf(cpfLimpo)) {
+      setRecordMessage("Informe um CPF válido com 11 números.");
+      setLoading(false);
+      return;
+    }
+
+    if (whatsappLimpo.length < 10) {
+      setRecordMessage("Informe um WhatsApp válido com DDD.");
+      setLoading(false);
+      return;
+    }
+
+    if (!recordCidade.trim() || recordCidade.trim().length < 3) {
+      setRecordMessage("Informe a cidade/UF da ocorrência.");
+      setLoading(false);
+      return;
+    }
 
     if (recordTipos.length === 0) {
       setRecordMessage("Selecione pelo menos um tipo de ocorrência.");
+      setLoading(false);
+      return;
+    }
+
+    if (!recordDescricao.trim() || recordDescricao.trim().length < 20) {
+      setRecordMessage("Descreva a ocorrência com pelo menos 20 caracteres.");
       setLoading(false);
       return;
     }
@@ -624,7 +1166,7 @@ function App() {
         cpf_full: cpfLimpo,
         cpf4,
         cidade: recordCidade,
-        whatsapp_locatario: recordWhatsapp,
+        whatsapp_locatario: whatsappLimpo,
         tipos: recordTipos,
         descricao: recordDescricao,
         imagem_url: imagemUrl,
@@ -657,8 +1199,15 @@ function App() {
 
     if (loading) return;
 
-    if (!searchText.trim()) {
+    const searchClean = searchText.trim();
+
+    if (!searchClean) {
       setSearchMessage("Digite um nome ou CPF para consultar.");
+      return;
+    }
+
+    if (looksLikeCpfSearch(searchClean) && !isValidCpf(searchClean)) {
+      setSearchMessage("Para consultar por CPF, informe um CPF completo e válido.");
       return;
     }
 
@@ -666,8 +1215,24 @@ function App() {
     setSearchMessage("");
     setSearchResults([]);
 
+    try {
+      const { data: limitData, error: limitError } = await supabase.rpc("can_start_consultation", {
+        p_search: searchClean,
+      });
+
+      if (limitError) {
+        console.log("Validação anti-abuso indisponível:", limitError);
+      } else if (limitData && limitData.success === false) {
+        setSearchMessage(limitData.message || "Consulta bloqueada temporariamente por segurança.");
+        setLoading(false);
+        return;
+      }
+    } catch (error) {
+      console.log("Erro ao validar limite de consulta:", error);
+    }
+
     const { data, error } = await supabase.rpc("secure_consult_renter", {
-      p_search: searchText,
+      p_search: searchClean,
     });
 
     if (error) {
@@ -880,6 +1445,179 @@ function App() {
     }
 
     setLoading(false);
+  }
+
+  async function carregarPlanosAdmin() {
+    if (profile?.role !== "admin") return;
+
+    setLoadingAdminPlans(true);
+    setAdminPlansMessage("");
+
+    const { data, error } = await supabase
+      .from("plans")
+      .select("*")
+      .order("price_cents", { ascending: true })
+      .order("credits", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (error) {
+      console.log("Erro ao carregar planos:", error);
+      setAdminPlans([]);
+      setAdminPlansMessage(
+        error.message || "Erro ao carregar planos. Verifique a tabela plans e as permissões RLS."
+      );
+      setLoadingAdminPlans(false);
+      return;
+    }
+
+    setAdminPlans((data || []).map(normalizePlanRow).sort(sortPlansByPrice));
+
+    if (!data || data.length === 0) {
+      setAdminPlansMessage("Nenhum plano encontrado. Crie um plano para aparecer na tela de compra.");
+    }
+
+    setLoadingAdminPlans(false);
+  }
+
+  function atualizarPlanoLocal(planId, campo, valor) {
+    setAdminPlans((planos) =>
+      planos.map((plano) =>
+        plano.id === planId
+          ? {
+              ...plano,
+              [campo]: valor,
+            }
+          : plano
+      )
+    );
+  }
+
+  async function salvarPlanoAdmin(plano) {
+    if (profile?.role !== "admin" || !plano?.id) return;
+
+    if (!String(plano.name || "").trim()) {
+      setAdminPlansMessage("Informe o nome do plano antes de salvar.");
+      return;
+    }
+
+    const payload = {
+      name: String(plano.name || "").trim(),
+      credits: Math.max(0, Number(plano.credits || 0)),
+      price_cents: Math.max(0, Number(plano.price_cents || 0)),
+      price: Math.max(0, Number(plano.price_cents || 0)) / 100,
+      plan_type: Boolean(plano.is_unlimited) ? "unlimited" : "credits",
+      is_unlimited: Boolean(plano.is_unlimited),
+      duration_days: Math.max(0, Number(plano.duration_days || 0)),
+      active: Boolean(plano.active),
+    };
+
+    setSavingAdminPlanId(plano.id);
+    setAdminPlansMessage("");
+
+    const { error } = await supabase.from("plans").update(payload).eq("id", plano.id);
+
+    if (error) {
+      console.log("Erro ao salvar plano:", error);
+      setAdminPlansMessage(error.message || "Erro ao salvar plano. Verifique as permissões RLS da tabela plans.");
+      setSavingAdminPlanId("");
+      return;
+    }
+
+    setAdminPlansMessage("Plano salvo com sucesso.");
+    showToast("success", "Plano atualizado", "As alterações do plano foram salvas.");
+    await registrarLogAdmin("plano_editado", { plan_id: plano.id, name: payload.name, active: payload.active });
+    await carregarPlanosAdmin();
+    setSavingAdminPlanId("");
+  }
+
+  async function alternarStatusPlano(plano) {
+    if (profile?.role !== "admin" || !plano?.id) return;
+
+    setSavingAdminPlanId(plano.id);
+    setAdminPlansMessage("");
+
+    const novoStatus = !Boolean(plano.active);
+    const { error } = await supabase
+      .from("plans")
+      .update({ active: novoStatus })
+      .eq("id", plano.id);
+
+    if (error) {
+      console.log("Erro ao alterar status do plano:", error);
+      setAdminPlansMessage(error.message || "Erro ao ativar/desativar plano.");
+      setSavingAdminPlanId("");
+      return;
+    }
+
+    showToast(
+      "success",
+      novoStatus ? "Plano ativado" : "Plano desativado",
+      novoStatus ? "O plano voltou a aparecer na compra." : "O plano foi ocultado da tela de compra."
+    );
+    await registrarLogAdmin("plano_status_alterado", { plan_id: plano.id, active: novoStatus });
+    await carregarPlanosAdmin();
+    setSavingAdminPlanId("");
+  }
+
+  async function excluirPlanoAdmin(plano) {
+    if (profile?.role !== "admin" || !plano?.id) return;
+
+    const confirmar = window.confirm(
+      `Tem certeza que deseja excluir o plano "${plano.name || "sem nome"}"? Essa ação remove o plano da tabela. Se ele já foi usado em pagamentos antigos, prefira desativar para manter o histórico mais organizado.`
+    );
+
+    if (!confirmar) return;
+
+    setSavingAdminPlanId(plano.id);
+    setAdminPlansMessage("");
+
+    const { error } = await supabase.from("plans").delete().eq("id", plano.id);
+
+    if (error) {
+      console.log("Erro ao excluir plano:", error);
+      setAdminPlansMessage(
+        error.message ||
+          "Erro ao excluir plano. Se esse plano já estiver ligado a pagamentos, desative em vez de excluir."
+      );
+      showToast("error", "Erro ao excluir", "Não foi possível excluir este plano.");
+      setSavingAdminPlanId("");
+      return;
+    }
+
+    showToast("success", "Plano excluído", "O plano foi removido da lista.");
+    await registrarLogAdmin("plano_excluido", { plan_id: plano.id, name: plano.name || "" });
+    await carregarPlanosAdmin();
+    setSavingAdminPlanId("");
+  }
+
+  async function criarPlanoAdmin() {
+    if (profile?.role !== "admin") return;
+
+    setLoadingAdminPlans(true);
+    setAdminPlansMessage("");
+
+    const { error } = await supabase.from("plans").insert({
+      name: "Novo plano",
+      credits: 10,
+      price_cents: 1990,
+      price: 19.9,
+      plan_type: "credits",
+      is_unlimited: false,
+      duration_days: 0,
+      active: false,
+    });
+
+    if (error) {
+      console.log("Erro ao criar plano:", error);
+      setAdminPlansMessage(error.message || "Erro ao criar plano. Verifique as permissões da tabela plans.");
+      setLoadingAdminPlans(false);
+      return;
+    }
+
+    showToast("success", "Plano criado", "Um novo plano inativo foi criado para edição.");
+    await registrarLogAdmin("plano_criado", { name: "Novo plano" });
+    await carregarPlanosAdmin();
+    setLoadingAdminPlans(false);
   }
 
   async function carregarUsuariosAdmin() {
@@ -1164,8 +1902,9 @@ function App() {
     const termo = adminRecordSearch.trim().toLowerCase();
 
     return adminRecords.filter((item) => {
+      const statusAtual = String(item.status || "pendente").toLowerCase();
       const statusOk =
-        adminRecordFilter === "todos" ? true : item.status === adminRecordFilter;
+        adminRecordFilter === "todos" ? true : statusAtual === adminRecordFilter;
 
       if (!statusOk) return false;
       if (!termo) return true;
@@ -1174,6 +1913,11 @@ function App() {
         item.nome,
         item.cpf_full,
         item.cpf4,
+        item.cidade,
+        item.status,
+        item.whatsapp_locatario,
+        item.descricao,
+        Array.isArray(item.tipos) ? item.tipos.join(" ") : item.tipos,
       ]
         .filter(Boolean)
         .join(" ")
@@ -1436,6 +2180,37 @@ function App() {
     const unlimitedActive =
       profile.unlimited_until && new Date(profile.unlimited_until) > new Date();
 
+    const normalizarStatus = (status) => String(status || "pendente").toLowerCase();
+    const filteredAdminRecords = filtrarOcorrenciasAdmin();
+    const adminRecordStats = {
+      total: adminRecords.length,
+      pendentes: adminRecords.filter((item) => normalizarStatus(item.status) === "pendente").length,
+      aprovadas: adminRecords.filter((item) => normalizarStatus(item.status) === "aprovado").length,
+      reprovadas: adminRecords.filter((item) => normalizarStatus(item.status) === "reprovado").length,
+      comComprovante: adminRecords.filter((item) => Boolean(item.imagem_url)).length,
+    };
+    const adminUserStats = {
+      total: adminUsers.length,
+      comuns: adminUsers.filter((user) => String(user.role || "user").toLowerCase() !== "admin").length,
+      admins: adminUsers.filter((user) => String(user.role || "").toLowerCase() === "admin").length,
+      ilimitados: adminUsers.filter((user) => user.unlimited_until && new Date(user.unlimited_until) > new Date()).length,
+      creditos: adminUsers.reduce((total, user) => total + Number(user.credits || 0), 0),
+      consultas: adminUsers.reduce((total, user) => total + Number(user.consultas || 0), 0),
+    };
+    const adminPlanStats = {
+      total: adminPlans.length,
+      ativos: adminPlans.filter((plan) => plan.active === true).length,
+      inativos: adminPlans.filter((plan) => plan.active !== true).length,
+      ilimitados: adminPlans.filter((plan) => plan.is_unlimited === true).length,
+      creditos: adminPlans.reduce((total, plan) => total + Number(plan.credits || 0), 0),
+      ticketMedio: adminPlans.length
+        ? Math.round(
+            adminPlans.reduce((total, plan) => total + Number(plan.price_cents || 0), 0) /
+              adminPlans.length
+          )
+        : 0,
+    };
+
     return (
       <div className="page">
         {toast && (
@@ -1463,12 +2238,11 @@ function App() {
         </header>
 
         <main className="dashboard">
-          <section className="dashboardHero">
+          <section className="dashboardHero compactHero">
             <span>Painel LocaCheck</span>
-            <h1>Bem-vindo, {profile.nome || "Usuário"}</h1>
+            <h1>Olá, {profile.nome || "Usuário"}</h1>
             <p>
-              Consulte locatários, registre ocorrências e acompanhe seus créditos
-              em um só lugar.
+              Consulte, registre e acompanhe tudo em um painel rápido e otimizado para celular.
             </p>
           </section>
 
@@ -1487,11 +2261,16 @@ function App() {
               <small>Plano ilimitado</small>
               <strong>{unlimitedActive ? "Ativo" : "Inativo"}</strong>
             </div>
+
+            <div className="dashboardCard referralSummaryCard">
+              <small>Bônus por indicação</small>
+              <strong>{profile.referral_bonus_credits || 0}</strong>
+            </div>
           </section>
 
           <section className="dashboardActions">
             <button
-              className="btn primary large"
+              className="btn primary large actionConsult"
               onClick={() => {
                 setSearchMessage("");
                 setSearchResults([]);
@@ -1503,7 +2282,7 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionRecord"
               onClick={() => {
                 setRecordMessage("");
                 setShowRecordForm(true);
@@ -1513,7 +2292,7 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionRecords"
               onClick={() => {
                 setShowMyRecords(true);
                 carregarMinhasOcorrencias();
@@ -1523,7 +2302,14 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionReferral"
+              onClick={abrirPainelIndicacoes}
+            >
+              Indique e ganhe créditos
+            </button>
+
+            <button
+              className="btn outline large actionCredits"
               onClick={() => {
                 setShowBuyCredits(true);
               }}
@@ -1532,7 +2318,7 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionHistory"
               onClick={() => {
                 setShowConsultationHistory(true);
                 carregarHistoricoConsultas();
@@ -1542,7 +2328,7 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionPayments"
               onClick={() => {
                 setShowPaymentsHistory(true);
                 carregarHistoricoPagamentos();
@@ -1552,14 +2338,14 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionProfile"
               onClick={abrirMeusDados}
             >
               Meus Dados
             </button>
 
             <button
-              className="btn outline large notificationButton"
+              className="btn outline large notificationButton actionNotifications"
               onClick={() => {
                 setShowNotifications(true);
                 carregarNotificacoes();
@@ -1572,14 +2358,14 @@ function App() {
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionTerms"
               onClick={() => setShowTermsPrivacy(true)}
             >
               Termos e Privacidade
             </button>
 
             <button
-              className="btn outline large"
+              className="btn outline large actionSupport"
               onClick={() => setShowSupport(true)}
             >
               Suporte
@@ -1587,7 +2373,74 @@ function App() {
           </section>
 
           {profile.role === "admin" && (
-            <section className="adminPanel">
+            <section className="adminCategoryMenu" aria-label="Menus separados do painel administrativo">
+              <button
+                type="button"
+                className={adminActiveSection === "financeiro" ? "active financeShortcut" : "financeShortcut"}
+                onClick={() => setAdminActiveSection("financeiro")}
+              >
+                <span>Financeiro</span>
+                <strong>Receita, PIX e pagamentos</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "planos" ? "active plansShortcut" : "plansShortcut"}
+                onClick={() => setAdminActiveSection("planos")}
+              >
+                <span>Planos</span>
+                <strong>Preços, créditos e ativação</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "usuarios" ? "active usersShortcut" : "usersShortcut"}
+                onClick={() => setAdminActiveSection("usuarios")}
+              >
+                <span>Usuários</span>
+                <strong>Créditos, planos e contas</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "ocorrencias" ? "active recordsShortcut" : "recordsShortcut"}
+                onClick={() => setAdminActiveSection("ocorrencias")}
+              >
+                <span>Ocorrências</span>
+                <strong>Aprovação, análise e registros</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "relatorios" ? "active reportsShortcut" : "reportsShortcut"}
+                onClick={() => setAdminActiveSection("relatorios")}
+              >
+                <span>Relatórios</span>
+                <strong>Exportações em CSV</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "suporte" ? "active supportShortcut" : "supportShortcut"}
+                onClick={() => setAdminActiveSection("suporte")}
+              >
+                <span>Suporte</span>
+                <strong>Mensagens recebidas</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "auditoria" ? "active auditShortcut" : "auditShortcut"}
+                onClick={() => setAdminActiveSection("auditoria")}
+              >
+                <span>Auditoria</span>
+                <strong>Logs do sistema</strong>
+              </button>
+            </section>
+          )}
+
+          {profile.role === "admin" && adminActiveSection === "financeiro" && (
+            <section className="adminPanel adminArea financialArea" id="admin-financeiro">
               <div className="adminHeader">
                 <div>
                   <span>Financeiro</span>
@@ -1672,13 +2525,16 @@ function App() {
                     )}
 
                     {(showAllRecentPayments ? (adminFinancialData.recent_payments || []) : (adminFinancialData.recent_payments || []).slice(0, 5)).map((payment) => {
-                      const amountCents = Number(payment.amount_cents || 0);
+                      const amountCents = Number(payment.amount_cents || (Number(payment.amount || 0) >= 100 ? payment.amount : Number(payment.amount || 0) * 100) || 0);
                       const statusLabel = traduzirStatusPagamento(payment.status);
+                      const paymentCredits = getPaymentCredits(payment);
+                      const paymentPlanName = getPaymentPlanName(payment);
+                      const paymentUserName = getPaymentUserName(payment);
 
                       return (
                         <div className="adminRecord" key={payment.id}>
                           <div className="adminRecordTop">
-                            <h3>{payment.plan_type || "Pagamento"}</h3>
+                            <h3>{paymentPlanName}</h3>
                             <span
                               className={`statusBadge ${
                                 payment.status === "paid"
@@ -1693,6 +2549,10 @@ function App() {
                           </div>
 
                           <p>
+                            <strong>Usuário:</strong> {paymentUserName}
+                          </p>
+
+                          <p>
                             <strong>Valor:</strong>{" "}
                             {new Intl.NumberFormat("pt-BR", {
                               style: "currency",
@@ -1701,7 +2561,7 @@ function App() {
                           </p>
 
                           <p>
-                            <strong>Créditos:</strong> {payment.credits || 0}
+                            <strong>Créditos:</strong> {paymentCredits}
                           </p>
 
                           <p>
@@ -1736,8 +2596,218 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
-            <section className="adminPanel">
+          {profile.role === "admin" && adminActiveSection === "planos" && (
+            <section className="adminPanel adminArea plansArea" id="admin-planos">
+              <div className="adminHeader">
+                <div>
+                  <span>Planos</span>
+                  <h2>Gerenciar Planos</h2>
+                  <p>Edite preços, quantidade de créditos, plano ilimitado e quais planos aparecem para compra.</p>
+                </div>
+
+                <div className="adminButtons">
+                  <button
+                    className="btn secondary"
+                    onClick={carregarPlanosAdmin}
+                    disabled={loadingAdminPlans}
+                    type="button"
+                  >
+                    {loadingAdminPlans ? "Atualizando..." : "Atualizar planos"}
+                  </button>
+
+                  <button
+                    className="btn primary"
+                    onClick={criarPlanoAdmin}
+                    disabled={loadingAdminPlans}
+                    type="button"
+                  >
+                    Criar plano
+                  </button>
+                </div>
+              </div>
+
+              <section className="adminMiniDashboard plansMiniDashboard" aria-label="Resumo dos planos cadastrados">
+                <div className="adminStatCard featured">
+                  <small>Total de planos</small>
+                  <strong>{adminPlanStats.total}</strong>
+                  <span>Cadastrados na tabela plans</span>
+                </div>
+
+                <div className="adminStatCard success">
+                  <small>Ativos</small>
+                  <strong>{adminPlanStats.ativos}</strong>
+                  <span>Aparecem na compra</span>
+                </div>
+
+                <div className="adminStatCard warning">
+                  <small>Inativos</small>
+                  <strong>{adminPlanStats.inativos}</strong>
+                  <span>Ocultos para usuários</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Ilimitados</small>
+                  <strong>{adminPlanStats.ilimitados}</strong>
+                  <span>Planos por período</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Créditos somados</small>
+                  <strong>{adminPlanStats.creditos}</strong>
+                  <span>Total dos pacotes com créditos</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Ticket médio</small>
+                  <strong>{formatMoneyCents(adminPlanStats.ticketMedio)}</strong>
+                  <span>Média dos preços cadastrados</span>
+                </div>
+              </section>
+
+              {adminPlansMessage && (
+                <div className="authMessage">{adminPlansMessage}</div>
+              )}
+
+              {loadingAdminPlans && (
+                <div className="adminEmpty">Carregando planos...</div>
+              )}
+
+              {!loadingAdminPlans && adminPlans.length === 0 && (
+                <div className="adminEmpty">Nenhum plano encontrado. Clique em criar plano para começar.</div>
+              )}
+
+              {!loadingAdminPlans && adminPlans.length > 0 && (
+                <div className="adminPlanEditorGrid">
+                  {adminPlans.map((plano) => {
+                    const isSaving = savingAdminPlanId === plano.id;
+                    const isUnlimited = plano.is_unlimited === true;
+
+                    return (
+                      <div className="adminPlanEditorCard" key={plano.id}>
+                        <div className="adminRecordTop">
+                          <h3>{plano.name || "Plano sem nome"}</h3>
+                          <span className={`statusBadge ${plano.active ? "aprovado" : "pendente"}`}>
+                            {plano.active ? "Ativo" : "Inativo"}
+                          </span>
+                        </div>
+
+                        <div className="adminPlanFormGrid">
+                          <label>
+                            <span>Nome do plano</span>
+                            <input
+                              type="text"
+                              value={plano.name || ""}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "name", e.target.value)}
+                              placeholder="Ex: 50 Créditos"
+                            />
+                          </label>
+
+                          <label>
+                            <span>Preço em R$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={(Number(plano.price_cents || 0) / 100).toFixed(2)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "price_cents", Math.round(Number(e.target.value || 0) * 100))}
+                              placeholder="39.90"
+                            />
+                          </label>
+
+                          <label>
+                            <span>Créditos</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={Number(plano.credits || 0)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "credits", Number(e.target.value || 0))}
+                              disabled={isUnlimited}
+                            />
+                          </label>
+
+                          <label>
+                            <span>Duração em dias</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={Number(plano.duration_days || 0)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "duration_days", Number(e.target.value || 0))}
+                              placeholder="30"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="adminPlanChecks">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(plano.is_unlimited)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "is_unlimited", e.target.checked)}
+                            />
+                            Plano ilimitado
+                          </label>
+
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(plano.active)}
+                              onChange={(e) => atualizarPlanoLocal(plano.id, "active", e.target.checked)}
+                            />
+                            Visível para compra
+                          </label>
+                        </div>
+
+                        <div className="adminPlanPreview">
+                          <strong>{formatMoneyCents(plano.price_cents)}</strong>
+                          <span>
+                            {isUnlimited
+                              ? `${Number(plano.duration_days || 30)} dias de consultas ilimitadas`
+                              : `${Number(plano.credits || 0)} consultas`}
+                          </span>
+                        </div>
+
+                        <div className="adminButtons">
+                          <button
+                            className="btn primary"
+                            onClick={() => salvarPlanoAdmin(plano)}
+                            disabled={isSaving}
+                            type="button"
+                          >
+                            {isSaving ? "Salvando..." : "Salvar plano"}
+                          </button>
+
+                          <button
+                            className="btn outline"
+                            onClick={() => alternarStatusPlano(plano)}
+                            disabled={isSaving}
+                            type="button"
+                          >
+                            {plano.active ? "Desativar" : "Ativar"}
+                          </button>
+
+                          <button
+                            className="btn danger"
+                            onClick={() => excluirPlanoAdmin(plano)}
+                            disabled={isSaving}
+                            type="button"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+
+                        <small className="fieldHelp">
+                          Planos ativos aparecem automaticamente em Comprar Créditos. Planos inativos ficam ocultos.
+                        </small>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {profile.role === "admin" && adminActiveSection === "relatorios" && (
+            <section className="adminPanel adminArea reportsArea">
               <div className="adminHeader">
                 <div>
                   <span>Relatórios</span>
@@ -1767,18 +2837,63 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
-            <section className="adminPanel">
+          {profile.role === "admin" && adminActiveSection === "usuarios" && (
+            <section className="adminPanel adminArea usersArea" id="admin-usuarios">
               <div className="adminHeader">
                 <div>
-                  <span>Administração</span>
-                  <h2>Usuários cadastrados</h2>
-                  <p>Gerencie créditos e plano ilimitado dos usuários.</p>
+                  <span>Usuários</span>
+                  <h2>Dashboard de Usuários</h2>
+                  <p>Veja o resumo das contas cadastradas antes de gerenciar créditos e planos.</p>
                 </div>
 
                 <button className="btn secondary" onClick={carregarUsuariosAdmin}>
                   Atualizar usuários
                 </button>
+              </div>
+
+              <section className="adminMiniDashboard usersMiniDashboard" aria-label="Resumo dos usuários cadastrados">
+                <div className="adminStatCard featured">
+                  <small>Total de usuários</small>
+                  <strong>{adminUserStats.total}</strong>
+                  <span>Contas cadastradas</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Usuários comuns</small>
+                  <strong>{adminUserStats.comuns}</strong>
+                  <span>Clientes e locadoras</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Administradores</small>
+                  <strong>{adminUserStats.admins}</strong>
+                  <span>Acessos internos</span>
+                </div>
+
+                <div className="adminStatCard success">
+                  <small>Ilimitados ativos</small>
+                  <strong>{adminUserStats.ilimitados}</strong>
+                  <span>Planos em vigor</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Créditos em contas</small>
+                  <strong>{adminUserStats.creditos}</strong>
+                  <span>Saldo total disponível</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Consultas dos usuários</small>
+                  <strong>{adminUserStats.consultas}</strong>
+                  <span>Total registrado nos perfis</span>
+                </div>
+              </section>
+
+              <div className="adminSubHeader">
+                <div>
+                  <h3>Lista de usuários</h3>
+                  <p>Gerencie saldo, créditos e plano ilimitado de cada conta.</p>
+                </div>
               </div>
 
               {adminUsersMessage && (
@@ -1866,8 +2981,8 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
-            <section className="adminPanel">
+          {profile.role === "admin" && adminActiveSection === "suporte" && (
+            <section className="adminPanel adminArea supportArea">
               <div className="adminHeader">
                 <div>
                   <span>Suporte</span>
@@ -2000,8 +3115,8 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
-            <section className="adminPanel">
+          {profile.role === "admin" && adminActiveSection === "auditoria" && (
+            <section className="adminPanel adminArea auditArea">
               <div className="adminHeader">
                 <div>
                   <span>Auditoria</span>
@@ -2049,20 +3164,72 @@ function App() {
             </section>
           )}
 
-          {profile.role === "admin" && (
-            <section className="adminPanel">
+          {profile.role === "admin" && adminActiveSection === "ocorrencias" && (
+            <section className="adminPanel adminArea recordsArea" id="admin-ocorrencias">
               <div className="adminHeader">
                 <div>
-                  <span>Administração</span>
-                  <h2>Ocorrências cadastradas</h2>
-                  <p>Aprove, reprove, edite ou exclua ocorrências enviadas.</p>
+                  <span>Ocorrências</span>
+                  <h2>Dashboard de Ocorrências</h2>
+                  <p>Acompanhe o volume de registros e separe rapidamente o que precisa de análise.</p>
+                </div>
+
+                <button
+                  className="btn secondary"
+                  onClick={carregarOcorrenciasAdmin}
+                >
+                  Atualizar ocorrências
+                </button>
+              </div>
+
+              <section className="adminMiniDashboard recordsMiniDashboard" aria-label="Resumo das ocorrências cadastradas">
+                <div className="adminStatCard featured">
+                  <small>Total de ocorrências</small>
+                  <strong>{adminRecordStats.total}</strong>
+                  <span>Registros recebidos</span>
+                </div>
+
+                <div className="adminStatCard warning">
+                  <small>Pendentes</small>
+                  <strong>{adminRecordStats.pendentes}</strong>
+                  <span>Aguardando análise</span>
+                </div>
+
+                <div className="adminStatCard success">
+                  <small>Aprovadas</small>
+                  <strong>{adminRecordStats.aprovadas}</strong>
+                  <span>Visíveis nas consultas</span>
+                </div>
+
+                <div className="adminStatCard danger">
+                  <small>Reprovadas</small>
+                  <strong>{adminRecordStats.reprovadas}</strong>
+                  <span>Fora das consultas</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Com comprovante</small>
+                  <strong>{adminRecordStats.comComprovante}</strong>
+                  <span>Arquivos anexados</span>
+                </div>
+
+                <div className="adminStatCard">
+                  <small>Resultado do filtro</small>
+                  <strong>{filteredAdminRecords.length}</strong>
+                  <span>Itens listados abaixo</span>
+                </div>
+              </section>
+
+              <div className="adminSubHeader withFilters">
+                <div>
+                  <h3>Lista de ocorrências</h3>
+                  <p>Use a busca e os filtros para aprovar, reprovar, editar ou excluir registros.</p>
                 </div>
 
                 <div className="adminButtons">
                   <input
                     type="text"
                     className="selectInput"
-                    placeholder="Buscar por nome, CPF, cidade ou status"
+                    placeholder="Buscar por nome, CPF, cidade, tipo ou status"
                     value={adminRecordSearch}
                     onChange={(e) => setAdminRecordSearch(e.target.value)}
                   />
@@ -2077,26 +3244,19 @@ function App() {
                     <option value="aprovado">Aprovadas</option>
                     <option value="reprovado">Reprovadas</option>
                   </select>
-
-                  <button
-                    className="btn secondary"
-                    onClick={carregarOcorrenciasAdmin}
-                  >
-                    Atualizar
-                  </button>
                 </div>
               </div>
 
               {adminMessage && <div className="authMessage">{adminMessage}</div>}
 
               <div className="adminList">
-                {filtrarOcorrenciasAdmin().length === 0 && (
+                {filteredAdminRecords.length === 0 && (
                   <div className="adminEmpty">
                     Nenhuma ocorrência encontrada para este filtro.
                   </div>
                 )}
 
-                {filtrarOcorrenciasAdmin().map((item) => (
+                {filteredAdminRecords.map((item) => (
                   <div className="adminRecord" key={item.id}>
                     <div className="adminRecordTop">
                       <h3>{item.nome}</h3>
@@ -2140,11 +3300,13 @@ function App() {
 
                     {item.imagem_url && (
                       <div className="imagePreviewBox">
-                        <strong>Imagem/comprovante:</strong>
+                        <strong>Documento/comprovante:</strong>
                         <a href={item.imagem_url} target="_blank" rel="noreferrer">
-                          Abrir imagem
+                          {getDocumentoLabel(item.imagem_url)}
                         </a>
-                        <img src={item.imagem_url} alt="Comprovante" />
+                        {isImageUrl(item.imagem_url) && (
+                          <img src={item.imagem_url} alt="Documento/comprovante" />
+                        )}
                       </div>
                     )}
 
@@ -2187,6 +3349,165 @@ function App() {
             </section>
           )}
         </main>
+
+        <nav className={`mobileBottomNav ${profile.role === "admin" ? "adminMobileNav" : ""}`} aria-label="Navegação rápida">
+          {profile.role === "admin" ? (
+            <>
+              <button
+                type="button"
+                className={adminActiveSection === "financeiro" ? "active" : ""}
+                onClick={() => setAdminActiveSection("financeiro")}
+              >
+                <span>▣</span>
+                Financeiro
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "planos" ? "active" : ""}
+                onClick={() => setAdminActiveSection("planos")}
+              >
+                <span>R$</span>
+                Planos
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "usuarios" ? "active" : ""}
+                onClick={() => setAdminActiveSection("usuarios")}
+              >
+                <span>◎</span>
+                Usuários
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "ocorrencias" ? "active" : ""}
+                onClick={() => setAdminActiveSection("ocorrencias")}
+              >
+                <span>!</span>
+                Ocorrências
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "relatorios" || adminActiveSection === "suporte" || adminActiveSection === "auditoria" ? "active" : ""}
+                onClick={() => setAdminActiveSection(adminActiveSection === "relatorios" ? "suporte" : adminActiveSection === "suporte" ? "auditoria" : "relatorios")}
+              >
+                <span>☰</span>
+                Mais
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+                <span>⌂</span>
+                Início
+              </button>
+
+              <button type="button" onClick={() => {
+                setSearchMessage("");
+                setSearchResults([]);
+                setSearchText("");
+                setShowSearchForm(true);
+              }}>
+                <span>⌕</span>
+                Consultar
+              </button>
+
+              <button type="button" onClick={() => {
+                setRecordMessage("");
+                setShowRecordForm(true);
+              }}>
+                <span>＋</span>
+                Registrar
+              </button>
+
+              <button type="button" onClick={abrirPainelIndicacoes}>
+                <span>↗</span>
+                Indicar
+              </button>
+
+              <button type="button" onClick={abrirMeusDados}>
+                <span>◎</span>
+                Perfil
+              </button>
+            </>
+          )}
+        </nav>
+{showReferralPanel && (
+  <div className="modalOverlay">
+    <div className="recordModal referralModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowReferralPanel(false)}
+      >
+        ×
+      </button>
+
+      <h2>Indique e ganhe créditos</h2>
+
+      <p>
+        Compartilhe seu link. Quando uma nova conta for criada por ele, você recebe
+        <strong> 2 créditos de bônus</strong> automaticamente.
+      </p>
+
+      <div className="referralLinkBox">
+        <small>Seu link de indicação</small>
+        <code>{buildReferralLink(profile?.referral_code) || "Gerando link..."}</code>
+      </div>
+
+      <div className="modalActionsRow">
+        <button className="btn primary" type="button" onClick={copiarLinkIndicacao}>
+          Copiar link
+        </button>
+
+        <button className="btn outline" type="button" onClick={compartilharLinkIndicacaoWhatsApp}>
+          Compartilhar no WhatsApp
+        </button>
+      </div>
+
+      <div className="referralRulesBox">
+        <strong>Como funciona</strong>
+        <p>1 cadastro válido pelo seu link = 2 créditos liberados para você.</p>
+        <p>Os créditos aparecem abaixo em movimentações e também ficam registrados no log administrativo.</p>
+      </div>
+
+      <div className="adminSubHeader">
+        <div>
+          <span>Movimentações</span>
+          <h3>Bônus recebidos por indicação</h3>
+        </div>
+        <button className="btn secondary" type="button" onClick={carregarMovimentacoesIndicacao}>
+          Atualizar
+        </button>
+      </div>
+
+      {referralMessage && <div className="authMessage">{referralMessage}</div>}
+
+      {referralMovements.length > 0 && (
+        <div className="resultsBox">
+          {referralMovements.map((item) => (
+            <div className="resultCard referralMovementCard" key={item.id}>
+              <div className="adminRecordTop">
+                <h3>+{item.amount} créditos</h3>
+                <span className="statusBadge aprovado">Bônus</span>
+              </div>
+              <p>{item.description || "Bônus recebido por indicação."}</p>
+              <p>
+                <strong>Data:</strong>{" "}
+                {item.created_at
+                  ? new Date(item.created_at).toLocaleString("pt-BR")
+                  : "Não informado"}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
 {showBuyCredits && (
   <BuyCreditsModal onClose={() => setShowBuyCredits(false)} />
 )}
@@ -2321,7 +3642,7 @@ function App() {
 
 {showTermsPrivacy && (
   <div className="modalOverlay">
-    <div className="recordModal">
+    <div className="recordModal legalTermsModal">
       <button
         className="closeModal"
         onClick={() => setShowTermsPrivacy(false)}
@@ -2330,56 +3651,7 @@ function App() {
       </button>
 
       <h2>Termos de Uso e Política de Privacidade</h2>
-
-      <div className="resultsBox">
-        <div className="resultCard">
-          <h3>Uso responsável da plataforma</h3>
-          <p>
-            A LocaCheck é uma ferramenta de apoio para locadoras, frotistas e
-            empresas que desejam registrar e consultar ocorrências relacionadas
-            à locação de veículos. As informações devem ser usadas com
-            responsabilidade, boa-fé e finalidade legítima.
-          </p>
-        </div>
-
-        <div className="resultCard">
-          <h3>Proteção de dados e LGPD</h3>
-          <p>
-            Os dados cadastrados devem ser verdadeiros, necessários e relacionados
-            a uma ocorrência real. A plataforma aplica medidas para reduzir a
-            exposição de dados pessoais, como exibição de CPF mascarado para
-            usuários comuns.
-          </p>
-        </div>
-
-        <div className="resultCard">
-          <h3>Responsabilidade do usuário</h3>
-          <p>
-            Quem cadastra uma ocorrência declara que possui base legítima para o
-            registro e que as informações fornecidas são corretas. É proibido
-            cadastrar dados falsos, ofensivos, discriminatórios ou sem relação
-            com uma locação de veículo.
-          </p>
-        </div>
-
-        <div className="resultCard">
-          <h3>Consultas</h3>
-          <p>
-            Cada consulta pode consumir crédito, salvo nos casos de plano ilimitado
-            ativo. O histórico de consultas pode ser registrado para segurança,
-            auditoria e prevenção de uso indevido.
-          </p>
-        </div>
-
-        <div className="resultCard">
-          <h3>Solicitações e suporte</h3>
-          <p>
-            Solicitações de correção, revisão ou remoção de informações podem ser
-            tratadas pelo suporte da plataforma. O objetivo é manter uma base útil,
-            segura e responsável para todos os usuários.
-          </p>
-        </div>
-      </div>
+      <LegalTermsContent />
     </div>
   </div>
 )}
@@ -2472,11 +3744,13 @@ function App() {
 
               {item.imagem_url && (
                 <div className="imagePreviewBox">
-                  <strong>Imagem/comprovante:</strong>
+                  <strong>Documento/comprovante:</strong>
                   <a href={item.imagem_url} target="_blank" rel="noreferrer">
-                    Abrir imagem
+                    {getDocumentoLabel(item.imagem_url)}
                   </a>
-                  <img src={item.imagem_url} alt="Comprovante" />
+                  {isImageUrl(item.imagem_url) && (
+                    <img src={item.imagem_url} alt="Documento/comprovante" />
+                  )}
                 </div>
               )}
             </div>
@@ -2746,29 +4020,31 @@ function App() {
 
                 {editingRecord.imagem_url && (
                   <div className="imagePreviewBox">
-                    <strong>Imagem atual:</strong>
+                    <strong>Documento atual:</strong>
                     <a
                       href={editingRecord.imagem_url}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Abrir imagem atual
+                      {getDocumentoLabel(editingRecord.imagem_url)}
                     </a>
-                    <img src={editingRecord.imagem_url} alt="Comprovante atual" />
+                    {isImageUrl(editingRecord.imagem_url) && (
+                      <img src={editingRecord.imagem_url} alt="Documento atual" />
+                    )}
                   </div>
                 )}
 
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   onChange={(e) =>
                     setEditRecordImage(e.target.files?.[0] || null)
                   }
                 />
 
                 <small className="fieldHelp">
-                  Envie uma nova imagem apenas se quiser substituir/adicionar
-                  comprovante.
+                  Envie uma nova imagem ou PDF apenas se quiser substituir/adicionar
+                  documento/comprovante.
                 </small>
 
                 <textarea
@@ -2866,15 +4142,18 @@ function App() {
 
                       {item.imagem_url && (
                         <div className="imagePreviewBox">
-                          <strong>Imagem/comprovante:</strong>
+                          <strong>Documento/comprovante:</strong>
                           <a
                             href={item.imagem_url}
                             target="_blank"
                             rel="noreferrer"
                           >
-                            Abrir imagem
+                            {getDocumentoLabel(item.imagem_url)}
                           </a>
-                          <img src={item.imagem_url} alt="Comprovante" />
+                          <p className="documentPublicNotice">Documento disponível para usuários que realizarem uma consulta com resultado aprovado.</p>
+                          {isImageUrl(item.imagem_url) && (
+                            <img src={item.imagem_url} alt="Documento/comprovante" />
+                          )}
                         </div>
                       )}
                     </div>
@@ -2899,7 +4178,7 @@ function App() {
 
               <p>
                 Cadastre uma ocorrência relacionada a um locatário de veículo.
-                O CPF será exibido futuramente apenas pelos 4 últimos números.
+                O CPF será exibido futuramente apenas pelos 4 últimos números. O documento/comprovante ficará disponível para quem consultar uma ocorrência aprovada.
               </p>
 
               <form onSubmit={cadastrarOcorrencia} className="recordForm">
@@ -2914,22 +4193,25 @@ function App() {
                 <input
                   type="text"
                   placeholder="WhatsApp do locatário cadastrado"
+                  inputMode="numeric"
+                  maxLength="15"
                   value={recordWhatsapp}
-                  onChange={(e) => setRecordWhatsapp(e.target.value)}
+                  onChange={(e) => setRecordWhatsapp(formatWhatsappInput(e.target.value))}
                   required
                 />
 
                 <input
                   type="text"
                   placeholder="CPF completo"
+                  inputMode="numeric"
+                  maxLength="14"
                   value={recordCpf}
-                  onChange={(e) => setRecordCpf(e.target.value)}
+                  onChange={(e) => setRecordCpf(formatCpfInput(e.target.value))}
                   required
                 />
 
                 <small className="fieldHelp">
-                  O CPF completo pode ser digitado, mas a plataforma exibirá
-                  apenas os 4 últimos números.
+                  Informe um CPF válido. A plataforma exibirá apenas os 4 últimos números nas consultas.
                 </small>
 
                 <input
@@ -2959,12 +4241,12 @@ function App() {
 
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   onChange={(e) => setRecordImage(e.target.files?.[0] || null)}
                 />
 
                 <small className="fieldHelp">
-                  Envie uma foto ou comprovante, se houver.
+                  Envie uma foto, PDF ou comprovante, se houver.
                 </small>
 
                 <textarea
@@ -3024,7 +4306,7 @@ function App() {
 
           <h1>
             Consulte antes de alugar. <br />
-            Proteja sua frota de prejuízos.
+            <span className="gradientText">Proteja sua frota.</span>
           </h1>
 
           <p>
@@ -3047,6 +4329,45 @@ function App() {
             >
               Registrar Ocorrência
             </button>
+          </div>
+        </section>
+
+        <section className="landingTrustStats" aria-label="Credibilidade da plataforma LocaCheck">
+          <div className="sectionTitle compactSectionTitle">
+            <span>Credibilidade</span>
+            <h2>Consulta com mais critério antes de liberar o veículo</h2>
+            <p>
+              Indicadores de confiança pensados para transmitir segurança sem expor dados pessoais
+              ou prometer números que não estejam comprovados na operação.
+            </p>
+          </div>
+
+          <div className="landingStatsGrid">
+            <div className="landingStatCard highlightStat">
+              <strong>Consulta preventiva</strong>
+              <span>apoio à decisão antes da entrega do veículo</span>
+            </div>
+
+            <div className="landingStatCard">
+              <strong>Histórico registrado</strong>
+              <span>consultas e ações ficam organizadas para auditoria</span>
+            </div>
+
+            <div className="landingStatCard">
+              <strong>Ocorrência analisada</strong>
+              <span>registros passam por aprovação antes de aparecerem nas buscas</span>
+            </div>
+
+            <div className="landingStatCard">
+              <strong>CPF protegido</strong>
+              <span>exibição controlada e consulta com responsabilidade</span>
+            </div>
+          </div>
+
+          <div className="trustSealGrid">
+            <div>✓ Comprovantes vinculados à ocorrência</div>
+            <div>✓ Pagamento PIX com liberação automática</div>
+            <div>✓ Planos ativos exibidos automaticamente</div>
           </div>
         </section>
 
@@ -3112,40 +4433,40 @@ function App() {
             <span>Planos</span>
             <h2>Escolha como deseja consultar</h2>
             <p>
-              Compre créditos avulsos ou assine o plano ilimitado mensal para
-              consultar sem se preocupar com saldo.
+              Os planos ativos cadastrados no painel admin aparecem automaticamente aqui e na tela de compra.
             </p>
           </div>
 
-          <div className="planGrid">
-            <div className="planCard">
-              <h3>20 Créditos</h3>
-              <strong>R$ 19,90</strong>
-              <p>Ideal para começar e testar a plataforma.</p>
-              <button className="btn outline full" onClick={abrirCompraPublica}>Comprar</button>
-            </div>
+          {landingMessage && <div className="landingInlineMessage">{landingMessage}</div>}
 
-            <div className="planCard">
-              <h3>50 Créditos</h3>
-              <strong>R$ 39,90</strong>
-              <p>Boa opção para locadores com consultas frequentes.</p>
-              <button className="btn outline full" onClick={abrirCompraPublica}>Comprar</button>
-            </div>
+          <div className="planGrid dynamicPlanGrid">
+            {(publicPlans.length > 0
+              ? publicPlans
+              : [
+                  normalizePlanRow({ id: "fallback-20", name: "20 Créditos", credits: 20, price_cents: 1990, active: true, plan_type: "credits" }),
+                  normalizePlanRow({ id: "fallback-50", name: "50 Créditos", credits: 50, price_cents: 3990, active: true, plan_type: "credits" }),
+                  normalizePlanRow({ id: "fallback-100", name: "100 Créditos", credits: 100, price_cents: 6990, active: true, plan_type: "credits" }),
+                  normalizePlanRow({ id: "fallback-ilimitado", name: "Ilimitado Mensal", credits: 0, price_cents: 9700, active: true, plan_type: "unlimited", is_unlimited: true, duration_days: 30 }),
+                ]
+            ).map((plano, index, list) => {
+              const isUnlimited = plano.is_unlimited === true;
+              const isBestValue = !isUnlimited && index === list.findIndex((item) => !item.is_unlimited && Number(item.credits || 0) === Math.max(...list.filter((p) => !p.is_unlimited).map((p) => Number(p.credits || 0))));
 
-            <div className="planCard">
-              <h3>100 Créditos</h3>
-              <strong>R$ 69,90</strong>
-              <p>Mais economia para quem consulta com regularidade.</p>
-              <button className="btn outline full" onClick={abrirCompraPublica}>Comprar</button>
-            </div>
+              return (
+                <div className={`planCard ${isUnlimited ? "unlimited" : ""}`} key={plano.id || plano.name}>
+                  {isUnlimited && <div className="recommended">Mais indicado para locadoras</div>}
+                  {isBestValue && !isUnlimited && <div className="recommended secondaryRecommended">Melhor custo por consulta</div>}
 
-            <div className="planCard unlimited">
-              <div className="recommended">Mais indicado para locadoras</div>
-              <h3>Ilimitado Mensal</h3>
-              <strong>R$ 97,00</strong>
-              <p>Consultas ilimitadas durante 30 dias.</p>
-              <button className="btn primary full" onClick={abrirCompraPublica}>Assinar por 30 dias</button>
-            </div>
+                  <h3>{plano.name}</h3>
+                  <strong>{formatMoneyCents(plano.price_cents)}</strong>
+                  <p>{getPlanDescription(plano)}</p>
+
+                  <button className={isUnlimited ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
+                    {isUnlimited ? "Assinar plano" : "Comprar créditos"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -3254,6 +4575,20 @@ function App() {
                 required
               />
 
+              {authMode === "cadastro" && (
+                <label className="termsAcceptBox">
+                  <input
+                    type="checkbox"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    required
+                  />
+                  <span>
+                    Li e aceito os Termos de Uso e a Política de Privacidade da LocaCheck.
+                  </span>
+                </label>
+              )}
+
               <button className="btn primary full" disabled={loading}>
                 {loading
                   ? "Aguarde..."
@@ -3281,7 +4616,7 @@ function App() {
 
       {showTermsPrivacy && (
         <div className="modalOverlay">
-          <div className="recordModal">
+          <div className="recordModal legalTermsModal">
             <button
               className="closeModal"
               onClick={() => setShowTermsPrivacy(false)}
@@ -3290,43 +4625,7 @@ function App() {
             </button>
 
             <h2>Termos de Uso e Política de Privacidade</h2>
-
-            <div className="resultsBox">
-              <div className="resultCard">
-                <h3>Uso responsável da plataforma</h3>
-                <p>
-                  A LocaCheck é uma ferramenta de apoio para locadoras, frotistas
-                  e empresas que desejam registrar e consultar ocorrências
-                  relacionadas à locação de veículos.
-                </p>
-              </div>
-
-              <div className="resultCard">
-                <h3>Proteção de dados e LGPD</h3>
-                <p>
-                  Os dados cadastrados devem ser verdadeiros, necessários e
-                  relacionados a uma ocorrência real. A plataforma reduz a
-                  exposição de dados pessoais, como exibição de CPF mascarado para
-                  usuários comuns.
-                </p>
-              </div>
-
-              <div className="resultCard">
-                <h3>Responsabilidade do usuário</h3>
-                <p>
-                  Quem cadastra uma ocorrência declara que possui base legítima
-                  para o registro e que as informações fornecidas são corretas.
-                </p>
-              </div>
-
-              <div className="resultCard">
-                <h3>Consultas e auditoria</h3>
-                <p>
-                  Consultas podem consumir créditos e podem ser registradas para
-                  segurança, auditoria e prevenção de uso indevido.
-                </p>
-              </div>
-            </div>
+            <LegalTermsContent />
           </div>
         </div>
       )}
