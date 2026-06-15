@@ -123,6 +123,66 @@ function removeStoredReferralCode() {
   }
 }
 
+
+function onlyDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function isValidCpf(value) {
+  const cpf = onlyDigits(value);
+
+  if (cpf.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i += 1) {
+    sum += Number(cpf[i]) * (10 - i);
+  }
+  let firstDigit = (sum * 10) % 11;
+  if (firstDigit === 10) firstDigit = 0;
+  if (firstDigit !== Number(cpf[9])) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i += 1) {
+    sum += Number(cpf[i]) * (11 - i);
+  }
+  let secondDigit = (sum * 10) % 11;
+  if (secondDigit === 10) secondDigit = 0;
+
+  return secondDigit === Number(cpf[10]);
+}
+
+function formatCpfInput(value) {
+  const digits = onlyDigits(value).slice(0, 11);
+  return digits
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+}
+
+function formatWhatsappInput(value) {
+  const digits = onlyDigits(value).slice(0, 11);
+
+  if (digits.length <= 10) {
+    return digits
+      .replace(/(\d{2})(\d)/, "($1) $2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  }
+
+  return digits
+    .replace(/(\d{2})(\d)/, "($1) $2")
+    .replace(/(\d{5})(\d)/, "$1-$2");
+}
+
+function looksLikeCpfSearch(value) {
+  const text = String(value || "").trim();
+  const digits = onlyDigits(text);
+
+  if (digits.length === 0) return false;
+  if (/^\d+$/.test(text)) return true;
+  return digits.length !== text.length || digits.length >= 8;
+}
+
 async function solicitarBonusIndicacao(referralCode, newUserId) {
   const code = String(referralCode || "").trim();
 
@@ -1058,11 +1118,42 @@ function App() {
     setLoading(true);
     setRecordMessage("");
 
-    const cpfLimpo = recordCpf.replace(/\D/g, "");
+    const cpfLimpo = onlyDigits(recordCpf);
     const cpf4 = cpfLimpo.slice(-4);
+    const whatsappLimpo = onlyDigits(recordWhatsapp);
+
+    if (!recordNome.trim() || recordNome.trim().length < 3) {
+      setRecordMessage("Informe o nome completo do locatário.");
+      setLoading(false);
+      return;
+    }
+
+    if (!isValidCpf(cpfLimpo)) {
+      setRecordMessage("Informe um CPF válido com 11 números.");
+      setLoading(false);
+      return;
+    }
+
+    if (whatsappLimpo.length < 10) {
+      setRecordMessage("Informe um WhatsApp válido com DDD.");
+      setLoading(false);
+      return;
+    }
+
+    if (!recordCidade.trim() || recordCidade.trim().length < 3) {
+      setRecordMessage("Informe a cidade/UF da ocorrência.");
+      setLoading(false);
+      return;
+    }
 
     if (recordTipos.length === 0) {
       setRecordMessage("Selecione pelo menos um tipo de ocorrência.");
+      setLoading(false);
+      return;
+    }
+
+    if (!recordDescricao.trim() || recordDescricao.trim().length < 20) {
+      setRecordMessage("Descreva a ocorrência com pelo menos 20 caracteres.");
       setLoading(false);
       return;
     }
@@ -1075,7 +1166,7 @@ function App() {
         cpf_full: cpfLimpo,
         cpf4,
         cidade: recordCidade,
-        whatsapp_locatario: recordWhatsapp,
+        whatsapp_locatario: whatsappLimpo,
         tipos: recordTipos,
         descricao: recordDescricao,
         imagem_url: imagemUrl,
@@ -1108,8 +1199,15 @@ function App() {
 
     if (loading) return;
 
-    if (!searchText.trim()) {
+    const searchClean = searchText.trim();
+
+    if (!searchClean) {
       setSearchMessage("Digite um nome ou CPF para consultar.");
+      return;
+    }
+
+    if (looksLikeCpfSearch(searchClean) && !isValidCpf(searchClean)) {
+      setSearchMessage("Para consultar por CPF, informe um CPF completo e válido.");
       return;
     }
 
@@ -1117,8 +1215,24 @@ function App() {
     setSearchMessage("");
     setSearchResults([]);
 
+    try {
+      const { data: limitData, error: limitError } = await supabase.rpc("can_start_consultation", {
+        p_search: searchClean,
+      });
+
+      if (limitError) {
+        console.log("Validação anti-abuso indisponível:", limitError);
+      } else if (limitData && limitData.success === false) {
+        setSearchMessage(limitData.message || "Consulta bloqueada temporariamente por segurança.");
+        setLoading(false);
+        return;
+      }
+    } catch (error) {
+      console.log("Erro ao validar limite de consulta:", error);
+    }
+
     const { data, error } = await supabase.rpc("secure_consult_renter", {
-      p_search: searchText,
+      p_search: searchClean,
     });
 
     if (error) {
@@ -4079,22 +4193,25 @@ function App() {
                 <input
                   type="text"
                   placeholder="WhatsApp do locatário cadastrado"
+                  inputMode="numeric"
+                  maxLength="15"
                   value={recordWhatsapp}
-                  onChange={(e) => setRecordWhatsapp(e.target.value)}
+                  onChange={(e) => setRecordWhatsapp(formatWhatsappInput(e.target.value))}
                   required
                 />
 
                 <input
                   type="text"
                   placeholder="CPF completo"
+                  inputMode="numeric"
+                  maxLength="14"
                   value={recordCpf}
-                  onChange={(e) => setRecordCpf(e.target.value)}
+                  onChange={(e) => setRecordCpf(formatCpfInput(e.target.value))}
                   required
                 />
 
                 <small className="fieldHelp">
-                  O CPF completo pode ser digitado, mas a plataforma exibirá
-                  apenas os 4 últimos números.
+                  Informe um CPF válido. A plataforma exibirá apenas os 4 últimos números nas consultas.
                 </small>
 
                 <input

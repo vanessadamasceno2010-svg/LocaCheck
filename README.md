@@ -1,7 +1,7 @@
-# LocaCheck
+# LocaCheck v20
 
-Projeto LocaCheck com layout Premium Mobile-First.
+Versão com validação de CPF, anti-abuso básico em consultas e limites de segurança para bônus por indicação.
 
-Este pacote foi ajustado para manter as integrações existentes com Supabase, PushinPay, GitHub e Vercel, alterando primeiro a parte visual do projeto.
+Antes de subir, rode a migração:
 
-Leia o arquivo `LEIA-ANTES-DE-SUBIR.md` antes de publicar.
+`MIGRACAO-V20-VALIDACAO-CPF-E-ANTIABUSO.sql`
