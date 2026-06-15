@@ -130,6 +130,8 @@ async function solicitarBonusIndicacao(referralCode, newUserId) {
     return { success: false, message: "Indicação incompleta." };
   }
 
+  let apiPayload = null;
+
   try {
     const response = await fetch("/api/referrals/claim", {
       method: "POST",
@@ -142,17 +144,37 @@ async function solicitarBonusIndicacao(referralCode, newUserId) {
       }),
     });
 
-    const payload = await response.json().catch(() => ({}));
+    apiPayload = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      console.log("Indicação não aplicada:", payload);
-      return { success: false, ...payload };
+    if (response.ok && (apiPayload?.success || apiPayload?.already_applied)) {
+      return apiPayload;
     }
 
-    return payload;
+    console.log("Indicação não aplicada pela rota segura. Tentando fallback RPC:", apiPayload);
   } catch (error) {
-    console.log("Erro ao chamar indicação:", error);
-    return { success: false, message: "Falha ao comunicar com o servidor de indicação." };
+    console.log("Rota segura de indicação indisponível. Tentando fallback RPC:", error);
+  }
+
+  try {
+    const { data, error } = await supabase.rpc("claim_referral_bonus", {
+      p_referral_code: code,
+    });
+
+    if (error) {
+      console.log("Fallback RPC de indicação não aplicado:", error);
+      return {
+        success: false,
+        message: apiPayload?.message || error.message || "Não foi possível aplicar a indicação.",
+      };
+    }
+
+    return data || { success: false, message: "Indicação não aplicada." };
+  } catch (error) {
+    console.log("Erro inesperado no fallback de indicação:", error);
+    return {
+      success: false,
+      message: apiPayload?.message || "Falha ao aplicar indicação.",
+    };
   }
 }
 

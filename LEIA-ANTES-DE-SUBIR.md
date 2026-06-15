@@ -59,3 +59,12 @@ Teste no celular e no computador:
 - Enviar mensagem de suporte.
 
 Só publique no site oficial depois que esses testes passarem.
+
+
+## V16 - Indicações
+
+Antes de subir a V16, rode no Supabase o arquivo:
+
+`MIGRACAO-V16-CORRECAO-INDICACOES-AUTH-TRIGGER.sql`
+
+Ele corrige o bônus de indicação usando trigger no Supabase Auth e reprocessa cadastros antigos feitos pelo link.
