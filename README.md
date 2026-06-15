@@ -1,3 +1,7 @@
+LocaCheck - V22
+
+Ajuste: novos usuários recebem 10 créditos iniciais.
+
 # LocaCheck
 
 Projeto LocaCheck com layout Premium Mobile-First.

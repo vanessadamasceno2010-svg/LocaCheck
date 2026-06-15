@@ -645,7 +645,7 @@ function App() {
         nome: user?.user_metadata?.nome || "Usuário",
         whatsapp: user?.user_metadata?.whatsapp || "",
         role: "user",
-        credits: 20,
+        credits: 10,
         consultas: 0,
         referred_by_code: referralCode || null,
       })
@@ -1053,7 +1053,7 @@ function App() {
       }
 
       setMessage("Cadastro realizado com sucesso. Você já pode entrar.");
-      showToast("success", "Cadastro realizado", "Sua conta foi criada com 20 créditos iniciais.");
+      showToast("success", "Cadastro realizado", "Sua conta foi criada com 10 créditos iniciais.");
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -4373,7 +4373,7 @@ function App() {
 
         <section className="cards">
           <div className="card">
-            <h3>20 Créditos Grátis</h3>
+            <h3>10 Créditos Grátis</h3>
             <p>Todo novo usuário recebe créditos para começar a consultar.</p>
           </div>
 
@@ -4477,7 +4477,7 @@ function App() {
             <div>
               <span>01</span>
               <h4>Cadastre-se</h4>
-              <p>Crie sua conta e receba 20 créditos grátis.</p>
+              <p>Crie sua conta e receba 10 créditos grátis.</p>
             </div>
 
             <div>
@@ -4525,7 +4525,7 @@ function App() {
             <p>
               {authMode === "login"
                 ? "Acesse seu painel para consultar locatários."
-                : "Cadastre-se e receba 20 créditos grátis."}
+                : "Cadastre-se e receba 10 créditos grátis."}
             </p>
 
             <button
