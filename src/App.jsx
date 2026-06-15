@@ -609,6 +609,14 @@ function App() {
   async function loadProfile(userId) {
     const { data: userData } = await supabase.auth.getUser();
     const user = userData?.user;
+    const provider = user?.app_metadata?.provider || "email";
+    const userEmail = normalizeEmail(user?.email || "");
+    const userNameFromAuth =
+      user?.user_metadata?.nome ||
+      user?.user_metadata?.full_name ||
+      user?.user_metadata?.name ||
+      userEmail ||
+      "Usuário";
 
     const referralCode =
       user?.user_metadata?.referral_code ||
@@ -653,7 +661,29 @@ function App() {
       .maybeSingle();
 
     if (data) {
-      const updatedProfile = await aplicarIndicacaoPendente(data);
+      let profileData = data;
+
+      const needsGoogleProfileSync =
+        provider === "google" &&
+        (!profileData.email || !profileData.nome || profileData.nome === "Usuário");
+
+      if (needsGoogleProfileSync) {
+        const { data: syncedProfile, error: syncError } = await supabase
+          .from("profiles")
+          .update({
+            nome: profileData.nome && profileData.nome !== "Usuário" ? profileData.nome : userNameFromAuth,
+            email: userEmail || profileData.email || null,
+          })
+          .eq("id", userId)
+          .select("*")
+          .maybeSingle();
+
+        if (!syncError && syncedProfile) {
+          profileData = syncedProfile;
+        }
+      }
+
+      const updatedProfile = await aplicarIndicacaoPendente(profileData);
       setProfile(updatedProfile);
       return;
     }
@@ -662,7 +692,8 @@ function App() {
       .from("profiles")
       .insert({
         id: userId,
-        nome: user?.user_metadata?.nome || "Usuário",
+        nome: userNameFromAuth,
+        email: userEmail || null,
         whatsapp: user?.user_metadata?.whatsapp || "",
         role: "user",
         credits: 10,
@@ -1092,6 +1123,7 @@ function App() {
       options: {
         data: {
           nome: nome.trim(),
+          email: cadastroEmailNormalized,
           whatsapp: cadastroWhatsappDigits,
           referral_code: referralCode || null,
           terms_accepted: true,
