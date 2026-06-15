@@ -115,6 +115,47 @@ function buildReferralLink(code) {
   return `${origin}/?ref=${encodeURIComponent(code)}`;
 }
 
+function removeStoredReferralCode() {
+  try {
+    localStorage.removeItem("locacheck-referral-code");
+  } catch {
+    // Ignora bloqueio de localStorage em navegador restrito.
+  }
+}
+
+async function solicitarBonusIndicacao(referralCode, newUserId) {
+  const code = String(referralCode || "").trim();
+
+  if (!code || !newUserId) {
+    return { success: false, message: "Indicação incompleta." };
+  }
+
+  try {
+    const response = await fetch("/api/referrals/claim", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        referralCode: code,
+        newUserId,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      console.log("Indicação não aplicada:", payload);
+      return { success: false, ...payload };
+    }
+
+    return payload;
+  } catch (error) {
+    console.log("Erro ao chamar indicação:", error);
+    return { success: false, message: "Falha ao comunicar com o servidor de indicação." };
+  }
+}
+
 function getPaymentCredits(payment) {
   return Number(payment?.credits || payment?.plan_credits || payment?.plan?.credits || 0);
 }
@@ -473,27 +514,20 @@ function App() {
       getStoredReferralCode();
 
     async function aplicarIndicacaoPendente(profileData) {
-      if (!profileData || !referralCode || profileData.referred_by) {
+      if (!profileData) return profileData;
+
+      if (profileData.referred_by) {
+        removeStoredReferralCode();
         return profileData;
       }
 
-      try {
-        const { data: claimData, error: claimError } = await supabase.rpc(
-          "claim_referral_bonus",
-          { p_referral_code: referralCode }
-        );
+      if (!referralCode) return profileData;
 
-        if (claimError) {
-          console.log("Erro ao aplicar indicação:", claimError);
-          return profileData;
-        }
+      try {
+        const claimData = await solicitarBonusIndicacao(referralCode, userId);
 
         if (claimData?.success || claimData?.already_applied) {
-          try {
-            localStorage.removeItem("locacheck-referral-code");
-          } catch {
-            // Ignora bloqueio de localStorage em navegador restrito.
-          }
+          removeStoredReferralCode();
 
           const { data: refreshedProfile } = await supabase
             .from("profiles")
@@ -910,7 +944,7 @@ function App() {
 
     const referralCode = getStoredReferralCode();
 
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email,
       password: senha,
       options: {
@@ -928,6 +962,14 @@ function App() {
     if (error) {
       setMessage(error.message);
     } else {
+      if (referralCode && signUpData?.user?.id) {
+        const referralResult = await solicitarBonusIndicacao(referralCode, signUpData.user.id);
+
+        if (referralResult?.success || referralResult?.already_applied) {
+          removeStoredReferralCode();
+        }
+      }
+
       setMessage("Cadastro realizado com sucesso. Você já pode entrar.");
       showToast("success", "Cadastro realizado", "Sua conta foi criada com 20 créditos iniciais.");
       setAuthMode("login");
@@ -4346,12 +4388,6 @@ function App() {
                 ? "Acesse seu painel para consultar locatários."
                 : "Cadastre-se e receba 20 créditos grátis."}
             </p>
-
-            {authMode === "cadastro" && getStoredReferralCode() && (
-              <div className="authMessage successMessage">
-                Cadastro com indicação ativo. Após sua conta ser criada, quem indicou recebe 2 créditos.
-              </div>
-            )}
 
             <button
               type="button"

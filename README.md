@@ -1,7 +1,9 @@
-# LocaCheck
+# LocaCheck - Versão V15
 
-Projeto LocaCheck com layout Premium Mobile-First.
+Versão mobile premium com correção definitiva do sistema de indicações.
 
-Este pacote foi ajustado para manter as integrações existentes com Supabase, PushinPay, GitHub e Vercel, alterando primeiro a parte visual do projeto.
+Leia primeiro:
 
-Leia o arquivo `LEIA-ANTES-DE-SUBIR.md` antes de publicar.
+- `LEIA-ANTES-DE-SUBIR.md`
+- `MIGRACAO-V15-CORRECAO-DEFINITIVA-INDICACOES.sql`
+- `AJUSTES-V15-CORRECAO-DEFINITIVA-INDICACOES-PROXIMO-PASSO.md`
