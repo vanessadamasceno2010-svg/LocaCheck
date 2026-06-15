@@ -1,11 +1,7 @@
-# LocaCheck - pacote v13
+# LocaCheck
 
-Versão com layout premium mobile-first, gestão de planos, documentos públicos em consultas aprovadas, termos/LGPD e programa de indicação com bônus de créditos.
+Projeto LocaCheck com layout Premium Mobile-First.
 
-## Antes de subir
+Este pacote foi ajustado para manter as integrações existentes com Supabase, PushinPay, GitHub e Vercel, alterando primeiro a parte visual do projeto.
 
-Rode no Supabase o arquivo:
-
-- `MIGRACAO-V13-INDICACOES-CREDITOS.sql`
-
-Depois suba os arquivos na branch de teste `novo-layout-mobile` e faça deploy de preview na Vercel.
+Leia o arquivo `LEIA-ANTES-DE-SUBIR.md` antes de publicar.

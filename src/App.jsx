@@ -467,6 +467,49 @@ function App() {
     const { data: userData } = await supabase.auth.getUser();
     const user = userData?.user;
 
+    const referralCode =
+      user?.user_metadata?.referral_code ||
+      user?.user_metadata?.ref ||
+      getStoredReferralCode();
+
+    async function aplicarIndicacaoPendente(profileData) {
+      if (!profileData || !referralCode || profileData.referred_by) {
+        return profileData;
+      }
+
+      try {
+        const { data: claimData, error: claimError } = await supabase.rpc(
+          "claim_referral_bonus",
+          { p_referral_code: referralCode }
+        );
+
+        if (claimError) {
+          console.log("Erro ao aplicar indicação:", claimError);
+          return profileData;
+        }
+
+        if (claimData?.success || claimData?.already_applied) {
+          try {
+            localStorage.removeItem("locacheck-referral-code");
+          } catch {
+            // Ignora bloqueio de localStorage em navegador restrito.
+          }
+
+          const { data: refreshedProfile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .maybeSingle();
+
+          return refreshedProfile || profileData;
+        }
+      } catch (error) {
+        console.log("Erro inesperado ao aplicar indicação:", error);
+      }
+
+      return profileData;
+    }
+
     const { data } = await supabase
       .from("profiles")
       .select("*")
@@ -474,14 +517,10 @@ function App() {
       .maybeSingle();
 
     if (data) {
-      setProfile(data);
+      const updatedProfile = await aplicarIndicacaoPendente(data);
+      setProfile(updatedProfile);
       return;
     }
-
-    const referralCode =
-      user?.user_metadata?.referral_code ||
-      user?.user_metadata?.ref ||
-      getStoredReferralCode();
 
     const { data: newProfile, error } = await supabase
       .from("profiles")
@@ -498,7 +537,8 @@ function App() {
       .single();
 
     if (!error) {
-      setProfile(newProfile);
+      const updatedProfile = await aplicarIndicacaoPendente(newProfile);
+      setProfile(updatedProfile);
     } else {
       console.log("Erro ao criar perfil:", error);
     }
