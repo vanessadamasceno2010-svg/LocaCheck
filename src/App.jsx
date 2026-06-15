@@ -200,6 +200,127 @@ function getDocumentoLabel(url) {
   return "Abrir documento";
 }
 
+function formatLandingNumber(value) {
+  const number = Number(value || 0);
+
+  if (number >= 1000000) {
+    return `${(number / 1000000).toFixed(number >= 10000000 ? 0 : 1).replace(".", ",")} mi`;
+  }
+
+  if (number >= 1000) {
+    return new Intl.NumberFormat("pt-BR").format(number);
+  }
+
+  return String(number);
+}
+
+function getPlanDescription(plan) {
+  if (plan?.is_unlimited) {
+    return `${plan.duration_days || 30} dias de consultas ilimitadas.`;
+  }
+
+  const credits = Number(plan?.credits || 0);
+  return credits === 1 ? "1 consulta disponível." : `${credits} consultas disponíveis.`;
+}
+
+
+function LegalTermsContent() {
+  return (
+    <div className="resultsBox legalTermsBox">
+      <div className="legalIntroCard">
+        <strong>Versão vigente: 14/06/2026</strong>
+        <p>
+          Este resumo organiza os principais pontos de uso da LocaCheck. Ele não substitui orientação jurídica personalizada, mas deixa claro como a plataforma deve ser usada com responsabilidade, boa-fé e proteção de dados.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>1. Finalidade da LocaCheck</h3>
+        <p>
+          A LocaCheck é uma ferramenta de apoio para locadoras, frotistas e empresas que trabalham com locação de veículos. A plataforma permite registrar, consultar e acompanhar ocorrências relacionadas a locações, como inadimplência, multas não pagas, avarias, não devolução do veículo, quebra de contrato, uso indevido e situações semelhantes.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>2. Uso permitido</h3>
+        <p>
+          O usuário deve utilizar a plataforma apenas para finalidade legítima ligada à análise de risco, prevenção de prejuízos, segurança da frota, gestão contratual e registro de ocorrências reais. É proibido usar a LocaCheck para perseguição, exposição indevida, constrangimento, discriminação ou qualquer finalidade diferente da atividade de locação.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>3. Responsabilidade de quem cadastra ocorrência</h3>
+        <p>
+          Quem registra uma ocorrência declara que as informações são verdadeiras, necessárias, proporcionais e relacionadas a uma locação real. O usuário é responsável pelos dados, documentos, imagens, descrições e comprovantes enviados. É proibido cadastrar informação falsa, ofensiva, sem prova, exagerada ou sem relação com contrato de locação.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>4. Análise e aprovação pelo administrador</h3>
+        <p>
+          Ocorrências enviadas por usuários comuns entram para análise. O administrador pode aprovar, reprovar, editar ou remover registros quando identificar dados incompletos, indevidos, sem comprovação ou incompatíveis com a finalidade da plataforma. Somente ocorrências aprovadas aparecem nas consultas.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>5. Consultas, créditos e histórico</h3>
+        <p>
+          As consultas podem consumir créditos, salvo nos casos de plano ilimitado ativo. O histórico de consultas pode ser registrado para auditoria, prevenção de uso indevido, segurança da plataforma e solução de contestação. O usuário entende que os resultados são apoio à decisão e não substituem análise contratual própria.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>6. Dados pessoais e LGPD</h3>
+        <p>
+          A plataforma trata dados pessoais como nome, CPF, cidade, WhatsApp, histórico de consulta, informações de ocorrência e comprovantes enviados. O tratamento deve ocorrer com base em finalidade legítima, necessidade, segurança, prevenção a fraudes, proteção de crédito, exercício regular de direitos e apoio à atividade de locação, sempre respeitando a legislação aplicável.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>7. CPF e dados sensíveis da ocorrência</h3>
+        <p>
+          O CPF completo pode ser usado internamente para cadastro, validação e busca, mas a exibição ao usuário comum deve ser limitada ou mascarada sempre que possível. O administrador pode ter acesso ampliado para análise, correção, auditoria e gestão da base.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>8. Documentos e comprovantes públicos da consulta</h3>
+        <p>
+          Quando uma ocorrência aprovada possuir imagem, PDF ou comprovante vinculado, esse documento poderá ser exibido ao usuário autenticado que realizar a consulta. Como o bucket de documentos está configurado como público, qualquer pessoa que possua o link direto do arquivo poderá acessá-lo. Por isso, o usuário deve enviar apenas documentos necessários e relacionados à ocorrência.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>9. Pagamentos e planos</h3>
+        <p>
+          Os pagamentos são processados por plataforma integrada de pagamento. A liberação de créditos ou plano ilimitado depende da confirmação do pagamento. A LocaCheck pode manter registros de pagamento, status, data, plano adquirido e logs de processamento para conferência financeira e auditoria.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>10. Solicitação de correção, revisão ou remoção</h3>
+        <p>
+          Caso uma pessoa ou empresa identifique informação incorreta, desatualizada, indevida ou sem relação com locação, poderá solicitar análise pelo suporte. O administrador poderá revisar documentos, corrigir dados, reprovar ocorrência, remover informações ou solicitar comprovação adicional ao usuário responsável pelo cadastro.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>11. Segurança da conta</h3>
+        <p>
+          Cada usuário é responsável por manter sigilo de seu acesso. É proibido compartilhar conta com terceiros, tentar acessar área administrativa, manipular créditos, alterar status de pagamentos, burlar consultas ou explorar falhas do sistema.
+        </p>
+      </div>
+
+      <div className="resultCard">
+        <h3>12. Aceite</h3>
+        <p>
+          Ao criar conta, registrar ocorrência, consultar locatário, comprar créditos ou usar qualquer recurso da LocaCheck, o usuário declara estar ciente e de acordo com estes Termos de Uso e Política de Privacidade.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -214,6 +335,7 @@ function App() {
   const [showMyRecords, setShowMyRecords] = useState(false);
   const [showProfileData, setShowProfileData] = useState(false);
   const [showTermsPrivacy, setShowTermsPrivacy] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSystemLogs, setShowSystemLogs] = useState(false);
   const [toast, setToast] = useState(null);
@@ -224,6 +346,8 @@ function App() {
   const [adminPlansMessage, setAdminPlansMessage] = useState("");
   const [loadingAdminPlans, setLoadingAdminPlans] = useState(false);
   const [savingAdminPlanId, setSavingAdminPlanId] = useState("");
+  const [publicPlans, setPublicPlans] = useState([]);
+  const [landingMessage, setLandingMessage] = useState("");
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -414,6 +538,10 @@ function App() {
     }
   }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
 
+  useEffect(() => {
+    carregarDadosPublicosLanding();
+  }, []);
+
 
   function showToast(type, title, messageText) {
     setToast({ type, title, message: messageText });
@@ -428,6 +556,30 @@ function App() {
 
     setMessage("Entre ou cadastre-se para comprar créditos via PIX.");
     setAuthMode("login");
+  }
+
+  async function carregarDadosPublicosLanding() {
+    setLandingMessage("");
+
+    try {
+      const { data: plansData, error: plansError } = await supabase
+        .from("plans")
+        .select("*")
+        .neq("active", false)
+        .order("price_cents", { ascending: true })
+        .order("credits", { ascending: true })
+        .order("name", { ascending: true });
+
+      if (!plansError) {
+        setPublicPlans((plansData || []).map(normalizePlanRow).sort(sortPlansByPrice));
+      } else {
+        console.log("Planos públicos indisponíveis:", plansError);
+        setLandingMessage("Os planos serão carregados após a configuração pública no Supabase.");
+      }
+    } catch (error) {
+      console.log("Erro ao carregar dados públicos da landing:", error);
+      setLandingMessage("Alguns dados públicos não puderam ser carregados agora.");
+    }
   }
 
   async function verificarPagamentosAprovadosRecentes() {
@@ -613,6 +765,12 @@ function App() {
     setLoading(true);
     setMessage("");
 
+    if (!termsAccepted) {
+      setMessage("Para criar sua conta, aceite os Termos de Uso e a Política de Privacidade.");
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.auth.signUp({
       email,
       password: senha,
@@ -620,6 +778,9 @@ function App() {
         data: {
           nome,
           whatsapp,
+          terms_accepted: true,
+          terms_version: "2026-06-14",
+          terms_accepted_at: new Date().toISOString(),
         },
       },
     });
@@ -634,6 +795,7 @@ function App() {
       setWhatsapp("");
       setEmail("");
       setSenha("");
+      setTermsAccepted(false);
     }
 
     setLoading(false);
@@ -3072,7 +3234,7 @@ function App() {
 
 {showTermsPrivacy && (
   <div className="modalOverlay">
-    <div className="recordModal">
+    <div className="recordModal legalTermsModal">
       <button
         className="closeModal"
         onClick={() => setShowTermsPrivacy(false)}
@@ -3081,56 +3243,7 @@ function App() {
       </button>
 
       <h2>Termos de Uso e Política de Privacidade</h2>
-
-      <div className="resultsBox">
-        <div className="resultCard">
-          <h3>Uso responsável da plataforma</h3>
-          <p>
-            A LocaCheck é uma ferramenta de apoio para locadoras, frotistas e
-            empresas que desejam registrar e consultar ocorrências relacionadas
-            à locação de veículos. As informações devem ser usadas com
-            responsabilidade, boa-fé e finalidade legítima.
-          </p>
-        </div>
-
-        <div className="resultCard">
-          <h3>Proteção de dados e LGPD</h3>
-          <p>
-            Os dados cadastrados devem ser verdadeiros, necessários e relacionados
-            a uma ocorrência real. A plataforma aplica medidas para reduzir a
-            exposição de dados pessoais, como exibição de CPF mascarado para
-            usuários comuns.
-          </p>
-        </div>
-
-        <div className="resultCard">
-          <h3>Responsabilidade do usuário</h3>
-          <p>
-            Quem cadastra uma ocorrência declara que possui base legítima para o
-            registro e que as informações fornecidas são corretas. É proibido
-            cadastrar dados falsos, ofensivos, discriminatórios ou sem relação
-            com uma locação de veículo.
-          </p>
-        </div>
-
-        <div className="resultCard">
-          <h3>Consultas</h3>
-          <p>
-            Cada consulta pode consumir crédito, salvo nos casos de plano ilimitado
-            ativo. O histórico de consultas pode ser registrado para segurança,
-            auditoria e prevenção de uso indevido.
-          </p>
-        </div>
-
-        <div className="resultCard">
-          <h3>Solicitações e suporte</h3>
-          <p>
-            Solicitações de correção, revisão ou remoção de informações podem ser
-            tratadas pelo suporte da plataforma. O objetivo é manter uma base útil,
-            segura e responsável para todos os usuários.
-          </p>
-        </div>
-      </div>
+      <LegalTermsContent />
     </div>
   </div>
 )}
@@ -3808,6 +3921,45 @@ function App() {
           </div>
         </section>
 
+        <section className="landingTrustStats" aria-label="Credibilidade da plataforma LocaCheck">
+          <div className="sectionTitle compactSectionTitle">
+            <span>Credibilidade</span>
+            <h2>Consulta com mais critério antes de liberar o veículo</h2>
+            <p>
+              Indicadores de confiança pensados para transmitir segurança sem expor dados pessoais
+              ou prometer números que não estejam comprovados na operação.
+            </p>
+          </div>
+
+          <div className="landingStatsGrid">
+            <div className="landingStatCard highlightStat">
+              <strong>Consulta preventiva</strong>
+              <span>apoio à decisão antes da entrega do veículo</span>
+            </div>
+
+            <div className="landingStatCard">
+              <strong>Histórico registrado</strong>
+              <span>consultas e ações ficam organizadas para auditoria</span>
+            </div>
+
+            <div className="landingStatCard">
+              <strong>Ocorrência analisada</strong>
+              <span>registros passam por aprovação antes de aparecerem nas buscas</span>
+            </div>
+
+            <div className="landingStatCard">
+              <strong>CPF protegido</strong>
+              <span>exibição controlada e consulta com responsabilidade</span>
+            </div>
+          </div>
+
+          <div className="trustSealGrid">
+            <div>✓ Comprovantes vinculados à ocorrência</div>
+            <div>✓ Pagamento PIX com liberação automática</div>
+            <div>✓ Planos ativos exibidos automaticamente</div>
+          </div>
+        </section>
+
         <section className="cards">
           <div className="card">
             <h3>20 Créditos Grátis</h3>
@@ -3870,40 +4022,40 @@ function App() {
             <span>Planos</span>
             <h2>Escolha como deseja consultar</h2>
             <p>
-              Compre créditos avulsos ou assine o plano ilimitado mensal para
-              consultar sem se preocupar com saldo.
+              Os planos ativos cadastrados no painel admin aparecem automaticamente aqui e na tela de compra.
             </p>
           </div>
 
-          <div className="planGrid">
-            <div className="planCard">
-              <h3>20 Créditos</h3>
-              <strong>R$ 19,90</strong>
-              <p>Ideal para começar e testar a plataforma.</p>
-              <button className="btn outline full" onClick={abrirCompraPublica}>Comprar</button>
-            </div>
+          {landingMessage && <div className="landingInlineMessage">{landingMessage}</div>}
 
-            <div className="planCard">
-              <h3>50 Créditos</h3>
-              <strong>R$ 39,90</strong>
-              <p>Boa opção para locadores com consultas frequentes.</p>
-              <button className="btn outline full" onClick={abrirCompraPublica}>Comprar</button>
-            </div>
+          <div className="planGrid dynamicPlanGrid">
+            {(publicPlans.length > 0
+              ? publicPlans
+              : [
+                  normalizePlanRow({ id: "fallback-20", name: "20 Créditos", credits: 20, price_cents: 1990, active: true, plan_type: "credits" }),
+                  normalizePlanRow({ id: "fallback-50", name: "50 Créditos", credits: 50, price_cents: 3990, active: true, plan_type: "credits" }),
+                  normalizePlanRow({ id: "fallback-100", name: "100 Créditos", credits: 100, price_cents: 6990, active: true, plan_type: "credits" }),
+                  normalizePlanRow({ id: "fallback-ilimitado", name: "Ilimitado Mensal", credits: 0, price_cents: 9700, active: true, plan_type: "unlimited", is_unlimited: true, duration_days: 30 }),
+                ]
+            ).map((plano, index, list) => {
+              const isUnlimited = plano.is_unlimited === true;
+              const isBestValue = !isUnlimited && index === list.findIndex((item) => !item.is_unlimited && Number(item.credits || 0) === Math.max(...list.filter((p) => !p.is_unlimited).map((p) => Number(p.credits || 0))));
 
-            <div className="planCard">
-              <h3>100 Créditos</h3>
-              <strong>R$ 69,90</strong>
-              <p>Mais economia para quem consulta com regularidade.</p>
-              <button className="btn outline full" onClick={abrirCompraPublica}>Comprar</button>
-            </div>
+              return (
+                <div className={`planCard ${isUnlimited ? "unlimited" : ""}`} key={plano.id || plano.name}>
+                  {isUnlimited && <div className="recommended">Mais indicado para locadoras</div>}
+                  {isBestValue && !isUnlimited && <div className="recommended secondaryRecommended">Melhor custo por consulta</div>}
 
-            <div className="planCard unlimited">
-              <div className="recommended">Mais indicado para locadoras</div>
-              <h3>Ilimitado Mensal</h3>
-              <strong>R$ 97,00</strong>
-              <p>Consultas ilimitadas durante 30 dias.</p>
-              <button className="btn primary full" onClick={abrirCompraPublica}>Assinar por 30 dias</button>
-            </div>
+                  <h3>{plano.name}</h3>
+                  <strong>{formatMoneyCents(plano.price_cents)}</strong>
+                  <p>{getPlanDescription(plano)}</p>
+
+                  <button className={isUnlimited ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
+                    {isUnlimited ? "Assinar plano" : "Comprar créditos"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -4012,6 +4164,20 @@ function App() {
                 required
               />
 
+              {authMode === "cadastro" && (
+                <label className="termsAcceptBox">
+                  <input
+                    type="checkbox"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    required
+                  />
+                  <span>
+                    Li e aceito os Termos de Uso e a Política de Privacidade da LocaCheck.
+                  </span>
+                </label>
+              )}
+
               <button className="btn primary full" disabled={loading}>
                 {loading
                   ? "Aguarde..."
@@ -4039,7 +4205,7 @@ function App() {
 
       {showTermsPrivacy && (
         <div className="modalOverlay">
-          <div className="recordModal">
+          <div className="recordModal legalTermsModal">
             <button
               className="closeModal"
               onClick={() => setShowTermsPrivacy(false)}
@@ -4048,43 +4214,7 @@ function App() {
             </button>
 
             <h2>Termos de Uso e Política de Privacidade</h2>
-
-            <div className="resultsBox">
-              <div className="resultCard">
-                <h3>Uso responsável da plataforma</h3>
-                <p>
-                  A LocaCheck é uma ferramenta de apoio para locadoras, frotistas
-                  e empresas que desejam registrar e consultar ocorrências
-                  relacionadas à locação de veículos.
-                </p>
-              </div>
-
-              <div className="resultCard">
-                <h3>Proteção de dados e LGPD</h3>
-                <p>
-                  Os dados cadastrados devem ser verdadeiros, necessários e
-                  relacionados a uma ocorrência real. A plataforma reduz a
-                  exposição de dados pessoais, como exibição de CPF mascarado para
-                  usuários comuns.
-                </p>
-              </div>
-
-              <div className="resultCard">
-                <h3>Responsabilidade do usuário</h3>
-                <p>
-                  Quem cadastra uma ocorrência declara que possui base legítima
-                  para o registro e que as informações fornecidas são corretas.
-                </p>
-              </div>
-
-              <div className="resultCard">
-                <h3>Consultas e auditoria</h3>
-                <p>
-                  Consultas podem consumir créditos e podem ser registradas para
-                  segurança, auditoria e prevenção de uso indevido.
-                </p>
-              </div>
-            </div>
+            <LegalTermsContent />
           </div>
         </div>
       )}

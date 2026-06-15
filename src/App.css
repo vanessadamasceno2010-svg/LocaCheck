@@ -2607,3 +2607,187 @@ body {
   color: #94a3b8 !important;
   font-size: 13px;
 }
+
+/* V10 - termos, privacidade e aceite LGPD */
+.legalTermsModal {
+  max-width: 920px;
+}
+
+.legalTermsBox {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.legalIntroCard {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(37, 99, 235, .35);
+  background: linear-gradient(135deg, rgba(37, 99, 235, .18), rgba(15, 23, 42, .92));
+  margin-bottom: 14px;
+}
+
+.legalIntroCard strong {
+  display: block;
+  color: #bfdbfe;
+  margin-bottom: 8px;
+}
+
+.legalIntroCard p,
+.legalTermsBox .resultCard p {
+  line-height: 1.65;
+}
+
+.termsAcceptBox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, .22);
+  background: rgba(15, 23, 42, .72);
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.termsAcceptBox input {
+  width: 18px !important;
+  min-width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: #2563eb;
+}
+
+@media (max-width: 640px) {
+  .legalTermsModal {
+    max-width: 100%;
+  }
+
+  .legalTermsBox {
+    max-height: 72vh;
+  }
+}
+
+/* ===== V11 - Landing com planos dinâmicos e gatilhos de credibilidade ===== */
+.landingTrustStats {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px 24px 28px;
+}
+
+.compactSectionTitle {
+  margin-bottom: 20px !important;
+}
+
+.compactSectionTitle h2 {
+  font-size: clamp(28px, 4vw, 40px) !important;
+}
+
+.landingStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.landingStatCard {
+  min-height: 132px;
+  padding: 22px;
+  border-radius: 22px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 22px 70px rgba(2, 6, 23, .28);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.landingStatCard strong {
+  color: white;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.landingStatCard span {
+  color: #cbd5e1;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.landingStatCard.highlightStat {
+  background: linear-gradient(135deg, rgba(37, 99, 235, .95), rgba(23, 37, 84, .96));
+  border-color: rgba(191, 219, 254, .4);
+}
+
+.trustSealGrid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trustSealGrid div {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(2, 6, 23, .34);
+  border: 1px solid rgba(148, 163, 184, .14);
+  color: #dbeafe;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.dynamicPlanGrid .planCard {
+  display: flex;
+  flex-direction: column;
+}
+
+.dynamicPlanGrid .planCard p {
+  flex: 1;
+}
+
+.secondaryRecommended {
+  background: rgba(96, 165, 250, .16) !important;
+  color: #bfdbfe !important;
+  border: 1px solid rgba(147, 197, 253, .26);
+}
+
+.landingInlineMessage {
+  max-width: 720px;
+  margin: -14px auto 20px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(245, 158, 11, .12);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, .28);
+  font-weight: 800;
+  text-align: center;
+}
+
+@media (max-width: 980px) {
+  .landingStatsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trustSealGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .landingTrustStats {
+    padding: 8px 14px 22px;
+  }
+
+  .landingStatsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .landingStatCard {
+    min-height: auto;
+    padding: 18px;
+  }
+}
