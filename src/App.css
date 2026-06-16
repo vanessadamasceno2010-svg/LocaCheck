@@ -3095,3 +3095,122 @@ body {
     flex-direction: column;
   }
 }
+
+
+/* V31 - Resultado externo em cards premium */
+.externalResultV31 {
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 24px;
+  padding: 20px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(15, 35, 70, 0.72));
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.externalResultTopV31 {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.externalResultEyebrowV31,
+.externalInfoCardV31 span {
+  display: inline-flex;
+  color: #60a5fa;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.externalResultTopV31 h3 {
+  margin: 0 0 6px;
+  font-size: clamp(1.25rem, 4vw, 1.8rem);
+  color: #f8fafc;
+}
+
+.externalResultTopV31 p {
+  margin: 0;
+  color: #a9b8d1;
+}
+
+.externalSourcePillV31 {
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 9px 12px;
+  font-size: 0.75rem;
+  font-weight: 900;
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  background: rgba(37, 99, 235, 0.12);
+  color: #bfdbfe;
+}
+
+.externalSourcePillV31.cache {
+  border-color: rgba(45, 212, 191, 0.35);
+  background: rgba(13, 148, 136, 0.14);
+  color: #99f6e4;
+}
+
+.externalResultCardsV31 {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 0.9fr;
+  gap: 14px;
+}
+
+.externalInfoCardV31 {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 20px;
+  padding: 16px;
+  background: rgba(2, 6, 23, 0.38);
+}
+
+.externalInfoCardV31.main {
+  border-color: rgba(96, 165, 250, 0.32);
+  background: linear-gradient(145deg, rgba(30, 64, 175, 0.24), rgba(15, 23, 42, 0.55));
+}
+
+.externalInfoCardV31 h4 {
+  margin: 0 0 10px;
+  color: #f8fafc;
+  font-size: 1.08rem;
+}
+
+.externalInfoCardV31 p {
+  margin: 7px 0;
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+.externalInfoCardV31 strong {
+  color: #ffffff;
+}
+
+.externalResultNoticeV31 {
+  margin-top: 14px;
+  border-radius: 16px;
+  padding: 13px 14px;
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  background: rgba(37, 99, 235, 0.10);
+  color: #b8c7dd;
+  line-height: 1.45;
+}
+
+.externalResultNoticeV31 strong {
+  color: #ffffff;
+}
+
+@media (max-width: 760px) {
+  .externalResultTopV31 {
+    flex-direction: column;
+  }
+
+  .externalResultCardsV31 {
+    grid-template-columns: 1fr;
+  }
+
+  .externalSourcePillV31 {
+    white-space: normal;
+  }
+}

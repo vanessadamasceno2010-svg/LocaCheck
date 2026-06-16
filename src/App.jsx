@@ -388,7 +388,7 @@ function buildExternalSummaryText(item) {
     `Indicadores de processos: ${item.has_lawsuit_indicators ? "Encontrados" : "Não encontrados ou não informados"}`,
     `Total/indicador agregado: ${item.lawsuits_total || 0}`,
     `Créditos descontados: ${item.credits_charged || 0}`,
-    `Cache seguro: ${item.cache_hit ? "Sim" : "Não"}`,
+    `Resultado reaproveitado: ${item.cache_hit ? "Sim" : "Não"}`,
     "Fonte: BigDataCorp",
     "Observação: resultado externo tratado para apoio à decisão do locador.",
   ];
@@ -4794,48 +4794,52 @@ function App() {
                     <div className="resultCard" key={item.id}>
                       {item.result_origin === "external" ? (
                         <>
-                          <div className="externalResultHeader">
-                            <div>
-                              <span>Fonte externa</span>
-                              <h3>{item.consultation_label || "Consulta Externa"}</h3>
+                          <div className="externalResultV31" data-version="external-result-cards-v31">
+                            <div className="externalResultTopV31">
+                              <div>
+                                <span className="externalResultEyebrowV31">Consulta externa</span>
+                                <h3>{item.consultation_label || "Consulta Externa"}</h3>
+                                <p>Resultado tratado para apoio à análise do locador.</p>
+                              </div>
+                              <span className={`externalSourcePillV31 ${item.cache_hit ? "cache" : "new"}`}>
+                                {item.cache_hit ? "Resultado salvo recentemente" : "Nova consulta externa"}
+                              </span>
                             </div>
-                            <span className={`statusBadge ${item.cache_hit ? "pendente" : "aprovado"}`}>
-                              {item.cache_hit ? "Cache seguro" : "Nova consulta"}
-                            </span>
+
+                            <div className="externalResultCardsV31">
+                              <section className="externalInfoCardV31 main">
+                                <span>Dados cadastrais</span>
+                                <h4>{item.name || "Nome não informado"}</h4>
+                                <p><strong>CPF consultado:</strong> {item.cpf_masked || "***.***.***-****"}</p>
+                                <p><strong>Situação cadastral:</strong> {item.document_status || "Não informado"}</p>
+                                {item.birth_date && <p><strong>Nascimento:</strong> {String(item.birth_date).split("T")[0].split("-").reverse().join("/")}</p>}
+                              </section>
+
+                              <section className="externalInfoCardV31">
+                                <span>Indicadores de processos</span>
+                                <h4>{item.has_lawsuit_indicators ? "Indicadores encontrados" : "Sem indicadores informados"}</h4>
+                                <p><strong>Total agregado:</strong> {item.lawsuits_total || 0}</p>
+                                <p>Consulta baseada nos dados externos disponíveis para o CPF informado.</p>
+                              </section>
+
+                              <section className="externalInfoCardV31">
+                                <span>Consumo e origem</span>
+                                <h4>{item.credits_charged || 0} créditos</h4>
+                                <p><strong>Fonte:</strong> {item.source || "BigDataCorp"}</p>
+                                <p><strong>Resultado reaproveitado:</strong> {item.cache_hit ? "Sim" : "Não"}</p>
+                              </section>
+                            </div>
+
+                            <div className="externalResultNoticeV31">
+                              <strong>Uso responsável:</strong> As informações são fornecidas por fonte externa integrada e devem ser usadas apenas como apoio à decisão, respeitando finalidade legítima e análise própria do locador.
+                            </div>
+
+                            <div className="modalActionsRow externalResultActions">
+                              <button type="button" className="btn secondary" onClick={() => copiarResumoConsultaExterna(item)}>
+                                Copiar resumo
+                              </button>
+                            </div>
                           </div>
-
-                          <div className="externalResultGrid">
-                            <div className="externalResultBlock">
-                              <small>Dados cadastrais</small>
-                              <p><strong>CPF:</strong> {item.cpf_masked || "***.***.***-****"}</p>
-                              <p><strong>Nome encontrado:</strong> {item.name || "Não informado"}</p>
-                              <p><strong>Situação cadastral:</strong> {item.document_status || "Não informado"}</p>
-                              {item.birth_date && <p><strong>Nascimento:</strong> {String(item.birth_date)}</p>}
-                            </div>
-
-                            <div className="externalResultBlock">
-                              <small>Indicadores de processos</small>
-                              <p><strong>Status:</strong> {item.has_lawsuit_indicators ? "Encontrados" : "Não encontrados ou não informados"}</p>
-                              <p><strong>Total/indicador agregado:</strong> {item.lawsuits_total || 0}</p>
-                              <p><strong>Fonte:</strong> {item.source || "BigDataCorp"}</p>
-                            </div>
-
-                            <div className="externalResultBlock">
-                              <small>Consumo da consulta</small>
-                              <p><strong>Créditos descontados:</strong> {item.credits_charged || 0}</p>
-                              <p><strong>Cache seguro:</strong> {item.cache_hit ? "Sim" : "Não"}</p>
-                            </div>
-                          </div>
-
-                          <div className="modalActionsRow externalResultActions">
-                            <button type="button" className="btn secondary" onClick={() => copiarResumoConsultaExterna(item)}>
-                              Copiar resumo
-                            </button>
-                          </div>
-
-                          <p className="documentPublicNotice">
-                            Resultado externo tratado para apoio à decisão. A informação deve ser usada com finalidade legítima, responsabilidade e análise própria do locador.
-                          </p>
                         </>
                       ) : (
                         <>
