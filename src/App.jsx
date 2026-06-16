@@ -174,6 +174,26 @@ function formatWhatsappInput(value) {
     .replace(/(\d{5})(\d)/, "$1-$2");
 }
 
+function isValidWhatsapp(value) {
+  const digits = onlyDigits(value);
+
+  if (digits.length !== 10 && digits.length !== 11) return false;
+  if (digits.length === 11 && digits[2] !== "9") return false;
+  if (/^(\d)\1+$/.test(digits)) return false;
+
+  return true;
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  const emailText = normalizeEmail(value);
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailText);
+}
+
 function looksLikeCpfSearch(value) {
   const text = String(value || "").trim();
   const digits = onlyDigits(text);
@@ -529,6 +549,7 @@ function App() {
   const [searchText, setSearchText] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchMessage, setSearchMessage] = useState("");
+  const [consultationMode, setConsultationMode] = useState("internal");
 
   const [adminRecords, setAdminRecords] = useState([]);
   const [adminMessage, setAdminMessage] = useState("");
@@ -548,6 +569,8 @@ function App() {
   const [adminSupportFilter, setAdminSupportFilter] = useState("todos");
   const [activityLogs, setActivityLogs] = useState([]);
   const [activityLogsMessage, setActivityLogsMessage] = useState("");
+  const [adminExternalLogs, setAdminExternalLogs] = useState([]);
+  const [adminExternalLogsMessage, setAdminExternalLogsMessage] = useState("");
 
   const [editingRecord, setEditingRecord] = useState(null);
   const [editRecordNome, setEditRecordNome] = useState("");
@@ -589,6 +612,14 @@ function App() {
   async function loadProfile(userId) {
     const { data: userData } = await supabase.auth.getUser();
     const user = userData?.user;
+    const provider = user?.app_metadata?.provider || "email";
+    const userEmail = normalizeEmail(user?.email || "");
+    const userNameFromAuth =
+      user?.user_metadata?.nome ||
+      user?.user_metadata?.full_name ||
+      user?.user_metadata?.name ||
+      userEmail ||
+      "Usuário";
 
     const referralCode =
       user?.user_metadata?.referral_code ||
@@ -633,7 +664,29 @@ function App() {
       .maybeSingle();
 
     if (data) {
-      const updatedProfile = await aplicarIndicacaoPendente(data);
+      let profileData = data;
+
+      const needsGoogleProfileSync =
+        provider === "google" &&
+        (!profileData.email || !profileData.nome || profileData.nome === "Usuário");
+
+      if (needsGoogleProfileSync) {
+        const { data: syncedProfile, error: syncError } = await supabase
+          .from("profiles")
+          .update({
+            nome: profileData.nome && profileData.nome !== "Usuário" ? profileData.nome : userNameFromAuth,
+            email: userEmail || profileData.email || null,
+          })
+          .eq("id", userId)
+          .select("*")
+          .maybeSingle();
+
+        if (!syncError && syncedProfile) {
+          profileData = syncedProfile;
+        }
+      }
+
+      const updatedProfile = await aplicarIndicacaoPendente(profileData);
       setProfile(updatedProfile);
       return;
     }
@@ -642,10 +695,11 @@ function App() {
       .from("profiles")
       .insert({
         id: userId,
-        nome: user?.user_metadata?.nome || "Usuário",
+        nome: userNameFromAuth,
+        email: userEmail || null,
         whatsapp: user?.user_metadata?.whatsapp || "",
         role: "user",
-        credits: 20,
+        credits: 10,
         consultas: 0,
         referred_by_code: referralCode || null,
       })
@@ -694,14 +748,15 @@ function App() {
       carregarPlanosAdmin();
       carregarMensagensSuporteAdmin();
       carregarLogsSistema();
+      carregarConsultasExternasAdmin();
     }
   }, [session, profile]);
 
   useEffect(() => {
     if (profile) {
       setProfileNome(profile.nome || "");
-      setProfileWhatsapp(profile.whatsapp || "");
-      setProfileEmail(session?.user?.email || "");
+      setProfileWhatsapp(formatWhatsappInput(profile.whatsapp || ""));
+      setProfileEmail(normalizeEmail(session?.user?.email || ""));
     }
   }, [profile]);
   useEffect(() => {
@@ -876,8 +931,8 @@ function App() {
 
   function abrirMeusDados() {
     setProfileNome(profile?.nome || "");
-    setProfileWhatsapp(profile?.whatsapp || "");
-    setProfileEmail(session?.user?.email || "");
+    setProfileWhatsapp(formatWhatsappInput(profile?.whatsapp || ""));
+    setProfileEmail(normalizeEmail(session?.user?.email || ""));
     setProfileNewPassword("");
     setProfileMessage("");
     setShowProfileData(true);
@@ -951,8 +1006,21 @@ function App() {
       return;
     }
 
-    if (!profileWhatsapp.trim()) {
+    const profileWhatsappDigits = onlyDigits(profileWhatsapp);
+    const profileEmailNormalized = normalizeEmail(profileEmail);
+
+    if (!profileWhatsappDigits) {
       setProfileMessage("Informe seu WhatsApp.");
+      return;
+    }
+
+    if (!isValidWhatsapp(profileWhatsappDigits)) {
+      setProfileMessage("Informe um WhatsApp válido com DDD. Exemplo: (88) 99999-9999.");
+      return;
+    }
+
+    if (!isValidEmail(profileEmailNormalized)) {
+      setProfileMessage("Informe um e-mail válido.");
       return;
     }
 
@@ -963,7 +1031,7 @@ function App() {
       .from("profiles")
       .update({
         nome: profileNome.trim(),
-        whatsapp: profileWhatsapp.trim(),
+        whatsapp: profileWhatsappDigits,
       })
       .eq("id", session.user.id);
 
@@ -977,8 +1045,8 @@ function App() {
 
     const authPayload = {};
 
-    if (profileEmail.trim() && profileEmail.trim() !== session.user.email) {
-      authPayload.email = profileEmail.trim();
+    if (profileEmailNormalized && profileEmailNormalized !== normalizeEmail(session.user.email)) {
+      authPayload.email = profileEmailNormalized;
     }
 
     if (profileNewPassword.trim()) {
@@ -1024,15 +1092,43 @@ function App() {
       return;
     }
 
+    const cadastroWhatsappDigits = onlyDigits(whatsapp);
+    const cadastroEmailNormalized = normalizeEmail(email);
+
+    if (!nome.trim()) {
+      setMessage("Informe seu nome ou nome da empresa.");
+      setLoading(false);
+      return;
+    }
+
+    if (!isValidWhatsapp(cadastroWhatsappDigits)) {
+      setMessage("Informe um WhatsApp válido com DDD. Exemplo: (88) 99999-9999.");
+      setLoading(false);
+      return;
+    }
+
+    if (!isValidEmail(cadastroEmailNormalized)) {
+      setMessage("Informe um e-mail válido.");
+      setLoading(false);
+      return;
+    }
+
+    if (senha.trim().length < 6) {
+      setMessage("A senha precisa ter pelo menos 6 caracteres.");
+      setLoading(false);
+      return;
+    }
+
     const referralCode = getStoredReferralCode();
 
     const { data: signUpData, error } = await supabase.auth.signUp({
-      email,
+      email: cadastroEmailNormalized,
       password: senha,
       options: {
         data: {
-          nome,
-          whatsapp,
+          nome: nome.trim(),
+          email: cadastroEmailNormalized,
+          whatsapp: cadastroWhatsappDigits,
           referral_code: referralCode || null,
           terms_accepted: true,
           terms_version: "2026-06-14",
@@ -1053,7 +1149,7 @@ function App() {
       }
 
       setMessage("Cadastro realizado com sucesso. Você já pode entrar.");
-      showToast("success", "Cadastro realizado", "Sua conta foi criada com 20 créditos iniciais.");
+      showToast("success", "Cadastro realizado", "Sua conta foi criada com 10 créditos iniciais.");
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -1070,8 +1166,16 @@ function App() {
     setLoading(true);
     setMessage("");
 
+    const loginEmailNormalized = normalizeEmail(email);
+
+    if (!isValidEmail(loginEmailNormalized)) {
+      setMessage("Informe um e-mail válido.");
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: loginEmailNormalized,
       password: senha,
     });
 
@@ -1085,6 +1189,48 @@ function App() {
     }
 
     setLoading(false);
+  }
+
+  async function entrarComGoogle() {
+    if (loading) return;
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const referralCode = getStoredReferralCode();
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin,
+          queryParams: {
+            prompt: "select_account",
+          },
+        },
+      });
+
+      if (error) {
+        setMessage(
+          error.message ||
+            "Não foi possível iniciar o login com Google. Verifique se o provedor Google está configurado no Supabase."
+        );
+        setLoading(false);
+        return;
+      }
+
+      if (referralCode) {
+        try {
+          localStorage.setItem("locacheck-referral-code", referralCode);
+        } catch {
+          // Mantém o fluxo mesmo se o navegador bloquear localStorage.
+        }
+      }
+    } catch (error) {
+      console.log("Erro ao iniciar login com Google:", error);
+      setMessage("Não foi possível iniciar o login com Google. Tente novamente.");
+      setLoading(false);
+    }
   }
 
   async function sair() {
@@ -1197,6 +1343,14 @@ function App() {
   async function consultarLocatario(e) {
     e.preventDefault();
 
+    if (consultationMode === "internal") {
+      return consultarLocatarioInterno();
+    }
+
+    return consultarLocatarioExterno();
+  }
+
+  async function consultarLocatarioInterno() {
     if (loading) return;
 
     const searchClean = searchText.trim();
@@ -1250,22 +1404,123 @@ function App() {
       return;
     }
 
-    const results = data.results || [];
+    const results = (data.results || []).map((item) => ({ ...item, result_origin: "internal" }));
 
     setSearchResults(results);
 
     if (results.length === 0) {
       setSearchMessage(
-        "Consulta realizada. Nenhum registro aprovado foi encontrado para os dados informados."
+        "Consulta interna realizada. Nenhum registro aprovado foi encontrado para os dados informados."
       );
     } else {
       setSearchMessage(
-        `Consulta realizada. ${results.length} registro(s) encontrado(s).`
+        `Consulta interna realizada. ${results.length} registro(s) encontrado(s).`
       );
     }
 
     await loadProfile(session.user.id);
     setLoading(false);
+  }
+
+  async function consultarLocatarioExterno() {
+    if (loading) return;
+
+    const cpfDigits = onlyDigits(searchText);
+    const isBasic = consultationMode === "external_basic";
+    const creditsNeeded = isBasic ? 2 : 3;
+    const consultationLabel = isBasic ? "Consulta Externa Básica" : "Consulta Externa Completa";
+
+    if (!isValidCpf(cpfDigits)) {
+      setSearchMessage("Para consulta externa, informe um CPF completo e válido.");
+      return;
+    }
+
+    if (Number(profile?.credits || 0) < creditsNeeded) {
+      setSearchMessage(`${consultationLabel} consome ${creditsNeeded} créditos. Recarregue sua conta para continuar.`);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `${consultationLabel}\n\nEsta consulta consome ${creditsNeeded} créditos. O resultado vem de fonte externa integrada e deve ser usado apenas como apoio à análise. Deseja continuar?`
+    );
+
+    if (!confirmed) return;
+
+    setLoading(true);
+    setSearchMessage("");
+    setSearchResults([]);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+
+      if (!token) {
+        setSearchMessage("Sessão expirada. Faça login novamente.");
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch("/api/bigdata/external-consult", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          cpf: cpfDigits,
+          consultationType: consultationMode,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data?.success) {
+        setSearchMessage(data?.message || "Não foi possível realizar a consulta externa.");
+        setLoading(false);
+        await loadProfile(session.user.id);
+        return;
+      }
+
+      const results = (data.results || []).map((item, index) => ({
+        ...item,
+        id: `${data.consultationType || consultationMode}-${Date.now()}-${index}`,
+        result_origin: "external",
+        consultation_label: data.consultationLabel || consultationLabel,
+        credits_charged: data.creditsCharged || creditsNeeded,
+        cache_hit: data.cacheHit || item.cached || false,
+      }));
+
+      setSearchResults(results);
+      setSearchMessage(
+        `${data.consultationLabel || consultationLabel} realizada. ${data.cacheHit ? "Resultado reaproveitado do cache seguro." : "Resultado obtido em fonte externa."}`
+      );
+
+      await loadProfile(session.user.id);
+    } catch (error) {
+      console.log("Erro na consulta externa:", error);
+      setSearchMessage("Erro inesperado ao realizar consulta externa.");
+    }
+
+    setLoading(false);
+  }
+
+  async function carregarConsultasExternasAdmin() {
+    if (profile?.role !== "admin") return;
+
+    const { data, error } = await supabase
+      .from("external_consultation_logs")
+      .select("*, profiles:user_id(nome,email)")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.log(error);
+      setAdminExternalLogsMessage("Erro ao carregar consultas externas.");
+      return;
+    }
+
+    setAdminExternalLogs(data || []);
+    setAdminExternalLogsMessage("");
   }
 
   async function carregarOcorrenciasAdmin() {
@@ -1633,6 +1888,70 @@ function App() {
     }
 
     setAdminUsers(data || []);
+  }
+
+  async function alterarRoleUsuario(userId, novoRole) {
+    if (loading) return;
+
+    if (!session?.user?.id || profile?.role !== "admin") {
+      setAdminUsersMessage("Apenas administradores podem alterar o perfil de acesso.");
+      return;
+    }
+
+    const usuario = adminUsers.find((item) => item.id === userId);
+    if (!usuario) return;
+
+    const roleAtual = String(usuario.role || "user").toLowerCase();
+    const roleDestino = String(novoRole || "user").toLowerCase();
+
+    if (roleAtual === roleDestino) {
+      setAdminUsersMessage("Este usuário já está com este perfil.");
+      return;
+    }
+
+    if (userId === session.user.id && roleDestino !== "admin") {
+      setAdminUsersMessage("Por segurança, você não pode remover seu próprio acesso de administrador pelo painel.");
+      showToast("warning", "Ação bloqueada", "Use outro administrador para alterar seu próprio perfil.");
+      return;
+    }
+
+    const confirmar = window.confirm(
+      roleDestino === "admin"
+        ? `Deseja transformar ${usuario.nome || usuario.email || "este usuário"} em administrador?`
+        : `Deseja remover o acesso de administrador de ${usuario.nome || usuario.email || "este usuário"}?`
+    );
+
+    if (!confirmar) return;
+
+    setLoading(true);
+    setAdminUsersMessage("");
+
+    const { data, error } = await supabase.rpc("admin_set_user_role", {
+      p_user_id: userId,
+      p_role: roleDestino,
+    });
+
+    if (error || data?.success === false) {
+      console.log("Erro ao alterar perfil:", error || data);
+      setAdminUsersMessage(error?.message || data?.message || "Erro ao alterar o perfil do usuário.");
+      showToast("error", "Erro ao alterar perfil", "Verifique as permissões no Supabase.");
+      setLoading(false);
+      return;
+    }
+
+    setAdminUsersMessage(
+      roleDestino === "admin"
+        ? "Usuário promovido para administrador com sucesso."
+        : "Usuário alterado para usuário comum com sucesso."
+    );
+    showToast("success", "Perfil atualizado", roleDestino === "admin" ? "Acesso admin liberado." : "Acesso admin removido.");
+    await carregarUsuariosAdmin();
+
+    if (userId === session.user.id) {
+      await loadProfile(session.user.id);
+    }
+
+    setLoading(false);
   }
 
   async function alterarCreditosUsuario(userId, quantidade) {
@@ -2275,6 +2594,7 @@ function App() {
                 setSearchMessage("");
                 setSearchResults([]);
                 setSearchText("");
+                setConsultationMode("internal");
                 setShowSearchForm(true);
               }}
             >
@@ -2408,6 +2728,18 @@ function App() {
               >
                 <span>Ocorrências</span>
                 <strong>Aprovação, análise e registros</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "consulta_externa" ? "active externalShortcut" : "externalShortcut"}
+                onClick={() => {
+                  setAdminActiveSection("consulta_externa");
+                  carregarConsultasExternasAdmin();
+                }}
+              >
+                <span>Consulta Externa</span>
+                <strong>BigDataCorp, cache e créditos</strong>
               </button>
 
               <button
@@ -2924,6 +3256,11 @@ function App() {
                       </div>
 
                       <p>
+                        <strong>E-mail:</strong>{" "}
+                        {user.email || "Não informado"}
+                      </p>
+
+                      <p>
                         <strong>WhatsApp:</strong>{" "}
                         {user.whatsapp || "Não informado"}
                       </p>
@@ -2973,6 +3310,25 @@ function App() {
                         >
                           Cancelar ilimitado
                         </button>
+
+                        {String(user.role || "user").toLowerCase() === "admin" ? (
+                          <button
+                            className="btn outline"
+                            onClick={() => alterarRoleUsuario(user.id, "user")}
+                            disabled={user.id === session.user.id || loading}
+                            title={user.id === session.user.id ? "Você não pode remover seu próprio admin pelo painel" : "Remover acesso admin"}
+                          >
+                            Tornar usuário comum
+                          </button>
+                        ) : (
+                          <button
+                            className="btn primary"
+                            onClick={() => alterarRoleUsuario(user.id, "admin")}
+                            disabled={loading}
+                          >
+                            Tornar admin
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -3158,6 +3514,72 @@ function App() {
                       <strong>Detalhes:</strong>{" "}
                       {log.details ? JSON.stringify(log.details) : "Sem detalhes"}
                     </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {profile.role === "admin" && adminActiveSection === "consulta_externa" && (
+            <section className="adminPanel adminArea externalArea" id="admin-consulta-externa">
+              <div className="adminHeader">
+                <div>
+                  <span>Consulta Externa</span>
+                  <h2>Histórico BigDataCorp</h2>
+                  <p>Acompanhe consultas externas, créditos descontados, uso de cache e status da integração.</p>
+                </div>
+
+                <button className="btn secondary" onClick={carregarConsultasExternasAdmin}>
+                  Atualizar externas
+                </button>
+              </div>
+
+              {adminExternalLogsMessage && <div className="authMessage">{adminExternalLogsMessage}</div>}
+
+              <section className="adminMiniDashboard">
+                <div className="adminStatCard featured">
+                  <small>Total externo listado</small>
+                  <strong>{adminExternalLogs.length}</strong>
+                  <span>Últimos 100 registros</span>
+                </div>
+                <div className="adminStatCard success">
+                  <small>Com cache</small>
+                  <strong>{adminExternalLogs.filter((log) => log.cache_hit).length}</strong>
+                  <span>Economia de chamadas externas</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Créditos consumidos</small>
+                  <strong>{adminExternalLogs.reduce((total, log) => total + Number(log.credits_charged || 0), 0)}</strong>
+                  <span>No período listado</span>
+                </div>
+                <div className="adminStatCard danger">
+                  <small>Erros</small>
+                  <strong>{adminExternalLogs.filter((log) => log.status === "error").length}</strong>
+                  <span>Falhas de consulta externa</span>
+                </div>
+              </section>
+
+              <div className="adminList">
+                {adminExternalLogs.length === 0 && (
+                  <div className="adminEmpty">Nenhuma consulta externa encontrada.</div>
+                )}
+
+                {adminExternalLogs.map((log) => (
+                  <div className="adminRecord" key={log.id}>
+                    <div className="adminRecordTop">
+                      <h3>{log.consultation_type === "external_basic" ? "Consulta Externa Básica" : "Consulta Externa Completa"}</h3>
+                      <span className={`statusBadge ${log.status === "success" ? "aprovado" : "reprovado"}`}>
+                        {log.status}
+                      </span>
+                    </div>
+
+                    <p><strong>Usuário:</strong> {log.profiles?.nome || log.profiles?.email || log.user_id}</p>
+                    <p><strong>CPF:</strong> ***.***.***-{log.cpf4 || "----"}</p>
+                    <p><strong>Créditos:</strong> {log.credits_charged || 0}</p>
+                    <p><strong>Cache:</strong> {log.cache_hit ? "Sim" : "Não"}</p>
+                    <p><strong>Datasets:</strong> {Array.isArray(log.datasets) ? log.datasets.join(", ") : String(log.datasets || "-")}</p>
+                    <p><strong>Data:</strong> {formatDate(log.created_at)}</p>
+                    {log.error_message && <p><strong>Erro:</strong> {log.error_message}</p>}
                   </div>
                 ))}
               </div>
@@ -3391,8 +3813,8 @@ function App() {
 
               <button
                 type="button"
-                className={adminActiveSection === "relatorios" || adminActiveSection === "suporte" || adminActiveSection === "auditoria" ? "active" : ""}
-                onClick={() => setAdminActiveSection(adminActiveSection === "relatorios" ? "suporte" : adminActiveSection === "suporte" ? "auditoria" : "relatorios")}
+                className={adminActiveSection === "consulta_externa" || adminActiveSection === "relatorios" || adminActiveSection === "suporte" || adminActiveSection === "auditoria" ? "active" : ""}
+                onClick={() => setAdminActiveSection(adminActiveSection === "consulta_externa" ? "relatorios" : adminActiveSection === "relatorios" ? "suporte" : adminActiveSection === "suporte" ? "auditoria" : "consulta_externa")}
               >
                 <span>☰</span>
                 Mais
@@ -3409,6 +3831,7 @@ function App() {
                 setSearchMessage("");
                 setSearchResults([]);
                 setSearchText("");
+                setConsultationMode("internal");
                 setShowSearchForm(true);
               }}>
                 <span>⌕</span>
@@ -3602,18 +4025,24 @@ function App() {
         />
 
         <input
-          type="text"
-          placeholder="WhatsApp"
+          type="tel"
+          inputMode="numeric"
+          placeholder="WhatsApp com DDD"
           value={profileWhatsapp}
-          onChange={(e) => setProfileWhatsapp(e.target.value)}
+          onChange={(e) => setProfileWhatsapp(formatWhatsappInput(e.target.value))}
+          maxLength={15}
           required
         />
+
+        <small className="fieldHelp">Use DDD + número. Exemplo: (88) 99999-9999.</small>
 
         <input
           type="email"
           placeholder="E-mail de acesso"
           value={profileEmail}
           onChange={(e) => setProfileEmail(e.target.value)}
+          onBlur={() => setProfileEmail(normalizeEmail(profileEmail))}
+          autoComplete="email"
           required
         />
 
@@ -4093,18 +4522,58 @@ function App() {
               <h2>Consultar Locatário</h2>
 
               <p>
-                Digite nome ou CPF completo. A consulta desconta 1
-                crédito ao buscar, exceto usuários com plano ilimitado ativo.
+                Escolha entre buscar na base interna da LocaCheck ou realizar uma consulta externa integrada.
               </p>
+
+              <div className="consultTypeGrid">
+                <button
+                  type="button"
+                  className={consultationMode === "internal" ? "consultTypeCard active" : "consultTypeCard"}
+                  onClick={() => setConsultationMode("internal")}
+                >
+                  <strong>Consulta Interna</strong>
+                  <span>1 crédito</span>
+                  <small>Busca registros aprovados dentro da LocaCheck.</small>
+                </button>
+
+                <button
+                  type="button"
+                  className={consultationMode === "external_basic" ? "consultTypeCard active" : "consultTypeCard"}
+                  onClick={() => setConsultationMode("external_basic")}
+                >
+                  <strong>Consulta Externa Básica</strong>
+                  <span>2 créditos</span>
+                  <small>Dados cadastrais básicos por CPF em fonte externa.</small>
+                </button>
+
+                <button
+                  type="button"
+                  className={consultationMode === "external_complete" ? "consultTypeCard active" : "consultTypeCard"}
+                  onClick={() => setConsultationMode("external_complete")}
+                >
+                  <strong>Consulta Externa Completa</strong>
+                  <span>3 créditos</span>
+                  <small>Dados básicos + distribuição de processos por CPF.</small>
+                </button>
+              </div>
 
               <form onSubmit={consultarLocatario} className="recordForm">
                 <input
                   type="text"
-                  placeholder="Nome ou CPF"
+                  placeholder={consultationMode === "internal" ? "Nome ou CPF" : "CPF completo"}
                   value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
+                  onChange={(e) => {
+                    const value = consultationMode === "internal" ? e.target.value : formatCpfInput(e.target.value);
+                    setSearchText(value);
+                  }}
                   required
                 />
+
+                <p className="documentPublicNotice">
+                  {consultationMode === "internal"
+                    ? "Consulta interna: consome 1 crédito e busca somente ocorrências aprovadas na base LocaCheck."
+                    : "Consulta externa: usa fonte integrada, salva log de auditoria e pode reutilizar cache seguro para reduzir chamadas repetidas."}
+                </p>
 
                 <button className="btn primary full" disabled={loading}>
                   {loading ? "Consultando..." : "Buscar"}
@@ -4119,42 +4588,62 @@ function App() {
                 <div className="resultsBox">
                   {searchResults.map((item) => (
                     <div className="resultCard" key={item.id}>
-                      <h3>{item.nome}</h3>
+                      {item.result_origin === "external" ? (
+                        <>
+                          <h3>{item.consultation_label || "Consulta Externa"}</h3>
+                          <p><strong>Fonte:</strong> {item.source || "BigDataCorp"}</p>
+                          <p><strong>CPF:</strong> {item.cpf_masked || "***.***.***-****"}</p>
+                          <p><strong>Nome encontrado:</strong> {item.name || "Não informado"}</p>
+                          <p><strong>Situação cadastral:</strong> {item.document_status || "Não informado"}</p>
+                          {item.birth_date && <p><strong>Nascimento:</strong> {String(item.birth_date)}</p>}
+                          <p><strong>Indicadores de processos:</strong> {item.has_lawsuit_indicators ? "Encontrados" : "Não encontrados ou não informados"}</p>
+                          <p><strong>Total/indicador agregado:</strong> {item.lawsuits_total || 0}</p>
+                          <p><strong>Créditos descontados:</strong> {item.credits_charged || 0}</p>
+                          <p><strong>Cache seguro:</strong> {item.cache_hit ? "Sim" : "Não"}</p>
+                          <p className="documentPublicNotice">
+                            Resultado externo tratado para apoio à decisão. A informação deve ser usada com finalidade legítima, responsabilidade e análise própria do locador.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <h3>{item.nome}</h3>
 
-                      <p>
-                        <strong>CPF:</strong>{" "}
-                        {item.cpf_masked || item.cpf4 || "Não informado"}
-                      </p>
+                          <p>
+                            <strong>CPF:</strong>{" "}
+                            {item.cpf_masked || item.cpf4 || "Não informado"}
+                          </p>
 
-                      <p>
-                        <strong>Cidade/UF:</strong>{" "}
-                        {item.cidade || "Não informado"}
-                      </p>
+                          <p>
+                            <strong>Cidade/UF:</strong>{" "}
+                            {item.cidade || "Não informado"}
+                          </p>
 
-                      <p>
-                        <strong>Ocorrências:</strong>{" "}
-                        {item.tipos?.join(", ")}
-                      </p>
+                          <p>
+                            <strong>Ocorrências:</strong>{" "}
+                            {item.tipos?.join(", ")}
+                          </p>
 
-                      <p>
-                        <strong>Descrição:</strong> {item.descricao}
-                      </p>
+                          <p>
+                            <strong>Descrição:</strong> {item.descricao}
+                          </p>
 
-                      {item.imagem_url && (
-                        <div className="imagePreviewBox">
-                          <strong>Documento/comprovante:</strong>
-                          <a
-                            href={item.imagem_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {getDocumentoLabel(item.imagem_url)}
-                          </a>
-                          <p className="documentPublicNotice">Documento disponível para usuários que realizarem uma consulta com resultado aprovado.</p>
-                          {isImageUrl(item.imagem_url) && (
-                            <img src={item.imagem_url} alt="Documento/comprovante" />
+                          {item.imagem_url && (
+                            <div className="imagePreviewBox">
+                              <strong>Documento/comprovante:</strong>
+                              <a
+                                href={item.imagem_url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {getDocumentoLabel(item.imagem_url)}
+                              </a>
+                              <p className="documentPublicNotice">Documento disponível para usuários que realizarem uma consulta com resultado aprovado.</p>
+                              {isImageUrl(item.imagem_url) && (
+                                <img src={item.imagem_url} alt="Documento/comprovante" />
+                              )}
+                            </div>
                           )}
-                        </div>
+                        </>
                       )}
                     </div>
                   ))}
@@ -4373,7 +4862,7 @@ function App() {
 
         <section className="cards">
           <div className="card">
-            <h3>20 Créditos Grátis</h3>
+            <h3>10 Créditos Grátis</h3>
             <p>Todo novo usuário recebe créditos para começar a consultar.</p>
           </div>
 
@@ -4477,7 +4966,7 @@ function App() {
             <div>
               <span>01</span>
               <h4>Cadastre-se</h4>
-              <p>Crie sua conta e receba 20 créditos grátis.</p>
+              <p>Crie sua conta e receba 10 créditos grátis.</p>
             </div>
 
             <div>
@@ -4525,7 +5014,7 @@ function App() {
             <p>
               {authMode === "login"
                 ? "Acesse seu painel para consultar locatários."
-                : "Cadastre-se e receba 20 créditos grátis."}
+                : "Cadastre-se e receba 10 créditos grátis."}
             </p>
 
             <button
@@ -4535,6 +5024,20 @@ function App() {
             >
               Ver Termos de Uso e Política de Privacidade
             </button>
+
+            <button
+              type="button"
+              className="btn googleAuthButton full"
+              onClick={entrarComGoogle}
+              disabled={loading}
+            >
+              <span className="googleAuthIcon">G</span>
+              {loading ? "Aguarde..." : "Entrar com Google"}
+            </button>
+
+            <div className="authDivider">
+              <span>ou continue com e-mail</span>
+            </div>
 
             <form
               onSubmit={authMode === "login" ? entrarUsuario : cadastrarUsuario}
@@ -4550,12 +5053,15 @@ function App() {
                   />
 
                   <input
-                    type="text"
-                    placeholder="WhatsApp"
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="WhatsApp com DDD"
                     value={whatsapp}
-                    onChange={(e) => setWhatsapp(e.target.value)}
+                    onChange={(e) => setWhatsapp(formatWhatsappInput(e.target.value))}
+                    maxLength={15}
                     required
                   />
+                  <small className="fieldHelp">Use DDD + número. Exemplo: (88) 99999-9999.</small>
                 </>
               )}
 
@@ -4564,6 +5070,8 @@ function App() {
                 placeholder="E-mail"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setEmail(normalizeEmail(email))}
+                autoComplete={authMode === "login" ? "email" : "email"}
                 required
               />
 
