@@ -344,6 +344,19 @@ function baixarCsv(nomeArquivo, linhas) {
   URL.revokeObjectURL(url);
 }
 
+
+function formatDate(value) {
+  if (!value) return "Não informado";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Não informado";
+  }
+
+  return date.toLocaleString("pt-BR");
+}
+
 function diasAte(dataIso) {
   if (!dataIso) return null;
   const hoje = new Date();
@@ -1507,19 +1520,44 @@ function App() {
   async function carregarConsultasExternasAdmin() {
     if (profile?.role !== "admin") return;
 
+    setAdminExternalLogsMessage("Carregando consultas externas...");
+
     const { data, error } = await supabase
       .from("external_consultation_logs")
-      .select("*, profiles:user_id(nome,email)")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(100);
 
     if (error) {
-      console.log(error);
-      setAdminExternalLogsMessage("Erro ao carregar consultas externas.");
+      console.log("Erro ao carregar external_consultation_logs:", error);
+      setAdminExternalLogsMessage("Erro ao carregar consultas externas. Verifique a migração V29 no Supabase.");
+      setAdminExternalLogs([]);
       return;
     }
 
-    setAdminExternalLogs(data || []);
+    const logs = data || [];
+    const userIds = [...new Set(logs.map((log) => log.user_id).filter(Boolean))];
+    let profilesById = {};
+
+    if (userIds.length > 0) {
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id,nome,email")
+        .in("id", userIds);
+
+      if (profilesError) {
+        console.log("Erro ao carregar perfis das consultas externas:", profilesError);
+      } else {
+        profilesById = Object.fromEntries((profilesData || []).map((item) => [item.id, item]));
+      }
+    }
+
+    const normalizedLogs = logs.map((log) => ({
+      ...log,
+      profiles: profilesById[log.user_id] || null,
+    }));
+
+    setAdminExternalLogs(normalizedLogs);
     setAdminExternalLogsMessage("");
   }
 
