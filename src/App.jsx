@@ -359,15 +359,26 @@ function formatDate(value) {
 
 
 function externalConsultationLabel(type) {
-  return type === "external_basic" ? "Consulta Externa Básica" : "Consulta Externa Completa";
+  if (type === "external_basic") return "Consulta Externa Básica";
+  if (type === "external_advanced") return "Consulta Externa Avançada";
+  return "Consulta Externa Completa";
+}
+
+function externalConsultationCredits(type) {
+  if (type === "external_basic") return 2;
+  if (type === "external_advanced") return 5;
+  return 3;
 }
 
 function externalDatasetLabel(dataset) {
+  const clean = String(dataset || "").replace(/\.limit\(.*?\)/g, "");
   const map = {
     basic_data: "Dados cadastrais",
-    lawsuits_distribution_data: "Distribuição de processos",
+    registration_data: "Endereços, telefones e e-mails",
+    lawsuits_distribution_data: "Resumo de processos",
+    processes: "Processos detalhados",
   };
-  return map[dataset] || dataset;
+  return map[clean] || dataset;
 }
 
 function externalDatasetsText(datasets) {
@@ -378,17 +389,36 @@ function externalDatasetsText(datasets) {
   return "Não informado";
 }
 
+function formatSimpleDate(value) {
+  if (!value) return "Não informado";
+  const text = String(value);
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  return date.toLocaleDateString("pt-BR");
+}
+
 function buildExternalSummaryText(item) {
+  const phones = Array.isArray(item.phones) ? item.phones : [];
+  const emails = Array.isArray(item.emails) ? item.emails : [];
+  const addresses = Array.isArray(item.addresses) ? item.addresses : [];
+  const processes = Array.isArray(item.processes) ? item.processes : [];
+
   const linhas = [
     item.consultation_label || externalConsultationLabel(item.consultation_type),
-    `CPF: ${item.cpf_masked || (item.cpf4 ? `***.***.***-${item.cpf4}` : "Não informado")}`,
+    `CPF consultado: ${item.cpf || item.cpf_masked || (item.cpf4 ? `***.***.***-${item.cpf4}` : "Não informado")}`,
     `Nome encontrado: ${item.name || item.nome || "Não informado"}`,
     `Situação cadastral: ${item.document_status || "Não informado"}`,
-    item.birth_date ? `Nascimento: ${String(item.birth_date)}` : null,
-    `Indicadores de processos: ${item.has_lawsuit_indicators ? "Encontrados" : "Não encontrados ou não informados"}`,
-    `Total/indicador agregado: ${item.lawsuits_total || 0}`,
+    item.birth_date ? `Nascimento: ${formatSimpleDate(item.birth_date)}` : null,
+    item.mother_name ? `Nome da mãe: ${item.mother_name}` : null,
+    item.father_name ? `Nome do pai: ${item.father_name}` : null,
+    item.social_number ? `Número social: ${item.social_number}` : null,
+    phones.length ? `Telefones: ${phones.map((phone) => phone.number).filter(Boolean).join(" | ")}` : null,
+    emails.length ? `E-mails: ${emails.map((email) => email.email).filter(Boolean).join(" | ")}` : null,
+    addresses.length ? `Endereços: ${addresses.map((address) => address.full).filter(Boolean).join(" | ")}` : null,
+    `Processos/indicadores encontrados: ${item.has_lawsuit_indicators ? "Sim" : "Não"}`,
+    `Quantidade informada: ${item.lawsuits_total || processes.length || 0}`,
+    ...processes.slice(0, 5).map((process, index) => `Processo ${index + 1}: ${[process.number, process.court, process.state, process.type, process.status, process.person_role].filter(Boolean).join(" - ")}`),
     `Créditos descontados: ${item.credits_charged || 0}`,
-    `Resultado reaproveitado: ${item.cache_hit ? "Sim" : "Não"}`,
     "Fonte: BigDataCorp",
     "Observação: resultado externo tratado para apoio à decisão do locador.",
   ];
@@ -1484,9 +1514,8 @@ function App() {
     if (loading) return;
 
     const cpfDigits = onlyDigits(searchText);
-    const isBasic = consultationMode === "external_basic";
-    const creditsNeeded = isBasic ? 2 : 3;
-    const consultationLabel = isBasic ? "Consulta Externa Básica" : "Consulta Externa Completa";
+    const creditsNeeded = externalConsultationCredits(consultationMode);
+    const consultationLabel = externalConsultationLabel(consultationMode);
 
     if (!isValidCpf(cpfDigits)) {
       setSearchMessage("Para consulta externa, informe um CPF completo e válido.");
@@ -1550,7 +1579,7 @@ function App() {
 
       setSearchResults(results);
       setSearchMessage(
-        `${data.consultationLabel || consultationLabel} realizada. ${data.cacheHit ? "Resultado reaproveitado do cache seguro." : "Resultado obtido em fonte externa."}`
+        `${data.consultationLabel || consultationLabel} realizada com sucesso. Resultado obtido em fonte externa.`
       );
 
       await loadProfile(session.user.id);
@@ -3710,6 +3739,7 @@ function App() {
                   <option value="todos">Todos os tipos</option>
                   <option value="external_basic">Externa básica</option>
                   <option value="external_complete">Externa completa</option>
+                  <option value="external_advanced">Externa avançada</option>
                 </select>
                 <select value={adminExternalFilterCache} onChange={(e) => setAdminExternalFilterCache(e.target.value)}>
                   <option value="todos">Cache: todos</option>
@@ -3733,7 +3763,7 @@ function App() {
                     </div>
 
                     <p><strong>Usuário:</strong> {log.profiles?.nome || log.profiles?.email || log.user_id}</p>
-                    <p><strong>CPF:</strong> ***.***.***-{log.cpf4 || "----"}</p>
+                    <p><strong>CPF final:</strong> {log.cpf4 || "----"}</p>
                     <p><strong>Créditos:</strong> {log.credits_charged || 0}</p>
                     <p><strong>Cache:</strong> {log.cache_hit ? "Sim" : "Não"}</p>
                     <p><strong>Dados consultados:</strong> {externalDatasetsText(log.datasets)}</p>
@@ -4101,7 +4131,7 @@ function App() {
       </button>
 
       <h2>Consultas Externas</h2>
-      <p>Acompanhe suas consultas realizadas em fonte externa, créditos descontados e uso de cache seguro.</p>
+      <p>Acompanhe suas consultas realizadas em fonte externa e os créditos descontados.</p>
 
       <div className="modalActionsRow">
         <button className="btn secondary" type="button" onClick={carregarMinhasConsultasExternas}>
@@ -4119,11 +4149,11 @@ function App() {
             <div className="resultCard externalHistoryCard" key={item.id}>
               <div className="adminRecordTop">
                 <h3>{externalConsultationLabel(item.consultation_type)}</h3>
-                <span className={`statusBadge ${item.cache_hit ? "pendente" : "aprovado"}`}>
-                  {item.cache_hit ? "Cache" : "Nova"}
+                <span className="statusBadge aprovado">
+                  Concluída
                 </span>
               </div>
-              <p><strong>CPF:</strong> ***.***.***-{item.cpf4 || "----"}</p>
+              <p><strong>CPF final:</strong> {item.cpf4 || "----"}</p>
               <p><strong>Créditos descontados:</strong> {item.credits_charged || 0}</p>
               <p><strong>Dados consultados:</strong> {externalDatasetsText(item.datasets)}</p>
               <p><strong>Data:</strong> {formatDate(item.created_at)}</p>
@@ -4757,7 +4787,17 @@ function App() {
                 >
                   <strong>Consulta Externa Completa</strong>
                   <span>3 créditos</span>
-                  <small>Dados básicos + distribuição de processos por CPF.</small>
+                  <small>Dados básicos + resumo de processos por CPF.</small>
+                </button>
+
+                <button
+                  type="button"
+                  className={consultationMode === "external_advanced" ? "consultTypeCard active" : "consultTypeCard"}
+                  onClick={() => setConsultationMode("external_advanced")}
+                >
+                  <strong>Consulta Externa Avançada</strong>
+                  <span>5 créditos</span>
+                  <small>Endereços, contatos, e-mails e resumo dos principais processos.</small>
                 </button>
               </div>
 
@@ -4776,7 +4816,7 @@ function App() {
                 <p className="documentPublicNotice">
                   {consultationMode === "internal"
                     ? "Consulta interna: consome 1 crédito e busca somente ocorrências aprovadas na base LocaCheck."
-                    : "Consulta externa: usa fonte integrada, salva log de auditoria e pode reutilizar cache seguro para reduzir chamadas repetidas."}
+                    : "Consulta externa: usa fonte integrada e salva log de auditoria para segurança da plataforma."}
                 </p>
 
                 <button className="btn primary full" disabled={loading}>
@@ -4794,15 +4834,15 @@ function App() {
                     <div className="resultCard" key={item.id}>
                       {item.result_origin === "external" ? (
                         <>
-                          <div className="externalResultV31" data-version="external-result-cards-v31">
+                          <div className="externalResultV31" data-version="external-advanced-v32">
                             <div className="externalResultTopV31">
                               <div>
                                 <span className="externalResultEyebrowV31">Consulta externa</span>
                                 <h3>{item.consultation_label || "Consulta Externa"}</h3>
                                 <p>Resultado tratado para apoio à análise do locador.</p>
                               </div>
-                              <span className={`externalSourcePillV31 ${item.cache_hit ? "cache" : "new"}`}>
-                                {item.cache_hit ? "Resultado salvo recentemente" : "Nova consulta externa"}
+                              <span className="externalSourcePillV31 new">
+                                Fonte externa integrada
                               </span>
                             </div>
 
@@ -4810,23 +4850,64 @@ function App() {
                               <section className="externalInfoCardV31 main">
                                 <span>Dados cadastrais</span>
                                 <h4>{item.name || "Nome não informado"}</h4>
-                                <p><strong>CPF consultado:</strong> {item.cpf_masked || "***.***.***-****"}</p>
+                                <p><strong>CPF consultado:</strong> {item.cpf || item.cpf_masked || "Não informado"}</p>
                                 <p><strong>Situação cadastral:</strong> {item.document_status || "Não informado"}</p>
-                                {item.birth_date && <p><strong>Nascimento:</strong> {String(item.birth_date).split("T")[0].split("-").reverse().join("/")}</p>}
+                                {item.birth_date && <p><strong>Nascimento:</strong> {formatSimpleDate(item.birth_date)}</p>}
+                                {item.mother_name && <p><strong>Nome da mãe:</strong> {item.mother_name}</p>}
+                                {item.father_name && <p><strong>Nome do pai:</strong> {item.father_name}</p>}
+                                {item.social_number && <p><strong>Número social:</strong> {item.social_number}</p>}
                               </section>
 
+                              {(Array.isArray(item.phones) && item.phones.length > 0) || (Array.isArray(item.emails) && item.emails.length > 0) ? (
+                                <section className="externalInfoCardV31">
+                                  <span>Contatos encontrados</span>
+                                  <h4>{(item.phones?.length || 0) + (item.emails?.length || 0)} contato(s)</h4>
+                                  {item.phones?.slice(0, 5).map((phone, index) => (
+                                    <p key={`phone-${index}`}><strong>Telefone:</strong> {phone.number}</p>
+                                  ))}
+                                  {item.emails?.slice(0, 5).map((email, index) => (
+                                    <p key={`email-${index}`}><strong>E-mail:</strong> {email.email}</p>
+                                  ))}
+                                </section>
+                              ) : null}
+
+                              {Array.isArray(item.addresses) && item.addresses.length > 0 ? (
+                                <section className="externalInfoCardV31">
+                                  <span>Endereços encontrados</span>
+                                  <h4>{item.addresses.length} endereço(s)</h4>
+                                  {item.addresses.slice(0, 4).map((address, index) => (
+                                    <p key={`address-${index}`}>{address.full}</p>
+                                  ))}
+                                </section>
+                              ) : null}
+
                               <section className="externalInfoCardV31">
-                                <span>Indicadores de processos</span>
-                                <h4>{item.has_lawsuit_indicators ? "Indicadores encontrados" : "Sem indicadores informados"}</h4>
-                                <p><strong>Total agregado:</strong> {item.lawsuits_total || 0}</p>
-                                <p>Consulta baseada nos dados externos disponíveis para o CPF informado.</p>
+                                <span>Processos</span>
+                                <h4>{item.has_lawsuit_indicators ? "Há informações encontradas" : "Sem informações relevantes"}</h4>
+                                <p><strong>Quantidade informada:</strong> {item.lawsuits_total || item.processes?.length || 0}</p>
+                                {!item.processes?.length && <p>Não foram retornados detalhes de processos nesta consulta.</p>}
                               </section>
+
+                              {Array.isArray(item.processes) && item.processes.length > 0 ? (
+                                <section className="externalInfoCardV31 wide">
+                                  <span>Resumo dos principais processos</span>
+                                  <h4>{item.processes.length} processo(s) listado(s)</h4>
+                                  {item.processes.slice(0, 5).map((process, index) => (
+                                    <div className="externalMiniBlockV32" key={`process-${index}`}>
+                                      <strong>{process.number || `Processo ${index + 1}`}</strong>
+                                      <p>{[process.court, process.state, process.type, process.status].filter(Boolean).join(" • ") || "Informações principais disponíveis."}</p>
+                                      {process.person_role && <p><strong>Participação:</strong> {process.person_role}</p>}
+                                      {process.distribution_date && <p><strong>Data:</strong> {formatSimpleDate(process.distribution_date)}</p>}
+                                      {process.subject && <p><strong>Assunto:</strong> {process.subject}</p>}
+                                    </div>
+                                  ))}
+                                </section>
+                              ) : null}
 
                               <section className="externalInfoCardV31">
                                 <span>Consumo e origem</span>
                                 <h4>{item.credits_charged || 0} créditos</h4>
                                 <p><strong>Fonte:</strong> {item.source || "BigDataCorp"}</p>
-                                <p><strong>Resultado reaproveitado:</strong> {item.cache_hit ? "Sim" : "Não"}</p>
                               </section>
                             </div>
 
