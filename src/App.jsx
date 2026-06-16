@@ -357,6 +357,45 @@ function formatDate(value) {
   return date.toLocaleString("pt-BR");
 }
 
+
+function externalConsultationLabel(type) {
+  return type === "external_basic" ? "Consulta Externa Básica" : "Consulta Externa Completa";
+}
+
+function externalDatasetLabel(dataset) {
+  const map = {
+    basic_data: "Dados cadastrais",
+    lawsuits_distribution_data: "Distribuição de processos",
+  };
+  return map[dataset] || dataset;
+}
+
+function externalDatasetsText(datasets) {
+  if (Array.isArray(datasets)) {
+    return datasets.map(externalDatasetLabel).join(", ") || "Não informado";
+  }
+  if (typeof datasets === "string" && datasets.trim()) return externalDatasetLabel(datasets.trim());
+  return "Não informado";
+}
+
+function buildExternalSummaryText(item) {
+  const linhas = [
+    item.consultation_label || externalConsultationLabel(item.consultation_type),
+    `CPF: ${item.cpf_masked || (item.cpf4 ? `***.***.***-${item.cpf4}` : "Não informado")}`,
+    `Nome encontrado: ${item.name || item.nome || "Não informado"}`,
+    `Situação cadastral: ${item.document_status || "Não informado"}`,
+    item.birth_date ? `Nascimento: ${String(item.birth_date)}` : null,
+    `Indicadores de processos: ${item.has_lawsuit_indicators ? "Encontrados" : "Não encontrados ou não informados"}`,
+    `Total/indicador agregado: ${item.lawsuits_total || 0}`,
+    `Créditos descontados: ${item.credits_charged || 0}`,
+    `Cache seguro: ${item.cache_hit ? "Sim" : "Não"}`,
+    "Fonte: BigDataCorp",
+    "Observação: resultado externo tratado para apoio à decisão do locador.",
+  ];
+
+  return linhas.filter(Boolean).join("\n");
+}
+
 function diasAte(dataIso) {
   if (!dataIso) return null;
   const hoje = new Date();
@@ -584,6 +623,12 @@ function App() {
   const [activityLogsMessage, setActivityLogsMessage] = useState("");
   const [adminExternalLogs, setAdminExternalLogs] = useState([]);
   const [adminExternalLogsMessage, setAdminExternalLogsMessage] = useState("");
+  const [adminExternalFilterType, setAdminExternalFilterType] = useState("todos");
+  const [adminExternalFilterCache, setAdminExternalFilterCache] = useState("todos");
+  const [adminExternalSearch, setAdminExternalSearch] = useState("");
+  const [showExternalConsultationHistory, setShowExternalConsultationHistory] = useState(false);
+  const [externalConsultationHistory, setExternalConsultationHistory] = useState([]);
+  const [externalConsultationHistoryMessage, setExternalConsultationHistoryMessage] = useState("");
 
   const [editingRecord, setEditingRecord] = useState(null);
   const [editRecordNome, setEditRecordNome] = useState("");
@@ -1561,6 +1606,40 @@ function App() {
     setAdminExternalLogsMessage("");
   }
 
+  async function carregarMinhasConsultasExternas() {
+    if (!session?.user?.id) return;
+
+    setExternalConsultationHistoryMessage("Carregando consultas externas...");
+
+    const { data, error } = await supabase
+      .from("external_consultation_logs")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.log("Erro ao carregar minhas consultas externas:", error);
+      setExternalConsultationHistory([]);
+      setExternalConsultationHistoryMessage("Não foi possível carregar suas consultas externas.");
+      return;
+    }
+
+    setExternalConsultationHistory(data || []);
+    setExternalConsultationHistoryMessage((data || []).length === 0 ? "Nenhuma consulta externa encontrada." : "");
+  }
+
+  async function copiarResumoConsultaExterna(item) {
+    const resumo = buildExternalSummaryText(item);
+
+    try {
+      await navigator.clipboard.writeText(resumo);
+      setSearchMessage("Resumo da consulta externa copiado.");
+    } catch {
+      setSearchMessage("Não foi possível copiar automaticamente. Selecione e copie o resumo manualmente.");
+    }
+  }
+
   async function carregarOcorrenciasAdmin() {
     const { data, error } = await supabase
       .from("records")
@@ -2519,6 +2598,19 @@ function App() {
     }
   }
 
+
+  const adminExternalLogsFiltered = adminExternalLogs.filter((log) => {
+    const typeOk = adminExternalFilterType === "todos" || log.consultation_type === adminExternalFilterType;
+    const cacheOk =
+      adminExternalFilterCache === "todos" ||
+      (adminExternalFilterCache === "sim" && Boolean(log.cache_hit)) ||
+      (adminExternalFilterCache === "nao" && !Boolean(log.cache_hit));
+    const search = String(adminExternalSearch || "").trim().toLowerCase();
+    const userText = `${log.profiles?.nome || ""} ${log.profiles?.email || ""} ${log.user_id || ""}`.toLowerCase();
+    const textOk = !search || userText.includes(search) || String(log.cpf4 || "").includes(search);
+    return typeOk && cacheOk && textOk;
+  });
+
   if (session && !profile) {
     return (
       <div className="page">
@@ -2683,6 +2775,16 @@ function App() {
               }}
             >
               Minhas Consultas
+            </button>
+
+            <button
+              className="btn outline large actionExternalHistory"
+              onClick={() => {
+                setShowExternalConsultationHistory(true);
+                carregarMinhasConsultasExternas();
+              }}
+            >
+              Consultas Externas
             </button>
 
             <button
@@ -3577,35 +3679,54 @@ function App() {
               <section className="adminMiniDashboard">
                 <div className="adminStatCard featured">
                   <small>Total externo listado</small>
-                  <strong>{adminExternalLogs.length}</strong>
-                  <span>Últimos 100 registros</span>
+                  <strong>{adminExternalLogsFiltered.length}</strong>
+                  <span>Registros filtrados</span>
                 </div>
                 <div className="adminStatCard success">
                   <small>Com cache</small>
-                  <strong>{adminExternalLogs.filter((log) => log.cache_hit).length}</strong>
+                  <strong>{adminExternalLogsFiltered.filter((log) => log.cache_hit).length}</strong>
                   <span>Economia de chamadas externas</span>
                 </div>
                 <div className="adminStatCard">
                   <small>Créditos consumidos</small>
-                  <strong>{adminExternalLogs.reduce((total, log) => total + Number(log.credits_charged || 0), 0)}</strong>
+                  <strong>{adminExternalLogsFiltered.reduce((total, log) => total + Number(log.credits_charged || 0), 0)}</strong>
                   <span>No período listado</span>
                 </div>
                 <div className="adminStatCard danger">
                   <small>Erros</small>
-                  <strong>{adminExternalLogs.filter((log) => log.status === "error").length}</strong>
+                  <strong>{adminExternalLogsFiltered.filter((log) => log.status === "error").length}</strong>
                   <span>Falhas de consulta externa</span>
                 </div>
               </section>
 
+              <div className="adminFilters externalFilters">
+                <input
+                  type="text"
+                  placeholder="Buscar por usuário, e-mail ou CPF final"
+                  value={adminExternalSearch}
+                  onChange={(e) => setAdminExternalSearch(e.target.value)}
+                />
+                <select value={adminExternalFilterType} onChange={(e) => setAdminExternalFilterType(e.target.value)}>
+                  <option value="todos">Todos os tipos</option>
+                  <option value="external_basic">Externa básica</option>
+                  <option value="external_complete">Externa completa</option>
+                </select>
+                <select value={adminExternalFilterCache} onChange={(e) => setAdminExternalFilterCache(e.target.value)}>
+                  <option value="todos">Cache: todos</option>
+                  <option value="sim">Com cache</option>
+                  <option value="nao">Sem cache</option>
+                </select>
+              </div>
+
               <div className="adminList">
-                {adminExternalLogs.length === 0 && (
-                  <div className="adminEmpty">Nenhuma consulta externa encontrada.</div>
+                {adminExternalLogsFiltered.length === 0 && (
+                  <div className="adminEmpty">Nenhuma consulta externa encontrada para os filtros selecionados.</div>
                 )}
 
-                {adminExternalLogs.map((log) => (
+                {adminExternalLogsFiltered.map((log) => (
                   <div className="adminRecord" key={log.id}>
                     <div className="adminRecordTop">
-                      <h3>{log.consultation_type === "external_basic" ? "Consulta Externa Básica" : "Consulta Externa Completa"}</h3>
+                      <h3>{externalConsultationLabel(log.consultation_type)}</h3>
                       <span className={`statusBadge ${log.status === "success" ? "aprovado" : "reprovado"}`}>
                         {log.status}
                       </span>
@@ -3615,7 +3736,7 @@ function App() {
                     <p><strong>CPF:</strong> ***.***.***-{log.cpf4 || "----"}</p>
                     <p><strong>Créditos:</strong> {log.credits_charged || 0}</p>
                     <p><strong>Cache:</strong> {log.cache_hit ? "Sim" : "Não"}</p>
-                    <p><strong>Datasets:</strong> {Array.isArray(log.datasets) ? log.datasets.join(", ") : String(log.datasets || "-")}</p>
+                    <p><strong>Dados consultados:</strong> {externalDatasetsText(log.datasets)}</p>
                     <p><strong>Data:</strong> {formatDate(log.created_at)}</p>
                     {log.error_message && <p><strong>Erro:</strong> {log.error_message}</p>}
                   </div>
@@ -3961,6 +4082,51 @@ function App() {
                   ? new Date(item.created_at).toLocaleString("pt-BR")
                   : "Não informado"}
               </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+{showExternalConsultationHistory && (
+  <div className="modalOverlay">
+    <div className="recordModal externalHistoryModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowExternalConsultationHistory(false)}
+      >
+        ×
+      </button>
+
+      <h2>Consultas Externas</h2>
+      <p>Acompanhe suas consultas realizadas em fonte externa, créditos descontados e uso de cache seguro.</p>
+
+      <div className="modalActionsRow">
+        <button className="btn secondary" type="button" onClick={carregarMinhasConsultasExternas}>
+          Atualizar
+        </button>
+      </div>
+
+      {externalConsultationHistoryMessage && (
+        <div className="authMessage">{externalConsultationHistoryMessage}</div>
+      )}
+
+      {externalConsultationHistory.length > 0 && (
+        <div className="resultsBox">
+          {externalConsultationHistory.map((item) => (
+            <div className="resultCard externalHistoryCard" key={item.id}>
+              <div className="adminRecordTop">
+                <h3>{externalConsultationLabel(item.consultation_type)}</h3>
+                <span className={`statusBadge ${item.cache_hit ? "pendente" : "aprovado"}`}>
+                  {item.cache_hit ? "Cache" : "Nova"}
+                </span>
+              </div>
+              <p><strong>CPF:</strong> ***.***.***-{item.cpf4 || "----"}</p>
+              <p><strong>Créditos descontados:</strong> {item.credits_charged || 0}</p>
+              <p><strong>Dados consultados:</strong> {externalDatasetsText(item.datasets)}</p>
+              <p><strong>Data:</strong> {formatDate(item.created_at)}</p>
             </div>
           ))}
         </div>
@@ -4628,16 +4794,45 @@ function App() {
                     <div className="resultCard" key={item.id}>
                       {item.result_origin === "external" ? (
                         <>
-                          <h3>{item.consultation_label || "Consulta Externa"}</h3>
-                          <p><strong>Fonte:</strong> {item.source || "BigDataCorp"}</p>
-                          <p><strong>CPF:</strong> {item.cpf_masked || "***.***.***-****"}</p>
-                          <p><strong>Nome encontrado:</strong> {item.name || "Não informado"}</p>
-                          <p><strong>Situação cadastral:</strong> {item.document_status || "Não informado"}</p>
-                          {item.birth_date && <p><strong>Nascimento:</strong> {String(item.birth_date)}</p>}
-                          <p><strong>Indicadores de processos:</strong> {item.has_lawsuit_indicators ? "Encontrados" : "Não encontrados ou não informados"}</p>
-                          <p><strong>Total/indicador agregado:</strong> {item.lawsuits_total || 0}</p>
-                          <p><strong>Créditos descontados:</strong> {item.credits_charged || 0}</p>
-                          <p><strong>Cache seguro:</strong> {item.cache_hit ? "Sim" : "Não"}</p>
+                          <div className="externalResultHeader">
+                            <div>
+                              <span>Fonte externa</span>
+                              <h3>{item.consultation_label || "Consulta Externa"}</h3>
+                            </div>
+                            <span className={`statusBadge ${item.cache_hit ? "pendente" : "aprovado"}`}>
+                              {item.cache_hit ? "Cache seguro" : "Nova consulta"}
+                            </span>
+                          </div>
+
+                          <div className="externalResultGrid">
+                            <div className="externalResultBlock">
+                              <small>Dados cadastrais</small>
+                              <p><strong>CPF:</strong> {item.cpf_masked || "***.***.***-****"}</p>
+                              <p><strong>Nome encontrado:</strong> {item.name || "Não informado"}</p>
+                              <p><strong>Situação cadastral:</strong> {item.document_status || "Não informado"}</p>
+                              {item.birth_date && <p><strong>Nascimento:</strong> {String(item.birth_date)}</p>}
+                            </div>
+
+                            <div className="externalResultBlock">
+                              <small>Indicadores de processos</small>
+                              <p><strong>Status:</strong> {item.has_lawsuit_indicators ? "Encontrados" : "Não encontrados ou não informados"}</p>
+                              <p><strong>Total/indicador agregado:</strong> {item.lawsuits_total || 0}</p>
+                              <p><strong>Fonte:</strong> {item.source || "BigDataCorp"}</p>
+                            </div>
+
+                            <div className="externalResultBlock">
+                              <small>Consumo da consulta</small>
+                              <p><strong>Créditos descontados:</strong> {item.credits_charged || 0}</p>
+                              <p><strong>Cache seguro:</strong> {item.cache_hit ? "Sim" : "Não"}</p>
+                            </div>
+                          </div>
+
+                          <div className="modalActionsRow externalResultActions">
+                            <button type="button" className="btn secondary" onClick={() => copiarResumoConsultaExterna(item)}>
+                              Copiar resumo
+                            </button>
+                          </div>
+
                           <p className="documentPublicNotice">
                             Resultado externo tratado para apoio à decisão. A informação deve ser usada com finalidade legítima, responsabilidade e análise própria do locador.
                           </p>
