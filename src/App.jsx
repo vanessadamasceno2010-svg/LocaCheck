@@ -124,6 +124,67 @@ function removeStoredReferralCode() {
 }
 
 
+function getUserAccountStatus(profile) {
+  const rawStatus = String(
+    profile?.account_status ||
+      profile?.status_conta ||
+      profile?.user_status ||
+      profile?.status ||
+      "ativo"
+  ).toLowerCase();
+
+  if (profile?.is_blocked === true || profile?.blocked === true || rawStatus === "bloqueado" || rawStatus === "blocked") {
+    return "bloqueado";
+  }
+
+  if (rawStatus === "pendente" || rawStatus === "pending" || rawStatus === "aguardando") {
+    return "pendente";
+  }
+
+  return "ativo";
+}
+
+function isSessionEmailConfirmed(session) {
+  const user = session?.user;
+  if (!user) return false;
+
+  const provider = String(user?.app_metadata?.provider || "email").toLowerCase();
+  if (provider === "google") return true;
+
+  return Boolean(user.email_confirmed_at || user.confirmed_at || user.user_metadata?.email_verified);
+}
+
+function getUserSecurityBlock(session, profile) {
+  if (!session?.user || !profile) {
+    return "Faça login novamente para continuar.";
+  }
+
+  if (String(profile?.role || "user").toLowerCase() === "admin") {
+    return "";
+  }
+
+  const status = getUserAccountStatus(profile);
+  if (status === "bloqueado") {
+    return profile?.blocked_reason || "Sua conta está bloqueada. Entre em contato com o suporte.";
+  }
+
+  if (status === "pendente") {
+    return "Sua conta ainda está em análise. Aguarde a liberação do administrador.";
+  }
+
+  if (!isSessionEmailConfirmed(session)) {
+    return "Confirme seu e-mail antes de realizar consultas. Verifique sua caixa de entrada ou spam.";
+  }
+
+  const whatsappDigits = onlyDigits(profile?.whatsapp || "");
+  if (whatsappDigits.length < 10) {
+    return "Complete seu perfil com um WhatsApp válido antes de realizar consultas.";
+  }
+
+  return "";
+}
+
+
 function onlyDigits(value) {
   return String(value || "").replace(/\D/g, "");
 }
@@ -818,6 +879,9 @@ function App() {
         role: "user",
         credits: 0,
         consultas: 0,
+        account_status: "ativo",
+        is_blocked: false,
+        blocked_reason: null,
         referred_by_code: referralCode || null,
       })
       .select()
@@ -1461,6 +1525,13 @@ function App() {
 
   async function consultarLocatario(e) {
     e.preventDefault();
+
+    const securityBlockMessage = getUserSecurityBlock(session, profile);
+    if (securityBlockMessage) {
+      setSearchMessage(securityBlockMessage);
+      showToast("warning", "Consulta bloqueada", securityBlockMessage);
+      return;
+    }
 
     if (consultationMode === "internal") {
       return consultarLocatarioInterno();
@@ -2138,6 +2209,68 @@ function App() {
     setLoading(false);
   }
 
+  async function alterarStatusContaUsuario(userId, novoStatus) {
+    if (loading) return;
+
+    if (!session?.user?.id || profile?.role !== "admin") {
+      setAdminUsersMessage("Apenas administradores podem bloquear ou liberar usuários.");
+      return;
+    }
+
+    const usuario = adminUsers.find((item) => item.id === userId);
+    if (!usuario) return;
+
+    if (userId === session.user.id && String(novoStatus || "").toLowerCase() !== "ativo") {
+      setAdminUsersMessage("Por segurança, você não pode bloquear sua própria conta pelo painel.");
+      showToast("warning", "Ação bloqueada", "Use outro administrador para alterar seu próprio status.");
+      return;
+    }
+
+    let motivo = "";
+    if (String(novoStatus).toLowerCase() === "bloqueado") {
+      motivo = window.prompt(
+        `Informe o motivo do bloqueio de ${usuario.nome || usuario.email || "este usuário"}:`,
+        "Uso indevido ou cadastro suspeito"
+      ) || "";
+      if (!motivo.trim()) return;
+    }
+
+    const confirmar = window.confirm(
+      String(novoStatus).toLowerCase() === "bloqueado"
+        ? `Deseja bloquear ${usuario.nome || usuario.email || "este usuário"}? Ele não poderá realizar consultas.`
+        : `Deseja liberar ${usuario.nome || usuario.email || "este usuário"} para realizar consultas?`
+    );
+
+    if (!confirmar) return;
+
+    setLoading(true);
+    setAdminUsersMessage("");
+
+    const { data, error } = await supabase.rpc("admin_set_user_status", {
+      p_user_id: userId,
+      p_status: novoStatus,
+      p_reason: motivo.trim() || null,
+    });
+
+    if (error || data?.success === false) {
+      console.log("Erro ao alterar status da conta:", error || data);
+      setAdminUsersMessage(error?.message || data?.message || "Erro ao alterar status da conta.");
+      showToast("error", "Erro ao alterar status", "Verifique a migração V38 no Supabase.");
+      setLoading(false);
+      return;
+    }
+
+    showToast(
+      "success",
+      String(novoStatus).toLowerCase() === "bloqueado" ? "Usuário bloqueado" : "Usuário liberado",
+      String(novoStatus).toLowerCase() === "bloqueado" ? "Consultas bloqueadas para esta conta." : "A conta voltou a consultar normalmente."
+    );
+
+    await carregarUsuariosAdmin();
+    if (userId === session.user.id) await loadProfile(session.user.id);
+    setLoading(false);
+  }
+
   async function alterarCreditosUsuario(userId, quantidade) {
     if (loading) return;
 
@@ -2729,6 +2862,8 @@ function App() {
       comuns: adminUsers.filter((user) => String(user.role || "user").toLowerCase() !== "admin").length,
       admins: adminUsers.filter((user) => String(user.role || "").toLowerCase() === "admin").length,
       ilimitados: adminUsers.filter((user) => user.unlimited_until && new Date(user.unlimited_until) > new Date()).length,
+      bloqueados: adminUsers.filter((user) => getUserAccountStatus(user) === "bloqueado").length,
+      pendentes: adminUsers.filter((user) => getUserAccountStatus(user) === "pendente").length,
       creditos: adminUsers.reduce((total, user) => total + Number(user.credits || 0), 0),
       consultas: adminUsers.reduce((total, user) => total + Number(user.consultas || 0), 0),
     };
@@ -3379,6 +3514,12 @@ function App() {
                   <span>Planos em vigor</span>
                 </div>
 
+                <div className="adminStatCard dangerSoft">
+                  <small>Contas bloqueadas</small>
+                  <strong>{adminUserStats.bloqueados}</strong>
+                  <span>Usuários sem acesso a consultas</span>
+                </div>
+
                 <div className="adminStatCard">
                   <small>Créditos em contas</small>
                   <strong>{adminUserStats.creditos}</strong>
@@ -3417,19 +3558,30 @@ function App() {
                     <div className="adminRecord" key={user.id}>
                       <div className="adminRecordTop">
                         <h3>{user.nome || "Usuário"}</h3>
-                        <span
-                          className={`statusBadge ${
-                            user.role === "admin" ? "aprovado" : "pendente"
-                          }`}
-                        >
-                          {user.role}
-                        </span>
+                        <div className="adminUserBadges">
+                          <span
+                            className={`statusBadge ${
+                              user.role === "admin" ? "aprovado" : "pendente"
+                            }`}
+                          >
+                            {user.role}
+                          </span>
+                          <span className={`statusBadge ${getUserAccountStatus(user) === "bloqueado" ? "reprovado" : "aprovado"}`}>
+                            {getUserAccountStatus(user) === "bloqueado" ? "Bloqueado" : "Ativo"}
+                          </span>
+                        </div>
                       </div>
 
                       <p>
                         <strong>E-mail:</strong>{" "}
                         {user.email || "Não informado"}
                       </p>
+
+                      {getUserAccountStatus(user) === "bloqueado" && (
+                        <p className="securityWarningInline">
+                          <strong>Motivo do bloqueio:</strong> {user.blocked_reason || "Não informado"}
+                        </p>
+                      )}
 
                       <p>
                         <strong>WhatsApp:</strong>{" "}
@@ -3498,6 +3650,24 @@ function App() {
                             disabled={loading}
                           >
                             Tornar admin
+                          </button>
+                        )}
+
+                        {getUserAccountStatus(user) === "bloqueado" ? (
+                          <button
+                            className="btn primary"
+                            onClick={() => alterarStatusContaUsuario(user.id, "ativo")}
+                            disabled={loading}
+                          >
+                            Liberar usuário
+                          </button>
+                        ) : (
+                          <button
+                            className="btn danger"
+                            onClick={() => alterarStatusContaUsuario(user.id, "bloqueado")}
+                            disabled={user.id === session.user.id || loading}
+                          >
+                            Bloquear usuário
                           </button>
                         )}
                       </div>

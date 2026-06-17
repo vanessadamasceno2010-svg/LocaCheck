@@ -514,6 +514,52 @@ async function insertSafe(table, payload) {
   if (error) console.error(`Erro ao inserir em ${table}:`, error);
 }
 
+
+function getServerAccountStatus(profile) {
+  const rawStatus = String(
+    profile?.account_status || profile?.status_conta || profile?.user_status || profile?.status || 'ativo'
+  ).toLowerCase();
+
+  if (profile?.is_blocked === true || profile?.blocked === true || rawStatus === 'bloqueado' || rawStatus === 'blocked') {
+    return 'bloqueado';
+  }
+
+  if (rawStatus === 'pendente' || rawStatus === 'pending' || rawStatus === 'aguardando') {
+    return 'pendente';
+  }
+
+  return 'ativo';
+}
+
+function isAuthEmailConfirmed(user) {
+  const provider = String(user?.app_metadata?.provider || 'email').toLowerCase();
+  if (provider === 'google') return true;
+  return Boolean(user?.email_confirmed_at || user?.confirmed_at || user?.user_metadata?.email_verified);
+}
+
+function getServerSecurityBlock(user, profile) {
+  if (String(profile?.role || 'user').toLowerCase() === 'admin') return '';
+
+  const status = getServerAccountStatus(profile);
+  if (status === 'bloqueado') {
+    return profile?.blocked_reason || 'Conta bloqueada. Entre em contato com o suporte.';
+  }
+
+  if (status === 'pendente') {
+    return 'Conta em análise. Aguarde a liberação do administrador.';
+  }
+
+  if (!isAuthEmailConfirmed(user)) {
+    return 'Confirme seu e-mail antes de realizar consultas.';
+  }
+
+  if (onlyDigits(profile?.whatsapp || '').length < 10) {
+    return 'Complete seu perfil com um WhatsApp válido antes de realizar consultas.';
+  }
+
+  return '';
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method !== 'POST') {
@@ -554,12 +600,23 @@ export default async function handler(req, res) {
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('id, nome, email, role, credits, consultas')
+      .select('id, nome, email, whatsapp, role, credits, consultas, account_status, is_blocked, blocked_reason')
       .eq('id', user.id)
       .maybeSingle();
 
     if (profileError || !profile) {
       return res.status(400).json({ success: false, message: 'Perfil do usuário não encontrado.' });
+    }
+
+    const securityBlockMessage = getServerSecurityBlock(user, profile);
+    if (securityBlockMessage) {
+      await insertSafe('activity_logs', {
+        user_id: user.id,
+        action: 'external_consultation_blocked_security',
+        details: { reason: securityBlockMessage, consultation_type: config.type, cpf4 },
+      });
+
+      return res.status(403).json({ success: false, message: securityBlockMessage });
     }
 
     if (Number(profile.credits || 0) < config.credits) {
