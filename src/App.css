@@ -3738,3 +3738,76 @@ body {
     width: 100% !important;
   }
 }
+
+/* V39 - Ajustes de segurança, suporte e desempenho visual */
+.dashboardActionsV33 .btn,
+.dashboardActionsV33 .btn:hover,
+.dashboardActionsV33 .btn:active {
+  transition: none !important;
+  transform: none !important;
+  animation: none !important;
+}
+
+.dashboardActionsV33 .btn::after {
+  display: none !important;
+  animation: none !important;
+  content: none !important;
+}
+
+.topProfileButtonV39 {
+  border-color: rgba(96, 165, 250, 0.72) !important;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.30), rgba(14, 165, 233, 0.14)) !important;
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.18) !important;
+  font-weight: 900 !important;
+}
+
+.topProfileButtonV39::before {
+  content: "👤";
+  margin-right: 6px;
+}
+
+.forgotPasswordLinkV39 {
+  margin-top: 8px !important;
+  width: 100%;
+  text-align: center;
+}
+
+.landingSupportActionsV39 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 16px;
+}
+
+.publicSupportModalV39 {
+  max-width: 560px !important;
+}
+
+.planCard.unlimited,
+.buyPlanCard.unlimited {
+  display: none !important;
+}
+
+.planCard:has(.recommended),
+.buyPlanCard.featuredPlan {
+  border-color: rgba(96, 165, 250, 0.78) !important;
+  box-shadow: 0 18px 44px rgba(37, 99, 235, 0.22) !important;
+}
+
+@media (max-width: 760px) {
+  .authModal {
+    width: min(94vw, 420px) !important;
+    padding: 20px 16px !important;
+  }
+
+  .authModal .btn.full,
+  .authModal .googleAuthButton,
+  .authModal .switchAuth {
+    min-height: 46px !important;
+    font-size: 0.95rem !important;
+  }
+
+  .landingSupportActionsV39 .btn {
+    width: 100%;
+  }
+}

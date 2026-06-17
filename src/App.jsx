@@ -765,6 +765,12 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [recordMessage, setRecordMessage] = useState("");
+  const [showPublicSupport, setShowPublicSupport] = useState(false);
+  const [publicSupportName, setPublicSupportName] = useState("");
+  const [publicSupportEmail, setPublicSupportEmail] = useState("");
+  const [publicSupportWhatsapp, setPublicSupportWhatsapp] = useState("");
+  const [publicSupportMessage, setPublicSupportMessage] = useState("");
+  const [publicSupportFeedback, setPublicSupportFeedback] = useState("");
 
   async function uploadRecordImage(file) {
     if (!file || !session?.user?.id) return "";
@@ -992,6 +998,82 @@ function App() {
     setAuthMode("login");
   }
 
+  async function recuperarSenha() {
+    const loginEmailNormalized = normalizeEmail(email);
+
+    if (!isValidEmail(loginEmailNormalized)) {
+      setMessage("Informe seu e-mail para receber o link de recuperação de senha.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(loginEmailNormalized, {
+      redirectTo: window.location.origin,
+    });
+
+    if (error) {
+      setMessage(error.message || "Não foi possível enviar o link de recuperação.");
+    } else {
+      setMessage("Enviamos um link de recuperação para seu e-mail. Verifique também o spam.");
+    }
+
+    setLoading(false);
+  }
+
+  async function enviarSuportePublico(e) {
+    e.preventDefault();
+
+    const nomeSuporte = publicSupportName.trim();
+    const emailSuporte = normalizeEmail(publicSupportEmail);
+    const whatsappSuporte = formatWhatsappInput(publicSupportWhatsapp);
+    const textoSuporte = publicSupportMessage.trim();
+
+    if (!nomeSuporte || !textoSuporte) {
+      setPublicSupportFeedback("Informe seu nome e escreva sua mensagem.");
+      return;
+    }
+
+    if (publicSupportEmail && !isValidEmail(emailSuporte)) {
+      setPublicSupportFeedback("Informe um e-mail válido ou deixe o campo em branco.");
+      return;
+    }
+
+    setLoading(true);
+    setPublicSupportFeedback("");
+
+    const mensagemTratada = [
+      "Mensagem enviada pela tela inicial do site.",
+      `Nome: ${nomeSuporte}`,
+      emailSuporte ? `E-mail: ${emailSuporte}` : "E-mail: não informado",
+      whatsappSuporte ? `WhatsApp: ${whatsappSuporte}` : "WhatsApp: não informado",
+      "",
+      textoSuporte,
+    ].join("\n");
+
+    const { error } = await supabase.from("support_messages").insert({
+      message: mensagemTratada,
+      status: "novo",
+      contact_name: nomeSuporte,
+      contact_email: emailSuporte || null,
+      contact_whatsapp: onlyDigits(whatsappSuporte) || null,
+    });
+
+    if (error) {
+      console.log("Erro ao enviar suporte público:", error);
+      setPublicSupportFeedback("Não foi possível enviar a mensagem. Verifique a configuração do suporte no Supabase.");
+    } else {
+      setPublicSupportFeedback("Mensagem enviada com sucesso. Nossa equipe recebeu seu contato.");
+      setPublicSupportName("");
+      setPublicSupportEmail("");
+      setPublicSupportWhatsapp("");
+      setPublicSupportMessage("");
+    }
+
+    setLoading(false);
+  }
+
   async function carregarDadosPublicosLanding() {
     setLandingMessage("");
 
@@ -1005,7 +1087,7 @@ function App() {
         .order("name", { ascending: true });
 
       if (!plansError) {
-        setPublicPlans((plansData || []).map(normalizePlanRow).sort(sortPlansByPrice));
+        setPublicPlans((plansData || []).map(normalizePlanRow).filter((plan) => plan.is_unlimited !== true).sort(sortPlansByPrice));
       } else {
         console.log("Planos públicos indisponíveis:", plansError);
         setLandingMessage("Os planos serão carregados após a configuração pública no Supabase.");
@@ -1530,6 +1612,11 @@ function App() {
     if (securityBlockMessage) {
       setSearchMessage(securityBlockMessage);
       showToast("warning", "Consulta bloqueada", securityBlockMessage);
+
+      if (onlyDigits(profile?.whatsapp || "").length < 10 && isSessionEmailConfirmed(session)) {
+        abrirMeusDados();
+      }
+
       return;
     }
 
@@ -2938,7 +3025,7 @@ function App() {
               </button>
             )}
 
-            <button type="button" className="topProfileButtonV33" onClick={abrirMeusDados}>
+            <button type="button" className="topProfileButtonV33 topProfileButtonV39" onClick={abrirMeusDados}>
               Perfil
             </button>
           </section>
@@ -5398,23 +5485,21 @@ function App() {
                   normalizePlanRow({ id: "fallback-20", name: "20 Créditos", credits: 20, price_cents: 1990, active: true, plan_type: "credits" }),
                   normalizePlanRow({ id: "fallback-50", name: "50 Créditos", credits: 50, price_cents: 3990, active: true, plan_type: "credits" }),
                   normalizePlanRow({ id: "fallback-100", name: "100 Créditos", credits: 100, price_cents: 6990, active: true, plan_type: "credits" }),
-                  normalizePlanRow({ id: "fallback-ilimitado", name: "Ilimitado Mensal", credits: 0, price_cents: 9700, active: true, plan_type: "unlimited", is_unlimited: true, duration_days: 30 }),
                 ]
-            ).map((plano, index, list) => {
+            ).filter((plano) => plano.is_unlimited !== true).map((plano, index, list) => {
               const isUnlimited = plano.is_unlimited === true;
               const isBestValue = !isUnlimited && index === list.findIndex((item) => !item.is_unlimited && Number(item.credits || 0) === Math.max(...list.filter((p) => !p.is_unlimited).map((p) => Number(p.credits || 0))));
 
               return (
                 <div className={`planCard ${isUnlimited ? "unlimited" : ""}`} key={plano.id || plano.name}>
-                  {isUnlimited && <div className="recommended">Mais indicado para locadoras</div>}
-                  {isBestValue && !isUnlimited && <div className="recommended secondaryRecommended">Melhor custo por consulta</div>}
+                  {isBestValue && !isUnlimited && <div className="recommended">Melhor opção</div>}
 
                   <h3>{plano.name}</h3>
                   <strong>{formatMoneyCents(plano.price_cents)}</strong>
                   <p>{getPlanDescription(plano)}</p>
 
-                  <button className={isUnlimited ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
-                    {isUnlimited ? "Assinar plano" : "Comprar créditos"}
+                  <button className={isBestValue ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
+                    Comprar créditos
                   </button>
                 </div>
               );
@@ -5452,7 +5537,14 @@ function App() {
         </section>
       </main>
 
-      <div className="heroActions" style={{ justifyContent: "center", marginBottom: "24px" }}>
+      <div className="heroActions landingSupportActionsV39" style={{ justifyContent: "center", marginBottom: "24px" }}>
+        <button
+          className="btn primary"
+          onClick={() => setShowPublicSupport(true)}
+        >
+          Falar com suporte
+        </button>
+
         <button
           className="btn outline"
           onClick={() => setShowTermsPrivacy(true)}
@@ -5476,8 +5568,8 @@ function App() {
 
             <p>
               {authMode === "login"
-                ? "Acesse seu painel para consultar locatários."
-                : "Cadastre-se para acessar a plataforma com segurança."}
+                ? "Para realizar consultas, confirme seu e-mail após criar a conta."
+                : "Cadastre-se com seus dados reais. O e-mail precisa ser confirmado para realizar consultas."}
             </p>
 
             <button
@@ -5567,6 +5659,17 @@ function App() {
                   ? "Entrar"
                   : "Criar conta"}
               </button>
+
+              {authMode === "login" && (
+                <button
+                  type="button"
+                  className="switchAuth forgotPasswordLinkV39"
+                  onClick={recuperarSenha}
+                  disabled={loading}
+                >
+                  Esqueci minha senha
+                </button>
+              )}
             </form>
 
             {message && <div className="authMessage">{message}</div>}
@@ -5584,6 +5687,60 @@ function App() {
         </div>
       )}
 
+
+      {showPublicSupport && (
+        <div className="modalOverlay">
+          <div className="recordModal publicSupportModalV39">
+            <button className="closeModal" onClick={() => setShowPublicSupport(false)}>
+              ×
+            </button>
+
+            <h2>Suporte LocaCheck</h2>
+            <p>Envie sua dúvida ou solicitação. A mensagem chegará no painel de suporte do administrador.</p>
+
+            <form className="recordForm" onSubmit={enviarSuportePublico}>
+              <input
+                type="text"
+                placeholder="Nome ou empresa"
+                value={publicSupportName}
+                onChange={(e) => setPublicSupportName(e.target.value)}
+                required
+              />
+
+              <input
+                type="email"
+                placeholder="E-mail para retorno"
+                value={publicSupportEmail}
+                onChange={(e) => setPublicSupportEmail(e.target.value)}
+                onBlur={() => setPublicSupportEmail(normalizeEmail(publicSupportEmail))}
+              />
+
+              <input
+                type="tel"
+                inputMode="numeric"
+                placeholder="WhatsApp com DDD"
+                value={publicSupportWhatsapp}
+                onChange={(e) => setPublicSupportWhatsapp(formatWhatsappInput(e.target.value))}
+                maxLength={15}
+              />
+
+              <textarea
+                placeholder="Digite sua mensagem"
+                value={publicSupportMessage}
+                onChange={(e) => setPublicSupportMessage(e.target.value)}
+                rows="5"
+                required
+              />
+
+              <button className="btn primary full" disabled={loading}>
+                {loading ? "Enviando..." : "Enviar mensagem"}
+              </button>
+            </form>
+
+            {publicSupportFeedback && <div className="authMessage">{publicSupportFeedback}</div>}
+          </div>
+        </div>
+      )}
 
       {showTermsPrivacy && (
         <div className="modalOverlay">
