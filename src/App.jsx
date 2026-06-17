@@ -371,13 +371,13 @@ function formatDate(value) {
 
 
 function externalConsultationLabel(type) {
-  if (type === "external_advanced") return "Consulta Externa Avançada";
-  return "Consulta Externa Completa";
+  if (type === "external_advanced" || type === "external_complete") return "Consulta Externa Completa";
+  return "Consulta Interna";
 }
 
 function externalConsultationCredits(type) {
-  if (type === "external_advanced") return 3;
-  return 2;
+  if (type === "external_advanced" || type === "external_complete") return 3;
+  return 1;
 }
 
 function externalDatasetLabel(dataset) {
@@ -816,7 +816,7 @@ function App() {
         email: userEmail || null,
         whatsapp: user?.user_metadata?.whatsapp || "",
         role: "user",
-        credits: 10,
+        credits: 0,
         consultas: 0,
         referred_by_code: referralCode || null,
       })
@@ -1266,8 +1266,8 @@ function App() {
         }
       }
 
-      setMessage("Cadastro realizado com sucesso. Você já pode entrar.");
-      showToast("success", "Cadastro realizado", "Sua conta foi criada com 10 créditos iniciais.");
+      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail, se solicitado, e compre créditos para realizar consultas.");
+      showToast("success", "Cadastro realizado", "Sua conta foi criada. Para consultar, adicione créditos.");
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -2037,7 +2037,7 @@ function App() {
 
     const { error } = await supabase.from("plans").insert({
       name: "Novo plano",
-      credits: 10,
+      credits: 0,
       price_cents: 1990,
       price: 19.9,
       plan_type: "credits",
@@ -2767,7 +2767,7 @@ function App() {
             </div>
           </div>
 
-          <button className="btn secondary" onClick={sair}>
+          <button className="btn secondary headerLogoutV36" onClick={sair} aria-label="Sair da conta">
             Sair
           </button>
         </header>
@@ -2818,7 +2818,7 @@ function App() {
               }}
             >
               Consultar Locatário
-              <small>Consulta interna, completa ou avançada</small>
+              <small>Consulta interna ou externa completa</small>
             </button>
 
             <button
@@ -2828,14 +2828,14 @@ function App() {
                 setShowRecordForm(true);
               }}
             >
-              Registrar Ocorrência
+              📝 Registrar Ocorrência
             </button>
 
             <button
               className="btn outline large actionReferral"
               onClick={abrirPainelIndicacoes}
             >
-              Indique e ganhe créditos
+              🎁 Indique e ganhe créditos
             </button>
 
             <button
@@ -2844,7 +2844,7 @@ function App() {
                 setShowBuyCredits(true);
               }}
             >
-              Comprar Créditos
+              💳 Comprar Créditos
             </button>
 
             {shouldShowTopNotifications(notificationItems, notificationReadIds) && (
@@ -2855,7 +2855,7 @@ function App() {
                   carregarNotificacoes();
                 }}
               >
-                Notificações
+                🔔 Notificações
                 <span className="notificationDot" />
               </button>
             )}
@@ -4768,7 +4768,7 @@ function App() {
               <h2>Consultar Locatário</h2>
 
               <p>
-                Escolha entre buscar na base interna da LocaCheck ou realizar uma consulta externa integrada.
+                Escolha entre buscar registros em outras locadoras ou realizar uma consulta externa completa.
               </p>
 
               <div className="consultTypeGrid">
@@ -4784,22 +4784,12 @@ function App() {
 
                 <button
                   type="button"
-                  className={consultationMode === "external_complete" ? "consultTypeCard active" : "consultTypeCard"}
-                  onClick={() => setConsultationMode("external_complete")}
-                >
-                  <strong>Consulta Externa Completa</strong>
-                  <span>2 créditos</span>
-                  <small>Dados pessoais e contatos.</small>
-                </button>
-
-                <button
-                  type="button"
-                  className={consultationMode === "external_advanced" ? "consultTypeCard active" : "consultTypeCard"}
+                  className={consultationMode === "external_advanced" ? "consultTypeCard active featuredExternalCompleteV36" : "consultTypeCard featuredExternalCompleteV36"}
                   onClick={() => setConsultationMode("external_advanced")}
                 >
-                  <strong>Consulta Externa Avançada</strong>
+                  <strong>Consulta Externa Completa</strong>
                   <span>3 créditos</span>
-                  <small>Dados pessoais + processos judiciais nacional.</small>
+                  <small>Dados pessoais, contatos, vínculos e processos judiciais nacionais.</small>
                 </button>
               </div>
 
@@ -4818,7 +4808,7 @@ function App() {
                 <p className="documentPublicNotice">
                   {consultationMode === "internal"
                     ? "Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras."
-                    : "Consulta externa: usa fonte integrada e salva log de auditoria para segurança da plataforma."}
+                    : "Consulta externa completa: dados pessoais, contatos, vínculos e processos judiciais nacionais."}
                 </p>
 
                 <button className="btn primary full" disabled={loading}>
@@ -4890,9 +4880,10 @@ function App() {
                                   <h4>{item.related_people.length} pessoa(s) ou relacionamento(s)</h4>
                                   {item.related_people.map((person, index) => (
                                     <div className="externalMiniBlockV32" key={`related-${index}`}>
-                                      <strong>{relatedPersonLabel(person, index)}</strong>
-                                      {person.tax_id && <p><strong>Identificação fiscal:</strong> {person.tax_id}</p>}
-                                      {person.relationship && <p><strong>Relacionamento:</strong> {person.relationship}</p>}
+                                      <strong>{person.name || relatedPersonLabel(person, index)}</strong>
+                                      {person.full_name && person.full_name !== person.name && <p><strong>Nome completo:</strong> {person.full_name}</p>}
+                                      {person.tax_id && <p><strong>CPF/CNPJ:</strong> {person.tax_id}</p>}
+                                      {person.relationship && <p><strong>Grau de parentesco/relacionamento:</strong> {person.relationship}</p>}
                                       {person.email && <p><strong>E-mail:</strong> {person.email}</p>}
                                       {Array.isArray(person.phones) && person.phones.length > 0 && (
                                         <p><strong>Telefones:</strong> {person.phones.map((phone) => [phone.number, phone.type, phone.status].filter(Boolean).join(' • ')).filter(Boolean).join(" | ")}</p>
@@ -4926,11 +4917,7 @@ function App() {
                                 </section>
                               ) : null}
 
-                              <section className="externalInfoCardV31">
-                                <span>Consumo e origem</span>
-                                <h4>{item.credits_charged || 0} créditos</h4>
-                                <p><strong>Fonte:</strong> {item.source || "BigDataCorp"}</p>
-                              </section>
+                              {/* Consumo e origem removidos da visualização do usuário na V36 */}
                             </div>
 
                             <div className="externalResultNoticeV31">
@@ -5159,7 +5146,7 @@ function App() {
               className="btn outline large"
               onClick={() => setAuthMode("login")}
             >
-              Registrar Ocorrência
+              📝 Registrar Ocorrência
             </button>
           </div>
         </section>
@@ -5309,7 +5296,7 @@ function App() {
             <div>
               <span>01</span>
               <h4>Cadastre-se</h4>
-              <p>Crie sua conta e receba 10 créditos grátis.</p>
+              <p>Crie sua conta com segurança e adicione créditos para consultar.</p>
             </div>
 
             <div>
@@ -5357,7 +5344,7 @@ function App() {
             <p>
               {authMode === "login"
                 ? "Acesse seu painel para consultar locatários."
-                : "Cadastre-se e receba 10 créditos grátis."}
+                : "Cadastre-se para acessar a plataforma com segurança."}
             </p>
 
             <button
@@ -5445,7 +5432,7 @@ function App() {
                   ? "Aguarde..."
                   : authMode === "login"
                   ? "Entrar"
-                  : "Cadastrar grátis"}
+                  : "Criar conta"}
               </button>
             </form>
 
