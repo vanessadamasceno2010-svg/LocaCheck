@@ -998,7 +998,8 @@ function App() {
     setAuthMode("login");
   }
 
-  async function recuperarSenha() {
+  async function recuperarSenha(event) {
+    if (event?.preventDefault) event.preventDefault();
     const loginEmailNormalized = normalizeEmail(email);
 
     if (!isValidEmail(loginEmailNormalized)) {
@@ -5489,25 +5490,22 @@ function App() {
                   normalizePlanRow({ id: "fallback-50", name: "50 Créditos", credits: 50, price_cents: 3990, active: true, plan_type: "credits" }),
                   normalizePlanRow({ id: "fallback-100", name: "100 Créditos", credits: 100, price_cents: 6990, active: true, plan_type: "credits" }),
                   normalizePlanRow({ id: "fallback-150", name: "150 Créditos", credits: 150, price_cents: 9750, active: true, plan_type: "credits" }),
-                  normalizePlanRow({ id: "fallback-unlimited", name: "Plano Ilimitado", credits: 0, price_cents: 14990, active: true, plan_type: "unlimited", is_unlimited: true, duration_days: 30 }),
                 ]
             ).map((plano, index, list) => {
               const isUnlimited = plano.is_unlimited === true;
-              const isBestValue = !isUnlimited && Number(plano.credits || 0) === 100;
+              const isBestValue = false;
               const isLargePack = !isUnlimited && Number(plano.credits || 0) === 150;
 
               return (
                 <div className={`planCard ${isUnlimited ? "unlimited" : ""} ${isLargePack ? "largePack" : ""}`} key={plano.id || plano.name}>
-                  {isBestValue && <div className="recommended recommendedBlue">Melhor opção</div>}
-                  {isLargePack && <div className="recommended recommendedGreen">Mais créditos</div>}
-                  {isUnlimited && <div className="recommended recommendedGold">Melhor opção ilimitada</div>}
+                  {isLargePack && <div className="recommended recommendedGreen">Mais econômico</div>}
 
                   <h3>{plano.name}</h3>
                   <strong>{formatMoneyCents(plano.price_cents)}</strong>
                   <p>{getPlanDescription(plano)}</p>
 
-                  <button className={(isBestValue || isUnlimited) ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
-                    {isUnlimited ? "Comprar ilimitado" : "Comprar créditos"}
+                  <button className={isLargePack ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
+                    Comprar créditos
                   </button>
                 </div>
               );
@@ -5569,13 +5567,17 @@ function App() {
             </button>
 
             <h2>
-              {authMode === "login"
+              {authMode === "reset"
+                ? "Recuperar senha"
+                : authMode === "login"
                 ? "Entrar na LocaCheck"
                 : "Criar conta grátis"}
             </h2>
 
             <p>
-              {authMode === "login"
+              {authMode === "reset"
+                ? "Informe seu e-mail para receber o link de recuperação de senha."
+                : authMode === "login"
                 ? "Para realizar consultas, confirme seu e-mail após criar a conta."
                 : "Cadastre-se com seus dados reais. O e-mail precisa ser confirmado para realizar consultas."}
             </p>
@@ -5588,22 +5590,26 @@ function App() {
               Ver Termos de Uso e Política de Privacidade
             </button>
 
-            <button
-              type="button"
-              className="btn googleAuthButton full"
-              onClick={entrarComGoogle}
-              disabled={loading}
-            >
-              <span className="googleAuthIcon">G</span>
-              {loading ? "Aguarde..." : "Entrar com Google"}
-            </button>
+            {authMode !== "reset" && (
+              <>
+                <button
+                  type="button"
+                  className="btn googleAuthButton full"
+                  onClick={entrarComGoogle}
+                  disabled={loading}
+                >
+                  <span className="googleAuthIcon">G</span>
+                  {loading ? "Aguarde..." : "Entrar com Google"}
+                </button>
 
-            <div className="authDivider">
-              <span>ou continue com e-mail</span>
-            </div>
+                <div className="authDivider">
+                  <span>ou continue com e-mail</span>
+                </div>
+              </>
+            )}
 
             <form
-              onSubmit={authMode === "login" ? entrarUsuario : cadastrarUsuario}
+              onSubmit={authMode === "reset" ? recuperarSenha : authMode === "login" ? entrarUsuario : cadastrarUsuario}
             >
               {authMode === "cadastro" && (
                 <>
@@ -5638,13 +5644,15 @@ function App() {
                 required
               />
 
-              <input
-                type="password"
-                placeholder="Senha"
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                required
-              />
+              {authMode !== "reset" && (
+                <input
+                  type="password"
+                  placeholder="Senha"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  required
+                />
+              )}
 
               {authMode === "cadastro" && (
                 <label className="termsAcceptBox">
@@ -5663,6 +5671,8 @@ function App() {
               <button className="btn primary full" disabled={loading}>
                 {loading
                   ? "Aguarde..."
+                  : authMode === "reset"
+                  ? "Enviar link de recuperação"
                   : authMode === "login"
                   ? "Entrar"
                   : "Criar conta"}
@@ -5672,7 +5682,7 @@ function App() {
                 <button
                   type="button"
                   className="switchAuth forgotPasswordLinkV39"
-                  onClick={recuperarSenha}
+                  onClick={() => { setMessage(""); setAuthMode("reset"); }}
                   disabled={loading}
                 >
                   Esqueci minha senha
@@ -5689,7 +5699,7 @@ function App() {
                 setAuthMode(authMode === "login" ? "cadastro" : "login");
               }}
             >
-              {authMode === "login" ? "Ainda não tenho conta" : "Já tenho conta"}
+              {authMode === "reset" ? "Voltar para entrar" : authMode === "login" ? "Ainda não tenho conta" : "Já tenho conta"}
             </button>
           </div>
         </div>

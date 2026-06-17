@@ -96,6 +96,7 @@ function BuyCreditsModal({ onClose }) {
 
     const orderedPlans = (data || [])
       .map(normalizePlanRow)
+      .filter((plan) => plan.is_unlimited !== true)
       .sort(sortPlansByPrice);
     setPlans(orderedPlans);
 
@@ -220,7 +221,7 @@ function BuyCreditsModal({ onClose }) {
                 {plans.map((plano) => {
                   const isSelected = selectedPlanId === plano.id;
                   const isUnlimited = plano.is_unlimited === true;
-                  const isBestOption = !isUnlimited && (Number(plano.credits || 0) === 100 || String(plano.name || "").includes("100"));
+                  const isBestOption = false;
                   const isLargePack = !isUnlimited && Number(plano.credits || 0) === 150;
 
                   return (
@@ -232,16 +233,14 @@ function BuyCreditsModal({ onClose }) {
                       onClick={() => setSelectedPlanId(plano.id)}
                       type="button"
                     >
-                      {isBestOption && <span className="miniTag miniTagBlue">Melhor opção</span>}
-                      {isLargePack && <span className="miniTag miniTagGreen">Mais créditos</span>}
-                      {isUnlimited && <span className="miniTag miniTagGold">Melhor opção ilimitada</span>}
+                      {isLargePack && <span className="miniTag miniTagGreen">Mais econômico</span>}
 
                       <h3>{plano.name}</h3>
 
                       <strong>{formatMoney(plano.price_cents)}</strong>
 
                       <p>
-                        {isUnlimited ? `${plano.duration_days || 30} dias de consultas ilimitadas.` : `${plano.credits} consultas.`}
+                        {`${plano.credits} consultas.`}
                       </p>
 
                       <small>{isSelected ? "Selecionado" : "Selecionar"}</small>
