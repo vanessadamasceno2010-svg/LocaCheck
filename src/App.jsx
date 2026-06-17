@@ -1010,13 +1010,16 @@ function App() {
     setMessage("");
 
     const { error } = await supabase.auth.resetPasswordForEmail(loginEmailNormalized, {
-      redirectTo: window.location.origin,
+      redirectTo: `${window.location.origin}/?reset_password=1`,
     });
 
     if (error) {
-      setMessage(error.message || "Não foi possível enviar o link de recuperação.");
+      const friendlyError = String(error.message || "").toLowerCase().includes("rate limit")
+        ? "Limite de envio de e-mail atingido. Aguarde alguns minutos e tente novamente. Para produção, configure SMTP próprio no Supabase."
+        : error.message || "Não foi possível enviar o link de recuperação.";
+      setMessage(friendlyError);
     } else {
-      setMessage("Enviamos um link de recuperação para seu e-mail. Verifique também o spam.");
+      setMessage("Enviamos um link de recuperação de senha para seu e-mail. Verifique também a caixa de spam.");
     }
 
     setLoading(false);
@@ -1412,8 +1415,8 @@ function App() {
         }
       }
 
-      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail, se solicitado, e compre créditos para realizar consultas.");
-      showToast("success", "Cadastro realizado", "Sua conta foi criada. Para consultar, adicione créditos.");
+      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail para realizar consultas.");
+      showToast("success", "Cadastro realizado", "Confirme seu e-mail para realizar consultas.");
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -5485,21 +5488,26 @@ function App() {
                   normalizePlanRow({ id: "fallback-20", name: "20 Créditos", credits: 20, price_cents: 1990, active: true, plan_type: "credits" }),
                   normalizePlanRow({ id: "fallback-50", name: "50 Créditos", credits: 50, price_cents: 3990, active: true, plan_type: "credits" }),
                   normalizePlanRow({ id: "fallback-100", name: "100 Créditos", credits: 100, price_cents: 6990, active: true, plan_type: "credits" }),
+                  normalizePlanRow({ id: "fallback-150", name: "150 Créditos", credits: 150, price_cents: 9750, active: true, plan_type: "credits" }),
+                  normalizePlanRow({ id: "fallback-unlimited", name: "Plano Ilimitado", credits: 0, price_cents: 14990, active: true, plan_type: "unlimited", is_unlimited: true, duration_days: 30 }),
                 ]
-            ).filter((plano) => plano.is_unlimited !== true).map((plano, index, list) => {
+            ).map((plano, index, list) => {
               const isUnlimited = plano.is_unlimited === true;
-              const isBestValue = !isUnlimited && index === list.findIndex((item) => !item.is_unlimited && Number(item.credits || 0) === Math.max(...list.filter((p) => !p.is_unlimited).map((p) => Number(p.credits || 0))));
+              const isBestValue = !isUnlimited && Number(plano.credits || 0) === 100;
+              const isLargePack = !isUnlimited && Number(plano.credits || 0) === 150;
 
               return (
-                <div className={`planCard ${isUnlimited ? "unlimited" : ""}`} key={plano.id || plano.name}>
-                  {isBestValue && !isUnlimited && <div className="recommended">Melhor opção</div>}
+                <div className={`planCard ${isUnlimited ? "unlimited" : ""} ${isLargePack ? "largePack" : ""}`} key={plano.id || plano.name}>
+                  {isBestValue && <div className="recommended recommendedBlue">Melhor opção</div>}
+                  {isLargePack && <div className="recommended recommendedGreen">Mais créditos</div>}
+                  {isUnlimited && <div className="recommended recommendedGold">Melhor opção ilimitada</div>}
 
                   <h3>{plano.name}</h3>
                   <strong>{formatMoneyCents(plano.price_cents)}</strong>
                   <p>{getPlanDescription(plano)}</p>
 
-                  <button className={isBestValue ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
-                    Comprar créditos
+                  <button className={(isBestValue || isUnlimited) ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
+                    {isUnlimited ? "Comprar ilimitado" : "Comprar créditos"}
                   </button>
                 </div>
               );

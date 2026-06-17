@@ -3811,3 +3811,65 @@ body {
     width: 100%;
   }
 }
+
+/* V40 — planos, login e recuperação de senha */
+.planCard.unlimited,
+.buyPlanCard.unlimited {
+  display: block !important;
+}
+
+.recommendedBlue,
+.miniTagBlue {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.recommendedGreen,
+.miniTagGreen {
+  background: #16a34a !important;
+  color: #ffffff !important;
+}
+
+.recommendedGold,
+.miniTagGold {
+  background: linear-gradient(135deg, #f59e0b, #facc15) !important;
+  color: #111827 !important;
+}
+
+.planCard.largePack {
+  border-color: rgba(34, 197, 94, 0.7) !important;
+  box-shadow: 0 18px 44px rgba(34, 197, 94, 0.16) !important;
+}
+
+.buyPlanCard.largePack {
+  border-color: rgba(34, 197, 94, 0.7) !important;
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.14), rgba(15, 23, 42, 0.02)) !important;
+}
+
+.buyPlanCard.unlimited {
+  border-color: rgba(250, 204, 21, 0.78) !important;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(15, 23, 42, 0.02)) !important;
+}
+
+.buyPlanCard.unlimited h3,
+.buyPlanCard.unlimited strong,
+.buyPlanCard.unlimited p,
+.buyPlanCard.unlimited small {
+  color: #0f172a !important;
+}
+
+.miniTag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.authMessage {
+  line-height: 1.45 !important;
+}
