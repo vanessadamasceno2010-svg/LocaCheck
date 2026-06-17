@@ -515,6 +515,157 @@ function buildExternalSummaryText(item) {
   return linhas.filter(Boolean).join("\n");
 }
 
+
+function reportEscape(value) {
+  if (value === null || value === undefined || value === "") return "Não informado";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function reportValue(value) {
+  return reportEscape(displayExternalValue(value));
+}
+
+function reportLine(label, value) {
+  if (value === null || value === undefined || value === "") return "";
+  return `<div class="row"><span>${reportEscape(label)}</span><strong>${reportValue(value)}</strong></div>`;
+}
+
+function reportSection(title, body, subtitle = "") {
+  if (!body || !String(body).trim()) return "";
+  return `<section class="card"><h2>${reportEscape(title)}</h2>${subtitle ? `<p class="muted">${reportEscape(subtitle)}</p>` : ""}<div class="content">${body}</div></section>`;
+}
+
+function processRoleText(process) {
+  return process?.specific_type || process?.person_role || process?.role || process?.party_type || process?.type_in_process || "Não informado";
+}
+
+function buildExternalReportHtml(item) {
+  const phones = Array.isArray(item.phones) ? item.phones : [];
+  const emails = Array.isArray(item.emails) ? item.emails : [];
+  const addresses = Array.isArray(item.addresses) ? item.addresses : [];
+  const relatedPeople = Array.isArray(item.related_people) ? item.related_people : [];
+  const processes = Array.isArray(item.processes) ? item.processes : [];
+  const cpf = item.cpf || item.cpf_masked || (item.cpf4 ? `***.***.***-${item.cpf4}` : "Não informado");
+  const title = item.consultation_label || externalConsultationLabel(item.consultation_type) || "Consulta Externa Completa";
+
+  const personal = [
+    reportLine("Nome encontrado", item.name || item.nome),
+    reportLine("CPF consultado", cpf),
+    reportLine("Situação cadastral", item.document_status),
+    reportLine("Nascimento", item.birth_date ? formatSimpleDate(item.birth_date) : ""),
+    reportLine("Nome da mãe", item.mother_name),
+    reportLine("Nome do pai", item.father_name),
+    reportLine("Número social", item.social_number),
+    reportLine("Signo", item.zodiac_sign),
+  ].join("");
+
+  const contatos = [
+    phones.map((phone, index) => `<div class="mini"><b>Telefone ${index + 1}</b><p>${reportValue([phone.number, phone.type, phone.status, phone.is_main === true ? "principal" : null, phone.is_recent === true ? "recente" : null].filter(Boolean).join(" • "))}</p></div>`).join(""),
+    emails.map((email, index) => `<div class="mini"><b>E-mail ${index + 1}</b><p>${reportValue([email.email, email.type, email.status, email.is_main === true ? "principal" : null, email.is_recent === true ? "recente" : null].filter(Boolean).join(" • "))}</p></div>`).join(""),
+  ].join("") || `<p class="empty">Nenhum contato retornado nesta consulta.</p>`;
+
+  const enderecos = addresses.length
+    ? addresses.map((address, index) => `<div class="mini"><b>Endereço ${index + 1}</b><p>${reportValue([address.full, address.type, address.city, address.state, address.zip_code, address.is_main === true ? "principal" : null, address.is_recent === true ? "recente" : null].filter(Boolean).join(" • "))}</p></div>`).join("")
+    : `<p class="empty">Nenhum endereço retornado nesta consulta.</p>`;
+
+  const pessoas = relatedPeople.length
+    ? relatedPeople.map((person, index) => `<div class="mini"><b>${reportValue(person.full_name || person.name || `Pessoa relacionada ${index + 1}`)}</b>${reportLine("CPF/CNPJ", person.tax_id)}${reportLine("Grau de parentesco/relacionamento", person.relationship || person.relationship_type)}${reportLine("E-mail", person.email)}${Array.isArray(person.phones) && person.phones.length ? `<div class="row"><span>Telefones</span><strong>${reportValue(person.phones.map((phone) => [phone.number, phone.type].filter(Boolean).join(" • ")).filter(Boolean).join(" | "))}</strong></div>` : ""}</div>`).join("")
+    : `<p class="empty">Nenhuma pessoa relacionada retornada nesta consulta.</p>`;
+
+  const processosResumo = [
+    reportLine("Informações encontradas", item.has_lawsuit_indicators ? "Sim" : "Não"),
+    reportLine("Quantidade informada", item.lawsuits_total || processes.length || 0),
+  ].join("");
+
+  const processos = processes.length
+    ? processes.slice(0, 30).map((process, index) => `<div class="process"><b>${reportValue(process.number || `Processo ${index + 1}`)}</b><p>${reportValue([process.court, process.state, process.type, process.status].filter(Boolean).join(" • ") || "Informações principais disponíveis.")}</p>${reportLine("Envolvimento da pessoa", processRoleText(process))}${reportLine("Data", process.distribution_date ? formatSimpleDate(process.distribution_date) : "")}${reportLine("Assunto", process.subject)}${reportLine("Valor informado", process.value)}</div>`).join("")
+    : `<p class="empty">Não foram retornados detalhes de processos nesta consulta.</p>`;
+
+  return buildReportShell({
+    title: "Relatório de Consulta LocaCheck",
+    subtitle: title,
+    cpf,
+    nome: item.name || item.nome || "Não informado",
+    sections: [
+      reportSection("Dados pessoais", personal),
+      reportSection("Contatos encontrados", contatos, "Telefones e e-mails retornados pela fonte externa."),
+      reportSection("Endereços encontrados", enderecos),
+      reportSection("Pessoas relacionadas", pessoas),
+      reportSection("Resumo de processos", processosResumo),
+      reportSection("Processos judiciais resumidos", processos, "Resumo simplificado, sem linguagem técnica."),
+    ].join(""),
+  });
+}
+
+function buildInternalReportHtml(item) {
+  const title = "Consulta Interna LocaCheck";
+  const cpf = item.cpf_masked || item.cpf4 || "Não informado";
+  const body = [
+    reportLine("Nome", item.nome),
+    reportLine("CPF", cpf),
+    reportLine("Cidade/UF", item.cidade),
+    reportLine("Ocorrências", Array.isArray(item.tipos) ? item.tipos.join(", ") : item.tipos),
+    reportLine("Descrição", item.descricao),
+    reportLine("Documento/comprovante", item.imagem_url ? "Disponível no sistema" : "Não informado"),
+  ].join("");
+
+  return buildReportShell({
+    title: "Relatório de Consulta LocaCheck",
+    subtitle: title,
+    cpf,
+    nome: item.nome || "Não informado",
+    sections: reportSection("Registro encontrado em outras locadoras", body),
+  });
+}
+
+function buildReportShell({ title, subtitle, cpf, nome, sections }) {
+  const generatedAt = new Date().toLocaleString("pt-BR");
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${reportEscape(title)}</title>
+  <style>
+    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;background:#f4f7fb;color:#152033;margin:0;padding:28px} .page{max-width:920px;margin:0 auto;background:white;border:1px solid #dce5f2;border-radius:18px;overflow:hidden;box-shadow:0 18px 60px rgba(15,23,42,.12)} .header{background:linear-gradient(135deg,#0f2a5f,#2563eb);color:white;padding:30px} .brand{font-size:28px;font-weight:800;letter-spacing:-.5px} .subtitle{font-size:18px;margin-top:8px;opacity:.92}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:18px 30px;background:#eef5ff;border-bottom:1px solid #dce5f2}.meta div{background:white;border:1px solid #dce5f2;border-radius:12px;padding:12px}.meta span{display:block;color:#64748b;font-size:12px;text-transform:uppercase;font-weight:700}.meta strong{display:block;margin-top:5px;font-size:15px}.contentWrap{padding:26px 30px}.card{border:1px solid #dce5f2;border-radius:16px;padding:20px;margin-bottom:18px;break-inside:avoid}.card h2{margin:0 0 8px;font-size:18px;color:#0f2a5f}.muted{margin:0 0 12px;color:#64748b}.row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid #edf2f7;padding:10px 0}.row:first-child{border-top:0}.row span{color:#64748b}.row strong{text-align:right;color:#0f172a}.mini,.process{border:1px solid #edf2f7;border-radius:12px;padding:12px;margin:10px 0;background:#fbfdff}.mini b,.process b{color:#0f2a5f}.mini p,.process p{margin:6px 0;color:#334155}.empty{color:#64748b}.notice{margin-top:20px;padding:16px 20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;color:#7c2d12}.footer{padding:18px 30px;color:#64748b;font-size:12px;border-top:1px solid #dce5f2}.actions{display:flex;gap:10px;justify-content:flex-end;margin:18px auto 0;max-width:920px}.actions button{border:0;border-radius:12px;background:#2563eb;color:white;font-weight:700;padding:12px 18px;cursor:pointer}.actions button.secondary{background:#0f172a}@media print{body{background:white;padding:0}.page{box-shadow:none;border:0;border-radius:0}.actions{display:none}.card{break-inside:avoid}.header{-webkit-print-color-adjust:exact;print-color-adjust:exact}.meta{grid-template-columns:repeat(2,1fr);-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="header"><div class="brand">LocaCheck</div><div class="subtitle">${reportEscape(subtitle)}</div></div>
+    <div class="meta"><div><span>Data da consulta</span><strong>${reportEscape(generatedAt)}</strong></div><div><span>CPF consultado</span><strong>${reportEscape(cpf)}</strong></div><div><span>Nome encontrado</span><strong>${reportEscape(nome)}</strong></div><div><span>Finalidade</span><strong>Apoio à decisão do locador</strong></div></div>
+    <div class="contentWrap">${sections}<div class="notice"><strong>Responsabilidade:</strong> Este relatório é uma ferramenta de apoio à decisão do locador. As informações devem ser analisadas com responsabilidade, finalidade legítima e conferência própria.</div></div>
+    <div class="footer">Relatório gerado pela LocaCheck. Documento destinado ao apoio da análise de locação de veículos.</div>
+  </main>
+  <div class="actions"><button class="secondary" onclick="window.close()">Fechar</button><button onclick="window.print()">Salvar/Imprimir PDF</button></div>
+  <script>setTimeout(function(){ window.focus(); }, 300);</script>
+</body>
+</html>`;
+}
+
+function abrirRelatorioConsulta(html, fallbackName = "locacheck-relatorio.html") {
+  const janela = window.open("", "_blank", "width=1000,height=800");
+  if (!janela) {
+    baixarTexto(fallbackName, html);
+    return false;
+  }
+  janela.document.open();
+  janela.document.write(html);
+  janela.document.close();
+  setTimeout(() => {
+    try {
+      janela.focus();
+      janela.print();
+    } catch {}
+  }, 650);
+  return true;
+}
+
 function diasAte(dataIso) {
   if (!dataIso) return null;
   const hoje = new Date();
@@ -1865,8 +2016,21 @@ function App() {
   function exportarConsultaExterna(item) {
     const cpfFinal = onlyDigits(item?.cpf || item?.cpf_masked || item?.cpf4 || "").slice(-4) || "consulta";
     const data = new Date().toISOString().slice(0, 10);
-    baixarTexto(`locacheck-consulta-externa-${cpfFinal}-${data}.txt`, buildExternalSummaryText(item));
-    setSearchMessage("Consulta exportada com sucesso.");
+    const abriu = abrirRelatorioConsulta(
+      buildExternalReportHtml(item),
+      `locacheck-relatorio-consulta-externa-${cpfFinal}-${data}.html`
+    );
+    setSearchMessage(abriu ? "Relatório aberto. Use Salvar como PDF ou Imprimir." : "Relatório baixado em HTML. Abra o arquivo e salve como PDF.");
+  }
+
+  function exportarConsultaInterna(item) {
+    const cpfFinal = onlyDigits(item?.cpf || item?.cpf_masked || item?.cpf4 || "").slice(-4) || "consulta";
+    const data = new Date().toISOString().slice(0, 10);
+    const abriu = abrirRelatorioConsulta(
+      buildInternalReportHtml(item),
+      `locacheck-relatorio-consulta-interna-${cpfFinal}-${data}.html`
+    );
+    setSearchMessage(abriu ? "Relatório aberto. Use Salvar como PDF ou Imprimir." : "Relatório baixado em HTML. Abra o arquivo e salve como PDF.");
   }
 
   async function carregarOcorrenciasAdmin() {
@@ -5236,6 +5400,12 @@ function App() {
                               )}
                             </div>
                           )}
+
+                          <div className="modalActionsRow externalResultActions">
+                            <button type="button" className="btn primary" onClick={() => exportarConsultaInterna(item)}>
+                              Exportar relatório
+                            </button>
+                          </div>
                         </>
                       )}
                     </div>
