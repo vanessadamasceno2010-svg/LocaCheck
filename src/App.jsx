@@ -2767,9 +2767,16 @@ function App() {
             </div>
           </div>
 
-          <button className="btn secondary headerLogoutV36" onClick={sair} aria-label="Sair da conta">
-            Sair
-          </button>
+          <div className="headerUserToolsV37">
+            <div className="headerCreditsV37" aria-label="Créditos disponíveis">
+              <span>Créditos</span>
+              <strong>{profile.credits}</strong>
+            </div>
+
+            <button className="btn secondary headerLogoutV36" onClick={sair} aria-label="Sair da conta">
+              Sair
+            </button>
+          </div>
         </header>
 
         <main className="dashboard">
@@ -2782,11 +2789,6 @@ function App() {
           </section>
 
           <section className="userTopStripV33">
-            <div className="creditMiniPillV33">
-              <span>Créditos</span>
-              <strong>{profile.credits}</strong>
-            </div>
-
             {myPendingRecordsCount > 0 && (
               <button
                 type="button"
@@ -2817,7 +2819,7 @@ function App() {
                 setShowSearchForm(true);
               }}
             >
-              Consultar Locatário
+              Consultar CPF
               <small>Consulta interna ou externa completa</small>
             </button>
 
@@ -2828,14 +2830,14 @@ function App() {
                 setShowRecordForm(true);
               }}
             >
-              📝 Registrar Ocorrência
+              Registrar Ocorrência
             </button>
 
             <button
               className="btn outline large actionReferral"
               onClick={abrirPainelIndicacoes}
             >
-              🎁 Indique e ganhe créditos
+              Indique e ganhe créditos
             </button>
 
             <button
@@ -2844,7 +2846,7 @@ function App() {
                 setShowBuyCredits(true);
               }}
             >
-              💳 Comprar Créditos
+              Comprar Créditos
             </button>
 
             {shouldShowTopNotifications(notificationItems, notificationReadIds) && (
@@ -2855,7 +2857,7 @@ function App() {
                   carregarNotificacoes();
                 }}
               >
-                🔔 Notificações
+                Notificações
                 <span className="notificationDot" />
               </button>
             )}
@@ -4765,7 +4767,7 @@ function App() {
                 ×
               </button>
 
-              <h2>Consultar Locatário</h2>
+              <h2>Consultar CPF</h2>
 
               <p>
                 Escolha entre buscar registros em outras locadoras ou realizar uma consulta externa completa.
@@ -5139,54 +5141,15 @@ function App() {
               className="btn primary large"
               onClick={() => setAuthMode("login")}
             >
-              Consultar Locatário
+              Consultar CPF
             </button>
 
             <button
               className="btn outline large"
               onClick={() => setAuthMode("login")}
             >
-              📝 Registrar Ocorrência
+              Registrar Ocorrência
             </button>
-          </div>
-        </section>
-
-        <section className="landingTrustStats" aria-label="Credibilidade da plataforma LocaCheck">
-          <div className="sectionTitle compactSectionTitle">
-            <span>Credibilidade</span>
-            <h2>Consulta com mais critério antes de liberar o veículo</h2>
-            <p>
-              Indicadores de confiança pensados para transmitir segurança sem expor dados pessoais
-              ou prometer números que não estejam comprovados na operação.
-            </p>
-          </div>
-
-          <div className="landingStatsGrid">
-            <div className="landingStatCard highlightStat">
-              <strong>Consulta preventiva</strong>
-              <span>apoio à decisão antes da entrega do veículo</span>
-            </div>
-
-            <div className="landingStatCard">
-              <strong>Histórico registrado</strong>
-              <span>consultas e ações ficam organizadas para auditoria</span>
-            </div>
-
-            <div className="landingStatCard">
-              <strong>Ocorrência analisada</strong>
-              <span>registros passam por aprovação antes de aparecerem nas buscas</span>
-            </div>
-
-            <div className="landingStatCard">
-              <strong>CPF protegido</strong>
-              <span>exibição controlada e consulta com responsabilidade</span>
-            </div>
-          </div>
-
-          <div className="trustSealGrid">
-            <div>✓ Comprovantes vinculados à ocorrência</div>
-            <div>✓ Pagamento PIX com liberação automática</div>
-            <div>✓ Planos ativos exibidos automaticamente</div>
           </div>
         </section>
 

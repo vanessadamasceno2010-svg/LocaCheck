@@ -3593,3 +3593,148 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
+
+/* ===== V37 - Ajustes mobile, créditos no topo e tela inicial limpa ===== */
+.headerUserToolsV37 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  margin-right: max(24px, calc((100vw - 1180px) / 2));
+}
+
+.headerUserToolsV37 .headerLogoutV36 {
+  margin-right: 0 !important;
+}
+
+.headerCreditsV37 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(147, 197, 253, 0.26);
+  background: rgba(15, 23, 42, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 30px rgba(2,6,23,0.22);
+  color: #e5e7eb;
+}
+
+.headerCreditsV37 span {
+  font-size: 0.68rem;
+  color: #93c5fd;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 900;
+}
+
+.headerCreditsV37 strong {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #fff;
+  font-weight: 1000;
+  box-shadow: 0 8px 18px rgba(37,99,235,.34);
+}
+
+/* Botões do painel do usuário um abaixo do outro */
+.dashboardActionsV33 {
+  grid-template-columns: 1fr !important;
+  display: grid !important;
+  gap: 12px !important;
+}
+
+.dashboardActionsV33 .btn {
+  width: 100% !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+
+.actionConsultFeaturedV33 {
+  grid-column: auto !important;
+}
+
+/* Ajuste dos botões Entrar/Cadastrar no celular */
+@media (max-width: 760px) {
+  .header {
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .header .actions {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    padding: 0 !important;
+  }
+
+  .header .actions .btn {
+    width: 100% !important;
+    min-height: 42px !important;
+    padding: 10px 8px !important;
+    border-radius: 14px !important;
+    font-size: 0.88rem !important;
+  }
+
+  .headerUserToolsV37 {
+    position: fixed !important;
+    top: 10px !important;
+    right: 10px !important;
+    z-index: 50 !important;
+    margin: 0 !important;
+    gap: 7px !important;
+  }
+
+  .headerCreditsV37 {
+    padding: 6px 8px !important;
+    gap: 5px !important;
+    background: rgba(15, 23, 42, 0.78) !important;
+    backdrop-filter: blur(14px);
+  }
+
+  .headerCreditsV37 span {
+    font-size: 0.58rem !important;
+  }
+
+  .headerCreditsV37 strong {
+    min-width: 24px !important;
+    height: 24px !important;
+    padding: 0 7px !important;
+    font-size: .82rem !important;
+  }
+
+  .headerLogoutV36 {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    min-height: 34px !important;
+    padding: 7px 10px !important;
+    font-size: .78rem !important;
+  }
+
+  .dashboardActionsV33 {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .dashboardActionsV33 .btn {
+    min-height: 66px !important;
+    padding: 12px 12px 12px 48px !important;
+    border-radius: 18px !important;
+  }
+
+  .heroActions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+  }
+
+  .heroActions .btn {
+    width: 100% !important;
+  }
+}
