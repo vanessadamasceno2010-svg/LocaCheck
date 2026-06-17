@@ -94,7 +94,10 @@ function BuyCreditsModal({ onClose }) {
       return;
     }
 
-    const orderedPlans = (data || []).map(normalizePlanRow).sort(sortPlansByPrice);
+    const orderedPlans = (data || [])
+      .map(normalizePlanRow)
+      .filter((plan) => plan.is_unlimited !== true)
+      .sort(sortPlansByPrice);
     setPlans(orderedPlans);
 
     if (orderedPlans.length > 0) {
@@ -198,30 +201,46 @@ function BuyCreditsModal({ onClose }) {
                 <p>Nenhum plano ativo encontrado.</p>
               </div>
             ) : (
+              <>
+                {selectedPlan && (
+                  <div className="selectedPlanSummary selectedPlanSummaryTopV33">
+                    Plano selecionado: <strong>{selectedPlan.name} - {formatMoney(selectedPlan.price_cents)}</strong>
+                  </div>
+                )}
+
+                <button
+                  className="btn full primary generatePixTopV33"
+                  onClick={gerarPix}
+                  disabled={generatingPix || loadingPlans || plans.length === 0}
+                  type="button"
+                >
+                  {generatingPix ? "Gerando PIX..." : "Gerar PIX"}
+                </button>
+
               <div className="buyPlansGrid compactBuyPlansGrid">
                 {plans.map((plano) => {
                   const isSelected = selectedPlanId === plano.id;
                   const isUnlimited = plano.is_unlimited === true;
+                  const isBestOption = false;
+                  const isLargePack = !isUnlimited && Number(plano.credits || 0) === 150;
 
                   return (
                     <button
                       className={`buyPlanCard compactBuyPlanCard ${
-                        isUnlimited ? "featuredPlan" : ""
-                      } ${isSelected ? "selectedPlan" : ""}`}
+                        isBestOption ? "featuredPlan" : ""
+                      } ${isLargePack ? "largePack" : ""} ${isUnlimited ? "unlimited" : ""} ${isSelected ? "selectedPlan" : ""}`}
                       key={plano.id}
                       onClick={() => setSelectedPlanId(plano.id)}
                       type="button"
                     >
-                      {isUnlimited && <span className="miniTag">Ilimitado</span>}
+                      {isLargePack && <span className="miniTag miniTagGreen">Mais econômico</span>}
 
                       <h3>{plano.name}</h3>
 
                       <strong>{formatMoney(plano.price_cents)}</strong>
 
                       <p>
-                        {isUnlimited
-                          ? `${plano.duration_days || 30} dias de consultas ilimitadas.`
-                          : `${plano.credits} consultas.`}
+                        {`${plano.credits} consultas.`}
                       </p>
 
                       <small>{isSelected ? "Selecionado" : "Selecionar"}</small>
@@ -229,22 +248,8 @@ function BuyCreditsModal({ onClose }) {
                   );
                 })}
               </div>
+              </>
             )}
-
-            {selectedPlan && (
-              <div className="selectedPlanSummary">
-                Plano selecionado: <strong>{selectedPlan.name} - {formatMoney(selectedPlan.price_cents)}</strong>
-              </div>
-            )}
-
-            <button
-              className="btn full primary"
-              onClick={gerarPix}
-              disabled={generatingPix || loadingPlans || plans.length === 0}
-              type="button"
-            >
-              {generatingPix ? "Gerando PIX..." : "Gerar PIX"}
-            </button>
           </>
         )}
 

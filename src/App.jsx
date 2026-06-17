@@ -124,6 +124,67 @@ function removeStoredReferralCode() {
 }
 
 
+function getUserAccountStatus(profile) {
+  const rawStatus = String(
+    profile?.account_status ||
+      profile?.status_conta ||
+      profile?.user_status ||
+      profile?.status ||
+      "ativo"
+  ).toLowerCase();
+
+  if (profile?.is_blocked === true || profile?.blocked === true || rawStatus === "bloqueado" || rawStatus === "blocked") {
+    return "bloqueado";
+  }
+
+  if (rawStatus === "pendente" || rawStatus === "pending" || rawStatus === "aguardando") {
+    return "pendente";
+  }
+
+  return "ativo";
+}
+
+function isSessionEmailConfirmed(session) {
+  const user = session?.user;
+  if (!user) return false;
+
+  const provider = String(user?.app_metadata?.provider || "email").toLowerCase();
+  if (provider === "google") return true;
+
+  return Boolean(user.email_confirmed_at || user.confirmed_at || user.user_metadata?.email_verified);
+}
+
+function getUserSecurityBlock(session, profile) {
+  if (!session?.user || !profile) {
+    return "Faça login novamente para continuar.";
+  }
+
+  if (String(profile?.role || "user").toLowerCase() === "admin") {
+    return "";
+  }
+
+  const status = getUserAccountStatus(profile);
+  if (status === "bloqueado") {
+    return profile?.blocked_reason || "Sua conta está bloqueada. Entre em contato com o suporte.";
+  }
+
+  if (status === "pendente") {
+    return "Sua conta ainda está em análise. Aguarde a liberação do administrador.";
+  }
+
+  if (!isSessionEmailConfirmed(session)) {
+    return "Confirme seu e-mail antes de realizar consultas. Verifique sua caixa de entrada ou spam.";
+  }
+
+  const whatsappDigits = onlyDigits(profile?.whatsapp || "");
+  if (whatsappDigits.length < 10) {
+    return "Complete seu perfil com um WhatsApp válido antes de realizar consultas.";
+  }
+
+  return "";
+}
+
+
 function onlyDigits(value) {
   return String(value || "").replace(/\D/g, "");
 }
@@ -344,6 +405,267 @@ function baixarCsv(nomeArquivo, linhas) {
   URL.revokeObjectURL(url);
 }
 
+function baixarTexto(nomeArquivo, texto) {
+  const blob = new Blob(["\ufeff" + texto], { type: "text/plain;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nomeArquivo;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+
+function formatDate(value) {
+  if (!value) return "Não informado";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Não informado";
+  }
+
+  return date.toLocaleString("pt-BR");
+}
+
+
+function externalConsultationLabel(type) {
+  if (type === "external_advanced" || type === "external_complete") return "Consulta Externa Completa";
+  return "Consulta Interna";
+}
+
+function externalConsultationCredits(type) {
+  if (type === "external_advanced" || type === "external_complete") return 3;
+  return 1;
+}
+
+function externalDatasetLabel(dataset) {
+  const clean = String(dataset || "").replace(/\.limit\(.*?\)/g, "");
+  const map = {
+    basic_data: "Dados cadastrais",
+    registration_data: "Endereços, telefones e e-mails",
+    lawsuits_distribution_data: "Resumo de processos",
+    processes: "Processos detalhados",
+  };
+  return map[clean] || dataset;
+}
+
+function externalDatasetsText(datasets) {
+  if (Array.isArray(datasets)) {
+    return datasets.map(externalDatasetLabel).join(", ") || "Não informado";
+  }
+  if (typeof datasets === "string" && datasets.trim()) return externalDatasetLabel(datasets.trim());
+  return "Não informado";
+}
+
+function formatSimpleDate(value) {
+  if (!value) return "Não informado";
+  const text = String(value);
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  return date.toLocaleDateString("pt-BR");
+}
+
+
+function displayExternalValue(value) {
+  if (value === null || value === undefined || value === "") return "Não informado";
+  const text = String(value);
+  if (text.toUpperCase() === "LEAO") return "Leão";
+  return text;
+}
+
+function relatedPersonLabel(person, index) {
+  return person?.name || person?.tax_id || `Pessoa relacionada ${index + 1}`;
+}
+
+function shouldShowTopNotifications(notificationItems, notificationReadIds) {
+  return (notificationItems || []).some((item) => !(notificationReadIds || []).includes(item.id));
+}
+
+function buildExternalSummaryText(item) {
+  const phones = Array.isArray(item.phones) ? item.phones : [];
+  const emails = Array.isArray(item.emails) ? item.emails : [];
+  const addresses = Array.isArray(item.addresses) ? item.addresses : [];
+  const processes = Array.isArray(item.processes) ? item.processes : [];
+
+  const linhas = [
+    item.consultation_label || externalConsultationLabel(item.consultation_type),
+    `CPF consultado: ${item.cpf || item.cpf_masked || (item.cpf4 ? `***.***.***-${item.cpf4}` : "Não informado")}`,
+    `Nome encontrado: ${item.name || item.nome || "Não informado"}`,
+    `Situação cadastral: ${item.document_status || "Não informado"}`,
+    item.birth_date ? `Nascimento: ${formatSimpleDate(item.birth_date)}` : null,
+    item.mother_name ? `Nome da mãe: ${item.mother_name}` : null,
+    item.father_name ? `Nome do pai: ${item.father_name}` : null,
+    item.social_number ? `Número social: ${item.social_number}` : null,
+    item.zodiac_sign ? `Signo: ${displayExternalValue(item.zodiac_sign)}` : null,
+    phones.length ? `Telefones: ${phones.map((phone) => [phone.number, phone.type].filter(Boolean).join(" - ")).filter(Boolean).join(" | ")}` : null,
+    emails.length ? `E-mails: ${emails.map((email) => email.email).filter(Boolean).join(" | ")}` : null,
+    addresses.length ? `Endereços: ${addresses.map((address) => address.full).filter(Boolean).join(" | ")}` : null,
+    Array.isArray(item.related_people) && item.related_people.length ? `Pessoas relacionadas: ${item.related_people.map((person) => [person.name, person.tax_id, person.relationship, person.phones?.map((p) => p.number).join("/")].filter(Boolean).join(" - ")).join(" | ")}` : null,
+    `Processos/indicadores encontrados: ${item.has_lawsuit_indicators ? "Sim" : "Não"}`,
+    `Quantidade informada: ${item.lawsuits_total || processes.length || 0}`,
+    ...processes.slice(0, 20).map((process, index) => `Processo ${index + 1}: ${[process.number, process.court, process.state, process.type, process.status, process.person_role || process.specific_type].filter(Boolean).join(" - ")}`),
+    `Créditos descontados: ${item.credits_charged || 0}`,
+    "Fonte: BigDataCorp",
+    "Observação: resultado externo tratado para apoio à decisão do locador.",
+  ];
+
+  return linhas.filter(Boolean).join("\n");
+}
+
+
+function reportEscape(value) {
+  if (value === null || value === undefined || value === "") return "Não informado";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function reportValue(value) {
+  return reportEscape(displayExternalValue(value));
+}
+
+function reportLine(label, value) {
+  if (value === null || value === undefined || value === "") return "";
+  return `<div class="row"><span>${reportEscape(label)}</span><strong>${reportValue(value)}</strong></div>`;
+}
+
+function reportSection(title, body, subtitle = "") {
+  if (!body || !String(body).trim()) return "";
+  return `<section class="card"><h2>${reportEscape(title)}</h2>${subtitle ? `<p class="muted">${reportEscape(subtitle)}</p>` : ""}<div class="content">${body}</div></section>`;
+}
+
+function processRoleText(process) {
+  return process?.specific_type || process?.person_role || process?.role || process?.party_type || process?.type_in_process || "Não informado";
+}
+
+function buildExternalReportHtml(item) {
+  const phones = Array.isArray(item.phones) ? item.phones : [];
+  const emails = Array.isArray(item.emails) ? item.emails : [];
+  const addresses = Array.isArray(item.addresses) ? item.addresses : [];
+  const relatedPeople = Array.isArray(item.related_people) ? item.related_people : [];
+  const processes = Array.isArray(item.processes) ? item.processes : [];
+  const cpf = item.cpf || item.cpf_masked || (item.cpf4 ? `***.***.***-${item.cpf4}` : "Não informado");
+  const title = item.consultation_label || externalConsultationLabel(item.consultation_type) || "Consulta Externa Completa";
+
+  const personal = [
+    reportLine("Nome encontrado", item.name || item.nome),
+    reportLine("CPF consultado", cpf),
+    reportLine("Situação cadastral", item.document_status),
+    reportLine("Nascimento", item.birth_date ? formatSimpleDate(item.birth_date) : ""),
+    reportLine("Nome da mãe", item.mother_name),
+    reportLine("Nome do pai", item.father_name),
+    reportLine("Número social", item.social_number),
+    reportLine("Signo", item.zodiac_sign),
+  ].join("");
+
+  const contatos = [
+    phones.map((phone, index) => `<div class="mini"><b>Telefone ${index + 1}</b><p>${reportValue([phone.number, phone.type, phone.status, phone.is_main === true ? "principal" : null, phone.is_recent === true ? "recente" : null].filter(Boolean).join(" • "))}</p></div>`).join(""),
+    emails.map((email, index) => `<div class="mini"><b>E-mail ${index + 1}</b><p>${reportValue([email.email, email.type, email.status, email.is_main === true ? "principal" : null, email.is_recent === true ? "recente" : null].filter(Boolean).join(" • "))}</p></div>`).join(""),
+  ].join("") || `<p class="empty">Nenhum contato retornado nesta consulta.</p>`;
+
+  const enderecos = addresses.length
+    ? addresses.map((address, index) => `<div class="mini"><b>Endereço ${index + 1}</b><p>${reportValue([address.full, address.type, address.city, address.state, address.zip_code, address.is_main === true ? "principal" : null, address.is_recent === true ? "recente" : null].filter(Boolean).join(" • "))}</p></div>`).join("")
+    : `<p class="empty">Nenhum endereço retornado nesta consulta.</p>`;
+
+  const pessoas = relatedPeople.length
+    ? relatedPeople.map((person, index) => `<div class="mini"><b>${reportValue(person.full_name || person.name || `Pessoa relacionada ${index + 1}`)}</b>${reportLine("CPF/CNPJ", person.tax_id)}${reportLine("Grau de parentesco/relacionamento", person.relationship || person.relationship_type)}${reportLine("E-mail", person.email)}${Array.isArray(person.phones) && person.phones.length ? `<div class="row"><span>Telefones</span><strong>${reportValue(person.phones.map((phone) => [phone.number, phone.type].filter(Boolean).join(" • ")).filter(Boolean).join(" | "))}</strong></div>` : ""}</div>`).join("")
+    : `<p class="empty">Nenhuma pessoa relacionada retornada nesta consulta.</p>`;
+
+  const processosResumo = [
+    reportLine("Informações encontradas", item.has_lawsuit_indicators ? "Sim" : "Não"),
+    reportLine("Quantidade informada", item.lawsuits_total || processes.length || 0),
+  ].join("");
+
+  const processos = processes.length
+    ? processes.slice(0, 30).map((process, index) => `<div class="process"><b>${reportValue(process.number || `Processo ${index + 1}`)}</b><p>${reportValue([process.court, process.state, process.type, process.status].filter(Boolean).join(" • ") || "Informações principais disponíveis.")}</p>${reportLine("Envolvimento da pessoa", processRoleText(process))}${reportLine("Data", process.distribution_date ? formatSimpleDate(process.distribution_date) : "")}${reportLine("Assunto", process.subject)}${reportLine("Valor informado", process.value)}</div>`).join("")
+    : `<p class="empty">Não foram retornados detalhes de processos nesta consulta.</p>`;
+
+  return buildReportShell({
+    title: "Relatório de Consulta LocaCheck",
+    subtitle: title,
+    cpf,
+    nome: item.name || item.nome || "Não informado",
+    sections: [
+      reportSection("Dados pessoais", personal),
+      reportSection("Contatos encontrados", contatos, "Telefones e e-mails retornados pela fonte externa."),
+      reportSection("Endereços encontrados", enderecos),
+      reportSection("Pessoas relacionadas", pessoas),
+      reportSection("Resumo de processos", processosResumo),
+      reportSection("Processos judiciais resumidos", processos, "Resumo simplificado, sem linguagem técnica."),
+    ].join(""),
+  });
+}
+
+function buildInternalReportHtml(item) {
+  const title = "Consulta Interna LocaCheck";
+  const cpf = item.cpf_masked || item.cpf4 || "Não informado";
+  const body = [
+    reportLine("Nome", item.nome),
+    reportLine("CPF", cpf),
+    reportLine("Cidade/UF", item.cidade),
+    reportLine("Ocorrências", Array.isArray(item.tipos) ? item.tipos.join(", ") : item.tipos),
+    reportLine("Descrição", item.descricao),
+    reportLine("Documento/comprovante", item.imagem_url ? "Disponível no sistema" : "Não informado"),
+  ].join("");
+
+  return buildReportShell({
+    title: "Relatório de Consulta LocaCheck",
+    subtitle: title,
+    cpf,
+    nome: item.nome || "Não informado",
+    sections: reportSection("Registro encontrado em outras locadoras", body),
+  });
+}
+
+function buildReportShell({ title, subtitle, cpf, nome, sections }) {
+  const generatedAt = new Date().toLocaleString("pt-BR");
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${reportEscape(title)}</title>
+  <style>
+    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;background:#f4f7fb;color:#152033;margin:0;padding:28px} .page{max-width:920px;margin:0 auto;background:white;border:1px solid #dce5f2;border-radius:18px;overflow:hidden;box-shadow:0 18px 60px rgba(15,23,42,.12)} .header{background:linear-gradient(135deg,#0f2a5f,#2563eb);color:white;padding:30px} .brand{font-size:28px;font-weight:800;letter-spacing:-.5px} .subtitle{font-size:18px;margin-top:8px;opacity:.92}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:18px 30px;background:#eef5ff;border-bottom:1px solid #dce5f2}.meta div{background:white;border:1px solid #dce5f2;border-radius:12px;padding:12px}.meta span{display:block;color:#64748b;font-size:12px;text-transform:uppercase;font-weight:700}.meta strong{display:block;margin-top:5px;font-size:15px}.contentWrap{padding:26px 30px}.card{border:1px solid #dce5f2;border-radius:16px;padding:20px;margin-bottom:18px;break-inside:avoid}.card h2{margin:0 0 8px;font-size:18px;color:#0f2a5f}.muted{margin:0 0 12px;color:#64748b}.row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid #edf2f7;padding:10px 0}.row:first-child{border-top:0}.row span{color:#64748b}.row strong{text-align:right;color:#0f172a}.mini,.process{border:1px solid #edf2f7;border-radius:12px;padding:12px;margin:10px 0;background:#fbfdff}.mini b,.process b{color:#0f2a5f}.mini p,.process p{margin:6px 0;color:#334155}.empty{color:#64748b}.notice{margin-top:20px;padding:16px 20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;color:#7c2d12}.footer{padding:18px 30px;color:#64748b;font-size:12px;border-top:1px solid #dce5f2}.actions{display:flex;gap:10px;justify-content:flex-end;margin:18px auto 0;max-width:920px}.actions button{border:0;border-radius:12px;background:#2563eb;color:white;font-weight:700;padding:12px 18px;cursor:pointer}.actions button.secondary{background:#0f172a}@media print{body{background:white;padding:0}.page{box-shadow:none;border:0;border-radius:0}.actions{display:none}.card{break-inside:avoid}.header{-webkit-print-color-adjust:exact;print-color-adjust:exact}.meta{grid-template-columns:repeat(2,1fr);-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="header"><div class="brand">LocaCheck</div><div class="subtitle">${reportEscape(subtitle)}</div></div>
+    <div class="meta"><div><span>Data da consulta</span><strong>${reportEscape(generatedAt)}</strong></div><div><span>CPF consultado</span><strong>${reportEscape(cpf)}</strong></div><div><span>Nome encontrado</span><strong>${reportEscape(nome)}</strong></div><div><span>Finalidade</span><strong>Apoio à decisão do locador</strong></div></div>
+    <div class="contentWrap">${sections}<div class="notice"><strong>Responsabilidade:</strong> Este relatório é uma ferramenta de apoio à decisão do locador. As informações devem ser analisadas com responsabilidade, finalidade legítima e conferência própria.</div></div>
+    <div class="footer">Relatório gerado pela LocaCheck. Documento destinado ao apoio da análise de locação de veículos.</div>
+  </main>
+  <div class="actions"><button class="secondary" onclick="window.close()">Fechar</button><button onclick="window.print()">Salvar/Imprimir PDF</button></div>
+  <script>setTimeout(function(){ window.focus(); }, 300);</script>
+</body>
+</html>`;
+}
+
+function abrirRelatorioConsulta(html, fallbackName = "locacheck-relatorio.html") {
+  const janela = window.open("", "_blank", "width=1000,height=800");
+  if (!janela) {
+    baixarTexto(fallbackName, html);
+    return false;
+  }
+  janela.document.open();
+  janela.document.write(html);
+  janela.document.close();
+  setTimeout(() => {
+    try {
+      janela.focus();
+      janela.print();
+    } catch {}
+  }, 650);
+  return true;
+}
+
 function diasAte(dataIso) {
   if (!dataIso) return null;
   const hoje = new Date();
@@ -524,6 +846,7 @@ function App() {
   const [paymentsHistoryMessage, setPaymentsHistoryMessage] = useState("");
   const [myRecords, setMyRecords] = useState([]);
   const [myRecordsMessage, setMyRecordsMessage] = useState("");
+  const [myPendingRecordsCount, setMyPendingRecordsCount] = useState(0);
   const [notificationItems, setNotificationItems] = useState([]);
   const [notificationMessage, setNotificationMessage] = useState("");
 
@@ -549,6 +872,7 @@ function App() {
   const [searchText, setSearchText] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchMessage, setSearchMessage] = useState("");
+  const [consultationMode, setConsultationMode] = useState("internal");
 
   const [adminRecords, setAdminRecords] = useState([]);
   const [adminMessage, setAdminMessage] = useState("");
@@ -568,6 +892,14 @@ function App() {
   const [adminSupportFilter, setAdminSupportFilter] = useState("todos");
   const [activityLogs, setActivityLogs] = useState([]);
   const [activityLogsMessage, setActivityLogsMessage] = useState("");
+  const [adminExternalLogs, setAdminExternalLogs] = useState([]);
+  const [adminExternalLogsMessage, setAdminExternalLogsMessage] = useState("");
+  const [adminExternalFilterType, setAdminExternalFilterType] = useState("todos");
+  const [adminExternalFilterCache, setAdminExternalFilterCache] = useState("todos");
+  const [adminExternalSearch, setAdminExternalSearch] = useState("");
+  const [showExternalConsultationHistory, setShowExternalConsultationHistory] = useState(false);
+  const [externalConsultationHistory, setExternalConsultationHistory] = useState([]);
+  const [externalConsultationHistoryMessage, setExternalConsultationHistoryMessage] = useState("");
 
   const [editingRecord, setEditingRecord] = useState(null);
   const [editRecordNome, setEditRecordNome] = useState("");
@@ -584,6 +916,12 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [recordMessage, setRecordMessage] = useState("");
+  const [showPublicSupport, setShowPublicSupport] = useState(false);
+  const [publicSupportName, setPublicSupportName] = useState("");
+  const [publicSupportEmail, setPublicSupportEmail] = useState("");
+  const [publicSupportWhatsapp, setPublicSupportWhatsapp] = useState("");
+  const [publicSupportMessage, setPublicSupportMessage] = useState("");
+  const [publicSupportFeedback, setPublicSupportFeedback] = useState("");
 
   async function uploadRecordImage(file) {
     if (!file || !session?.user?.id) return "";
@@ -696,8 +1034,11 @@ function App() {
         email: userEmail || null,
         whatsapp: user?.user_metadata?.whatsapp || "",
         role: "user",
-        credits: 10,
+        credits: 0,
         consultas: 0,
+        account_status: "ativo",
+        is_blocked: false,
+        blocked_reason: null,
         referred_by_code: referralCode || null,
       })
       .select()
@@ -745,6 +1086,7 @@ function App() {
       carregarPlanosAdmin();
       carregarMensagensSuporteAdmin();
       carregarLogsSistema();
+      carregarConsultasExternasAdmin();
     }
   }, [session, profile]);
 
@@ -767,6 +1109,7 @@ function App() {
 
   useEffect(() => {
     if (session?.user?.id && profile) {
+      carregarResumoOcorrenciasUsuario();
       carregarNotificacoes();
     }
   }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
@@ -806,6 +1149,86 @@ function App() {
     setAuthMode("login");
   }
 
+  async function recuperarSenha(event) {
+    if (event?.preventDefault) event.preventDefault();
+    const loginEmailNormalized = normalizeEmail(email);
+
+    if (!isValidEmail(loginEmailNormalized)) {
+      setMessage("Informe seu e-mail para receber o link de recuperação de senha.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(loginEmailNormalized, {
+      redirectTo: `${window.location.origin}/?reset_password=1`,
+    });
+
+    if (error) {
+      const friendlyError = String(error.message || "").toLowerCase().includes("rate limit")
+        ? "Limite de envio de e-mail atingido. Aguarde alguns minutos e tente novamente. Para produção, configure SMTP próprio no Supabase."
+        : error.message || "Não foi possível enviar o link de recuperação.";
+      setMessage(friendlyError);
+    } else {
+      setMessage("Enviamos um link de recuperação de senha para seu e-mail. Verifique também a caixa de spam.");
+    }
+
+    setLoading(false);
+  }
+
+  async function enviarSuportePublico(e) {
+    e.preventDefault();
+
+    const nomeSuporte = publicSupportName.trim();
+    const emailSuporte = normalizeEmail(publicSupportEmail);
+    const whatsappSuporte = formatWhatsappInput(publicSupportWhatsapp);
+    const textoSuporte = publicSupportMessage.trim();
+
+    if (!nomeSuporte || !textoSuporte) {
+      setPublicSupportFeedback("Informe seu nome e escreva sua mensagem.");
+      return;
+    }
+
+    if (publicSupportEmail && !isValidEmail(emailSuporte)) {
+      setPublicSupportFeedback("Informe um e-mail válido ou deixe o campo em branco.");
+      return;
+    }
+
+    setLoading(true);
+    setPublicSupportFeedback("");
+
+    const mensagemTratada = [
+      "Mensagem enviada pela tela inicial do site.",
+      `Nome: ${nomeSuporte}`,
+      emailSuporte ? `E-mail: ${emailSuporte}` : "E-mail: não informado",
+      whatsappSuporte ? `WhatsApp: ${whatsappSuporte}` : "WhatsApp: não informado",
+      "",
+      textoSuporte,
+    ].join("\n");
+
+    const { error } = await supabase.from("support_messages").insert({
+      message: mensagemTratada,
+      status: "novo",
+      contact_name: nomeSuporte,
+      contact_email: emailSuporte || null,
+      contact_whatsapp: onlyDigits(whatsappSuporte) || null,
+    });
+
+    if (error) {
+      console.log("Erro ao enviar suporte público:", error);
+      setPublicSupportFeedback("Não foi possível enviar a mensagem. Verifique a configuração do suporte no Supabase.");
+    } else {
+      setPublicSupportFeedback("Mensagem enviada com sucesso. Nossa equipe recebeu seu contato.");
+      setPublicSupportName("");
+      setPublicSupportEmail("");
+      setPublicSupportWhatsapp("");
+      setPublicSupportMessage("");
+    }
+
+    setLoading(false);
+  }
+
   async function carregarDadosPublicosLanding() {
     setLandingMessage("");
 
@@ -819,7 +1242,7 @@ function App() {
         .order("name", { ascending: true });
 
       if (!plansError) {
-        setPublicPlans((plansData || []).map(normalizePlanRow).sort(sortPlansByPrice));
+        setPublicPlans((plansData || []).map(normalizePlanRow).filter((plan) => plan.is_unlimited !== true).sort(sortPlansByPrice));
       } else {
         console.log("Planos públicos indisponíveis:", plansError);
         setLandingMessage("Os planos serão carregados após a configuração pública no Supabase.");
@@ -1144,8 +1567,8 @@ function App() {
         }
       }
 
-      setMessage("Cadastro realizado com sucesso. Você já pode entrar.");
-      showToast("success", "Cadastro realizado", "Sua conta foi criada com 10 créditos iniciais.");
+      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail para realizar consultas.");
+      showToast("success", "Cadastro realizado", "Confirme seu e-mail para realizar consultas.");
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -1326,6 +1749,7 @@ function App() {
           "Ocorrência registrada com sucesso! Breve a ocorrência já estará disponível para consulta na plataforma."
         );
         showToast("success", "Ocorrência registrada", "Sua ocorrência foi enviada para análise do administrador.");
+        carregarResumoOcorrenciasUsuario();
         limparFormularioOcorrencia();
       }
     } catch (error) {
@@ -1339,6 +1763,26 @@ function App() {
   async function consultarLocatario(e) {
     e.preventDefault();
 
+    const securityBlockMessage = getUserSecurityBlock(session, profile);
+    if (securityBlockMessage) {
+      setSearchMessage(securityBlockMessage);
+      showToast("warning", "Consulta bloqueada", securityBlockMessage);
+
+      if (onlyDigits(profile?.whatsapp || "").length < 10 && isSessionEmailConfirmed(session)) {
+        abrirMeusDados();
+      }
+
+      return;
+    }
+
+    if (consultationMode === "internal") {
+      return consultarLocatarioInterno();
+    }
+
+    return consultarLocatarioExterno();
+  }
+
+  async function consultarLocatarioInterno() {
     if (loading) return;
 
     const searchClean = searchText.trim();
@@ -1392,22 +1836,201 @@ function App() {
       return;
     }
 
-    const results = data.results || [];
+    const results = (data.results || []).map((item) => ({ ...item, result_origin: "internal" }));
 
     setSearchResults(results);
 
     if (results.length === 0) {
       setSearchMessage(
-        "Consulta realizada. Nenhum registro aprovado foi encontrado para os dados informados."
+        "Consulta interna realizada. Nenhum registro aprovado foi encontrado para os dados informados."
       );
     } else {
       setSearchMessage(
-        `Consulta realizada. ${results.length} registro(s) encontrado(s).`
+        `Consulta interna realizada. ${results.length} registro(s) encontrado(s).`
       );
     }
 
     await loadProfile(session.user.id);
     setLoading(false);
+  }
+
+  async function consultarLocatarioExterno() {
+    if (loading) return;
+
+    const cpfDigits = onlyDigits(searchText);
+    const creditsNeeded = externalConsultationCredits(consultationMode);
+    const consultationLabel = externalConsultationLabel(consultationMode);
+
+    if (!isValidCpf(cpfDigits)) {
+      setSearchMessage("Para consulta externa, informe um CPF completo e válido.");
+      return;
+    }
+
+    if (Number(profile?.credits || 0) < creditsNeeded) {
+      setSearchMessage(`${consultationLabel} consome ${creditsNeeded} créditos. Recarregue sua conta para continuar.`);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `${consultationLabel}\n\nEsta consulta consome ${creditsNeeded} créditos. O resultado vem de fonte externa integrada e deve ser usado apenas como apoio à análise. Deseja continuar?`
+    );
+
+    if (!confirmed) return;
+
+    setLoading(true);
+    setSearchMessage("");
+    setSearchResults([]);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+
+      if (!token) {
+        setSearchMessage("Sessão expirada. Faça login novamente.");
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch("/api/bigdata/external-consult", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          cpf: cpfDigits,
+          consultationType: consultationMode,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data?.success) {
+        setSearchMessage(data?.message || "Não foi possível realizar a consulta externa.");
+        setLoading(false);
+        await loadProfile(session.user.id);
+        return;
+      }
+
+      const results = (data.results || []).map((item, index) => ({
+        ...item,
+        id: `${data.consultationType || consultationMode}-${Date.now()}-${index}`,
+        result_origin: "external",
+        consultation_label: data.consultationLabel || consultationLabel,
+        credits_charged: data.creditsCharged || creditsNeeded,
+        cache_hit: data.cacheHit || item.cached || false,
+      }));
+
+      setSearchResults(results);
+      setSearchMessage(
+        `${data.consultationLabel || consultationLabel} realizada com sucesso. Resultado obtido em fonte externa.`
+      );
+
+      await loadProfile(session.user.id);
+    } catch (error) {
+      console.log("Erro na consulta externa:", error);
+      setSearchMessage("Erro inesperado ao realizar consulta externa.");
+    }
+
+    setLoading(false);
+  }
+
+  async function carregarConsultasExternasAdmin() {
+    if (profile?.role !== "admin") return;
+
+    setAdminExternalLogsMessage("Carregando consultas externas...");
+
+    const { data, error } = await supabase
+      .from("external_consultation_logs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.log("Erro ao carregar external_consultation_logs:", error);
+      setAdminExternalLogsMessage("Erro ao carregar consultas externas. Verifique a migração V29 no Supabase.");
+      setAdminExternalLogs([]);
+      return;
+    }
+
+    const logs = data || [];
+    const userIds = [...new Set(logs.map((log) => log.user_id).filter(Boolean))];
+    let profilesById = {};
+
+    if (userIds.length > 0) {
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id,nome,email")
+        .in("id", userIds);
+
+      if (profilesError) {
+        console.log("Erro ao carregar perfis das consultas externas:", profilesError);
+      } else {
+        profilesById = Object.fromEntries((profilesData || []).map((item) => [item.id, item]));
+      }
+    }
+
+    const normalizedLogs = logs.map((log) => ({
+      ...log,
+      profiles: profilesById[log.user_id] || null,
+    }));
+
+    setAdminExternalLogs(normalizedLogs);
+    setAdminExternalLogsMessage("");
+  }
+
+  async function carregarMinhasConsultasExternas() {
+    if (!session?.user?.id) return;
+
+    setExternalConsultationHistoryMessage("Carregando consultas externas...");
+
+    const { data, error } = await supabase
+      .from("external_consultation_logs")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.log("Erro ao carregar minhas consultas externas:", error);
+      setExternalConsultationHistory([]);
+      setExternalConsultationHistoryMessage("Não foi possível carregar suas consultas externas.");
+      return;
+    }
+
+    setExternalConsultationHistory(data || []);
+    setExternalConsultationHistoryMessage((data || []).length === 0 ? "Nenhuma consulta externa encontrada." : "");
+  }
+
+  async function copiarResumoConsultaExterna(item) {
+    const resumo = buildExternalSummaryText(item);
+
+    try {
+      await navigator.clipboard.writeText(resumo);
+      setSearchMessage("Resumo da consulta externa copiado.");
+    } catch {
+      setSearchMessage("Não foi possível copiar automaticamente. Selecione e copie o resumo manualmente.");
+    }
+  }
+
+  function exportarConsultaExterna(item) {
+    const cpfFinal = onlyDigits(item?.cpf || item?.cpf_masked || item?.cpf4 || "").slice(-4) || "consulta";
+    const data = new Date().toISOString().slice(0, 10);
+    const abriu = abrirRelatorioConsulta(
+      buildExternalReportHtml(item),
+      `locacheck-relatorio-consulta-externa-${cpfFinal}-${data}.html`
+    );
+    setSearchMessage(abriu ? "Relatório aberto. Use Salvar como PDF ou Imprimir." : "Relatório baixado em HTML. Abra o arquivo e salve como PDF.");
+  }
+
+  function exportarConsultaInterna(item) {
+    const cpfFinal = onlyDigits(item?.cpf || item?.cpf_masked || item?.cpf4 || "").slice(-4) || "consulta";
+    const data = new Date().toISOString().slice(0, 10);
+    const abriu = abrirRelatorioConsulta(
+      buildInternalReportHtml(item),
+      `locacheck-relatorio-consulta-interna-${cpfFinal}-${data}.html`
+    );
+    setSearchMessage(abriu ? "Relatório aberto. Use Salvar como PDF ou Imprimir." : "Relatório baixado em HTML. Abra o arquivo e salve como PDF.");
   }
 
   async function carregarOcorrenciasAdmin() {
@@ -1740,7 +2363,7 @@ function App() {
 
     const { error } = await supabase.from("plans").insert({
       name: "Novo plano",
-      credits: 10,
+      credits: 0,
       price_cents: 1990,
       price: 19.9,
       plan_type: "credits",
@@ -1838,6 +2461,68 @@ function App() {
       await loadProfile(session.user.id);
     }
 
+    setLoading(false);
+  }
+
+  async function alterarStatusContaUsuario(userId, novoStatus) {
+    if (loading) return;
+
+    if (!session?.user?.id || profile?.role !== "admin") {
+      setAdminUsersMessage("Apenas administradores podem bloquear ou liberar usuários.");
+      return;
+    }
+
+    const usuario = adminUsers.find((item) => item.id === userId);
+    if (!usuario) return;
+
+    if (userId === session.user.id && String(novoStatus || "").toLowerCase() !== "ativo") {
+      setAdminUsersMessage("Por segurança, você não pode bloquear sua própria conta pelo painel.");
+      showToast("warning", "Ação bloqueada", "Use outro administrador para alterar seu próprio status.");
+      return;
+    }
+
+    let motivo = "";
+    if (String(novoStatus).toLowerCase() === "bloqueado") {
+      motivo = window.prompt(
+        `Informe o motivo do bloqueio de ${usuario.nome || usuario.email || "este usuário"}:`,
+        "Uso indevido ou cadastro suspeito"
+      ) || "";
+      if (!motivo.trim()) return;
+    }
+
+    const confirmar = window.confirm(
+      String(novoStatus).toLowerCase() === "bloqueado"
+        ? `Deseja bloquear ${usuario.nome || usuario.email || "este usuário"}? Ele não poderá realizar consultas.`
+        : `Deseja liberar ${usuario.nome || usuario.email || "este usuário"} para realizar consultas?`
+    );
+
+    if (!confirmar) return;
+
+    setLoading(true);
+    setAdminUsersMessage("");
+
+    const { data, error } = await supabase.rpc("admin_set_user_status", {
+      p_user_id: userId,
+      p_status: novoStatus,
+      p_reason: motivo.trim() || null,
+    });
+
+    if (error || data?.success === false) {
+      console.log("Erro ao alterar status da conta:", error || data);
+      setAdminUsersMessage(error?.message || data?.message || "Erro ao alterar status da conta.");
+      showToast("error", "Erro ao alterar status", "Verifique a migração V38 no Supabase.");
+      setLoading(false);
+      return;
+    }
+
+    showToast(
+      "success",
+      String(novoStatus).toLowerCase() === "bloqueado" ? "Usuário bloqueado" : "Usuário liberado",
+      String(novoStatus).toLowerCase() === "bloqueado" ? "Consultas bloqueadas para esta conta." : "A conta voltou a consultar normalmente."
+    );
+
+    await carregarUsuariosAdmin();
+    if (userId === session.user.id) await loadProfile(session.user.id);
     setLoading(false);
   }
 
@@ -1952,6 +2637,25 @@ function App() {
     }
 
     setLoading(false);
+  }
+
+
+  async function carregarResumoOcorrenciasUsuario() {
+    if (!session?.user?.id) return;
+
+    const { count, error } = await supabase
+      .from("records")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by", session.user.id)
+      .eq("status", "pendente");
+
+    if (error) {
+      console.log("Erro ao carregar resumo de ocorrências:", error);
+      setMyPendingRecordsCount(0);
+      return;
+    }
+
+    setMyPendingRecordsCount(Number(count || 0));
   }
 
   async function carregarHistoricoConsultas() {
@@ -2368,6 +3072,19 @@ function App() {
     }
   }
 
+
+  const adminExternalLogsFiltered = adminExternalLogs.filter((log) => {
+    const typeOk = adminExternalFilterType === "todos" || log.consultation_type === adminExternalFilterType;
+    const cacheOk =
+      adminExternalFilterCache === "todos" ||
+      (adminExternalFilterCache === "sim" && Boolean(log.cache_hit)) ||
+      (adminExternalFilterCache === "nao" && !Boolean(log.cache_hit));
+    const search = String(adminExternalSearch || "").trim().toLowerCase();
+    const userText = `${log.profiles?.nome || ""} ${log.profiles?.email || ""} ${log.user_id || ""}`.toLowerCase();
+    const textOk = !search || userText.includes(search) || String(log.cpf4 || "").includes(search);
+    return typeOk && cacheOk && textOk;
+  });
+
   if (session && !profile) {
     return (
       <div className="page">
@@ -2400,6 +3117,8 @@ function App() {
       comuns: adminUsers.filter((user) => String(user.role || "user").toLowerCase() !== "admin").length,
       admins: adminUsers.filter((user) => String(user.role || "").toLowerCase() === "admin").length,
       ilimitados: adminUsers.filter((user) => user.unlimited_until && new Date(user.unlimited_until) > new Date()).length,
+      bloqueados: adminUsers.filter((user) => getUserAccountStatus(user) === "bloqueado").length,
+      pendentes: adminUsers.filter((user) => getUserAccountStatus(user) === "pendente").length,
       creditos: adminUsers.reduce((total, user) => total + Number(user.credits || 0), 0),
       consultas: adminUsers.reduce((total, user) => total + Number(user.consultas || 0), 0),
     };
@@ -2438,9 +3157,16 @@ function App() {
             </div>
           </div>
 
-          <button className="btn secondary" onClick={sair}>
-            Sair
-          </button>
+          <div className="headerUserToolsV37">
+            <div className="headerCreditsV37" aria-label="Créditos disponíveis">
+              <span>Créditos</span>
+              <strong>{profile.credits}</strong>
+            </div>
+
+            <button className="btn secondary headerLogoutV36" onClick={sair} aria-label="Sair da conta">
+              Sair
+            </button>
+          </div>
         </header>
 
         <main className="dashboard">
@@ -2452,39 +3178,39 @@ function App() {
             </p>
           </section>
 
-          <section className="dashboardGrid">
-            <div className="dashboardCard">
-              <small>Créditos disponíveis</small>
-              <strong>{profile.credits}</strong>
-            </div>
+          <section className="userTopStripV33">
+            {myPendingRecordsCount > 0 && (
+              <button
+                type="button"
+                className="topOccurrenceButtonV33 hasSignal"
+                onClick={() => {
+                  setShowMyRecords(true);
+                  carregarMinhasOcorrencias();
+                }}
+              >
+                Ocorrências pendentes
+                <span className="topSignalCountV34">{myPendingRecordsCount}</span>
+              </button>
+            )}
 
-            <div className="dashboardCard">
-              <small>Consultas realizadas</small>
-              <strong>{profile.consultas}</strong>
-            </div>
-
-            <div className="dashboardCard">
-              <small>Plano ilimitado</small>
-              <strong>{unlimitedActive ? "Ativo" : "Inativo"}</strong>
-            </div>
-
-            <div className="dashboardCard referralSummaryCard">
-              <small>Bônus por indicação</small>
-              <strong>{profile.referral_bonus_credits || 0}</strong>
-            </div>
+            <button type="button" className="topProfileButtonV33 topProfileButtonV39" onClick={abrirMeusDados}>
+              Perfil
+            </button>
           </section>
 
-          <section className="dashboardActions">
+          <section className="dashboardActions dashboardActionsV33">
             <button
-              className="btn primary large actionConsult"
+              className="btn primary large actionConsult actionConsultFeaturedV33"
               onClick={() => {
                 setSearchMessage("");
                 setSearchResults([]);
                 setSearchText("");
+                setConsultationMode("internal");
                 setShowSearchForm(true);
               }}
             >
-              Consultar Locatário
+              Consultar CPF
+              <small>Consulta interna ou externa completa</small>
             </button>
 
             <button
@@ -2495,16 +3221,6 @@ function App() {
               }}
             >
               Registrar Ocorrência
-            </button>
-
-            <button
-              className="btn outline large actionRecords"
-              onClick={() => {
-                setShowMyRecords(true);
-                carregarMinhasOcorrencias();
-              }}
-            >
-              Minhas Ocorrências
             </button>
 
             <button
@@ -2523,59 +3239,18 @@ function App() {
               Comprar Créditos
             </button>
 
-            <button
-              className="btn outline large actionHistory"
-              onClick={() => {
-                setShowConsultationHistory(true);
-                carregarHistoricoConsultas();
-              }}
-            >
-              Minhas Consultas
-            </button>
-
-            <button
-              className="btn outline large actionPayments"
-              onClick={() => {
-                setShowPaymentsHistory(true);
-                carregarHistoricoPagamentos();
-              }}
-            >
-              Meus Pagamentos
-            </button>
-
-            <button
-              className="btn outline large actionProfile"
-              onClick={abrirMeusDados}
-            >
-              Meus Dados
-            </button>
-
-            <button
-              className="btn outline large notificationButton actionNotifications"
-              onClick={() => {
-                setShowNotifications(true);
-                carregarNotificacoes();
-              }}
-            >
-              Notificações
-              {notificationItems.some((item) => notificacaoNaoLida(item)) && (
+            {shouldShowTopNotifications(notificationItems, notificationReadIds) && (
+              <button
+                className="btn outline large notificationButton actionNotifications"
+                onClick={() => {
+                  setShowNotifications(true);
+                  carregarNotificacoes();
+                }}
+              >
+                Notificações
                 <span className="notificationDot" />
-              )}
-            </button>
-
-            <button
-              className="btn outline large actionTerms"
-              onClick={() => setShowTermsPrivacy(true)}
-            >
-              Termos e Privacidade
-            </button>
-
-            <button
-              className="btn outline large actionSupport"
-              onClick={() => setShowSupport(true)}
-            >
-              Suporte
-            </button>
+              </button>
+            )}
           </section>
 
           {profile.role === "admin" && (
@@ -2614,6 +3289,18 @@ function App() {
               >
                 <span>Ocorrências</span>
                 <strong>Aprovação, análise e registros</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "consulta_externa" ? "active externalShortcut" : "externalShortcut"}
+                onClick={() => {
+                  setAdminActiveSection("consulta_externa");
+                  carregarConsultasExternasAdmin();
+                }}
+              >
+                <span>Consulta Externa</span>
+                <strong>BigDataCorp, cache e créditos</strong>
               </button>
 
               <button
@@ -3082,6 +3769,12 @@ function App() {
                   <span>Planos em vigor</span>
                 </div>
 
+                <div className="adminStatCard dangerSoft">
+                  <small>Contas bloqueadas</small>
+                  <strong>{adminUserStats.bloqueados}</strong>
+                  <span>Usuários sem acesso a consultas</span>
+                </div>
+
                 <div className="adminStatCard">
                   <small>Créditos em contas</small>
                   <strong>{adminUserStats.creditos}</strong>
@@ -3120,19 +3813,30 @@ function App() {
                     <div className="adminRecord" key={user.id}>
                       <div className="adminRecordTop">
                         <h3>{user.nome || "Usuário"}</h3>
-                        <span
-                          className={`statusBadge ${
-                            user.role === "admin" ? "aprovado" : "pendente"
-                          }`}
-                        >
-                          {user.role}
-                        </span>
+                        <div className="adminUserBadges">
+                          <span
+                            className={`statusBadge ${
+                              user.role === "admin" ? "aprovado" : "pendente"
+                            }`}
+                          >
+                            {user.role}
+                          </span>
+                          <span className={`statusBadge ${getUserAccountStatus(user) === "bloqueado" ? "reprovado" : "aprovado"}`}>
+                            {getUserAccountStatus(user) === "bloqueado" ? "Bloqueado" : "Ativo"}
+                          </span>
+                        </div>
                       </div>
 
                       <p>
                         <strong>E-mail:</strong>{" "}
                         {user.email || "Não informado"}
                       </p>
+
+                      {getUserAccountStatus(user) === "bloqueado" && (
+                        <p className="securityWarningInline">
+                          <strong>Motivo do bloqueio:</strong> {user.blocked_reason || "Não informado"}
+                        </p>
+                      )}
 
                       <p>
                         <strong>WhatsApp:</strong>{" "}
@@ -3201,6 +3905,24 @@ function App() {
                             disabled={loading}
                           >
                             Tornar admin
+                          </button>
+                        )}
+
+                        {getUserAccountStatus(user) === "bloqueado" ? (
+                          <button
+                            className="btn primary"
+                            onClick={() => alterarStatusContaUsuario(user.id, "ativo")}
+                            disabled={loading}
+                          >
+                            Liberar usuário
+                          </button>
+                        ) : (
+                          <button
+                            className="btn danger"
+                            onClick={() => alterarStatusContaUsuario(user.id, "bloqueado")}
+                            disabled={user.id === session.user.id || loading}
+                          >
+                            Bloquear usuário
                           </button>
                         )}
                       </div>
@@ -3388,6 +4110,91 @@ function App() {
                       <strong>Detalhes:</strong>{" "}
                       {log.details ? JSON.stringify(log.details) : "Sem detalhes"}
                     </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {profile.role === "admin" && adminActiveSection === "consulta_externa" && (
+            <section className="adminPanel adminArea externalArea" id="admin-consulta-externa">
+              <div className="adminHeader">
+                <div>
+                  <span>Consulta Externa</span>
+                  <h2>Histórico BigDataCorp</h2>
+                  <p>Acompanhe consultas externas, créditos descontados, uso de cache e status da integração.</p>
+                </div>
+
+                <button className="btn secondary" onClick={carregarConsultasExternasAdmin}>
+                  Atualizar externas
+                </button>
+              </div>
+
+              {adminExternalLogsMessage && <div className="authMessage">{adminExternalLogsMessage}</div>}
+
+              <section className="adminMiniDashboard">
+                <div className="adminStatCard featured">
+                  <small>Total externo listado</small>
+                  <strong>{adminExternalLogsFiltered.length}</strong>
+                  <span>Registros filtrados</span>
+                </div>
+                <div className="adminStatCard success">
+                  <small>Com cache</small>
+                  <strong>{adminExternalLogsFiltered.filter((log) => log.cache_hit).length}</strong>
+                  <span>Economia de chamadas externas</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Créditos consumidos</small>
+                  <strong>{adminExternalLogsFiltered.reduce((total, log) => total + Number(log.credits_charged || 0), 0)}</strong>
+                  <span>No período listado</span>
+                </div>
+                <div className="adminStatCard danger">
+                  <small>Erros</small>
+                  <strong>{adminExternalLogsFiltered.filter((log) => log.status === "error").length}</strong>
+                  <span>Falhas de consulta externa</span>
+                </div>
+              </section>
+
+              <div className="adminFilters externalFilters">
+                <input
+                  type="text"
+                  placeholder="Buscar por usuário, e-mail ou CPF final"
+                  value={adminExternalSearch}
+                  onChange={(e) => setAdminExternalSearch(e.target.value)}
+                />
+                <select value={adminExternalFilterType} onChange={(e) => setAdminExternalFilterType(e.target.value)}>
+                  <option value="todos">Todos os tipos</option>
+                  <option value="external_complete">Externa completa</option>
+                  <option value="external_advanced">Externa avançada</option>
+                </select>
+                <select value={adminExternalFilterCache} onChange={(e) => setAdminExternalFilterCache(e.target.value)}>
+                  <option value="todos">Cache: todos</option>
+                  <option value="sim">Com cache</option>
+                  <option value="nao">Sem cache</option>
+                </select>
+              </div>
+
+              <div className="adminList">
+                {adminExternalLogsFiltered.length === 0 && (
+                  <div className="adminEmpty">Nenhuma consulta externa encontrada para os filtros selecionados.</div>
+                )}
+
+                {adminExternalLogsFiltered.map((log) => (
+                  <div className="adminRecord" key={log.id}>
+                    <div className="adminRecordTop">
+                      <h3>{externalConsultationLabel(log.consultation_type)}</h3>
+                      <span className={`statusBadge ${log.status === "success" ? "aprovado" : "reprovado"}`}>
+                        {log.status}
+                      </span>
+                    </div>
+
+                    <p><strong>Usuário:</strong> {log.profiles?.nome || log.profiles?.email || log.user_id}</p>
+                    <p><strong>CPF final:</strong> {log.cpf4 || "----"}</p>
+                    <p><strong>Créditos:</strong> {log.credits_charged || 0}</p>
+                    <p><strong>Cache:</strong> {log.cache_hit ? "Sim" : "Não"}</p>
+                    <p><strong>Dados consultados:</strong> {externalDatasetsText(log.datasets)}</p>
+                    <p><strong>Data:</strong> {formatDate(log.created_at)}</p>
+                    {log.error_message && <p><strong>Erro:</strong> {log.error_message}</p>}
                   </div>
                 ))}
               </div>
@@ -3621,8 +4428,8 @@ function App() {
 
               <button
                 type="button"
-                className={adminActiveSection === "relatorios" || adminActiveSection === "suporte" || adminActiveSection === "auditoria" ? "active" : ""}
-                onClick={() => setAdminActiveSection(adminActiveSection === "relatorios" ? "suporte" : adminActiveSection === "suporte" ? "auditoria" : "relatorios")}
+                className={adminActiveSection === "consulta_externa" || adminActiveSection === "relatorios" || adminActiveSection === "suporte" || adminActiveSection === "auditoria" ? "active" : ""}
+                onClick={() => setAdminActiveSection(adminActiveSection === "consulta_externa" ? "relatorios" : adminActiveSection === "relatorios" ? "suporte" : adminActiveSection === "suporte" ? "auditoria" : "consulta_externa")}
               >
                 <span>☰</span>
                 Mais
@@ -3639,6 +4446,7 @@ function App() {
                 setSearchMessage("");
                 setSearchResults([]);
                 setSearchText("");
+                setConsultationMode("internal");
                 setShowSearchForm(true);
               }}>
                 <span>⌕</span>
@@ -3738,6 +4546,51 @@ function App() {
   </div>
 )}
 
+{showExternalConsultationHistory && (
+  <div className="modalOverlay">
+    <div className="recordModal externalHistoryModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowExternalConsultationHistory(false)}
+      >
+        ×
+      </button>
+
+      <h2>Consultas Externas</h2>
+      <p>Acompanhe suas consultas realizadas em fonte externa e os créditos descontados.</p>
+
+      <div className="modalActionsRow">
+        <button className="btn secondary" type="button" onClick={carregarMinhasConsultasExternas}>
+          Atualizar
+        </button>
+      </div>
+
+      {externalConsultationHistoryMessage && (
+        <div className="authMessage">{externalConsultationHistoryMessage}</div>
+      )}
+
+      {externalConsultationHistory.length > 0 && (
+        <div className="resultsBox">
+          {externalConsultationHistory.map((item) => (
+            <div className="resultCard externalHistoryCard" key={item.id}>
+              <div className="adminRecordTop">
+                <h3>{externalConsultationLabel(item.consultation_type)}</h3>
+                <span className="statusBadge aprovado">
+                  Concluída
+                </span>
+              </div>
+              <p><strong>CPF final:</strong> {item.cpf4 || "----"}</p>
+              <p><strong>Créditos descontados:</strong> {item.credits_charged || 0}</p>
+              <p><strong>Dados consultados:</strong> {externalDatasetsText(item.datasets)}</p>
+              <p><strong>Data:</strong> {formatDate(item.created_at)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
 {showBuyCredits && (
   <BuyCreditsModal onClose={() => setShowBuyCredits(false)} />
 )}
@@ -3818,8 +4671,21 @@ function App() {
         ×
       </button>
 
-      <h2>Meus Dados</h2>
+      <h2>Perfil</h2>
 
+      <p>Gerencie seus dados, ocorrências, pagamentos, consultas, suporte e termos em um só lugar.</p>
+
+      <div className="profileMenuGridV33">
+        <button className="btn outline" type="button" onClick={() => { setShowMyRecords(true); carregarMinhasOcorrencias(); }}>Minhas Ocorrências</button>
+        <button className="btn outline" type="button" onClick={() => { setShowConsultationHistory(true); carregarHistoricoConsultas(); }}>Minhas Consultas</button>
+        <button className="btn outline" type="button" onClick={() => { setShowExternalConsultationHistory(true); carregarMinhasConsultasExternas(); }}>Consultas Externas</button>
+        <button className="btn outline" type="button" onClick={() => { setShowPaymentsHistory(true); carregarHistoricoPagamentos(); }}>Meus Pagamentos</button>
+        <button className="btn outline" type="button" onClick={() => { setShowNotifications(true); carregarNotificacoes(); }}>Notificações</button>
+        <button className="btn outline" type="button" onClick={() => setShowSupport(true)}>Suporte</button>
+        <button className="btn outline" type="button" onClick={() => setShowTermsPrivacy(true)}>Termos e Privacidade</button>
+      </div>
+
+      <h3>Meus Dados</h3>
       <p>Atualize seus dados de contato da conta LocaCheck.</p>
 
       <form onSubmit={salvarMeusDados} className="recordForm">
@@ -4326,21 +5192,51 @@ function App() {
                 ×
               </button>
 
-              <h2>Consultar Locatário</h2>
+              <h2>Consultar CPF</h2>
 
               <p>
-                Digite nome ou CPF completo. A consulta desconta 1
-                crédito ao buscar, exceto usuários com plano ilimitado ativo.
+                Escolha entre buscar registros em outras locadoras ou realizar uma consulta externa completa.
               </p>
+
+              <div className="consultTypeGrid">
+                <button
+                  type="button"
+                  className={consultationMode === "internal" ? "consultTypeCard active" : "consultTypeCard"}
+                  onClick={() => setConsultationMode("internal")}
+                >
+                  <strong>Consulta Interna</strong>
+                  <span>1 crédito</span>
+                  <small>Busca registro do locador em outras locadoras.</small>
+                </button>
+
+                <button
+                  type="button"
+                  className={consultationMode === "external_advanced" ? "consultTypeCard active featuredExternalCompleteV36" : "consultTypeCard featuredExternalCompleteV36"}
+                  onClick={() => setConsultationMode("external_advanced")}
+                >
+                  <strong>Consulta Externa Completa</strong>
+                  <span>3 créditos</span>
+                  <small>Dados pessoais, contatos, vínculos e processos judiciais nacionais.</small>
+                </button>
+              </div>
 
               <form onSubmit={consultarLocatario} className="recordForm">
                 <input
                   type="text"
-                  placeholder="Nome ou CPF"
+                  placeholder={consultationMode === "internal" ? "Nome ou CPF" : "CPF completo"}
                   value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
+                  onChange={(e) => {
+                    const value = consultationMode === "internal" ? e.target.value : formatCpfInput(e.target.value);
+                    setSearchText(value);
+                  }}
                   required
                 />
+
+                <p className="documentPublicNotice">
+                  {consultationMode === "internal"
+                    ? "Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras."
+                    : "Consulta externa completa: dados pessoais, contatos, vínculos e processos judiciais nacionais."}
+                </p>
 
                 <button className="btn primary full" disabled={loading}>
                   {loading ? "Consultando..." : "Buscar"}
@@ -4355,42 +5251,162 @@ function App() {
                 <div className="resultsBox">
                   {searchResults.map((item) => (
                     <div className="resultCard" key={item.id}>
-                      <h3>{item.nome}</h3>
+                      {item.result_origin === "external" ? (
+                        <>
+                          <div className="externalResultV31" data-version="external-advanced-v35">
+                            <div className="externalResultTopV31">
+                              <div>
+                                <span className="externalResultEyebrowV31">Consulta externa</span>
+                                <h3>{item.consultation_label || "Consulta Externa"}</h3>
+                                <p>Resultado tratado para apoio à análise do locador.</p>
+                              </div>
+                              <span className="externalSourcePillV31 new">
+                                Fonte externa integrada
+                              </span>
+                            </div>
 
-                      <p>
-                        <strong>CPF:</strong>{" "}
-                        {item.cpf_masked || item.cpf4 || "Não informado"}
-                      </p>
+                            <div className="externalResultCardsV31">
+                              <section className="externalInfoCardV31 main">
+                                <span>Dados cadastrais</span>
+                                <h4>{item.name || "Nome não informado"}</h4>
+                                <p><strong>CPF consultado:</strong> {item.cpf || item.cpf_masked || "Não informado"}</p>
+                                <p><strong>Situação cadastral:</strong> {item.document_status || "Não informado"}</p>
+                                {item.birth_date && <p><strong>Nascimento:</strong> {formatSimpleDate(item.birth_date)}</p>}
+                                {item.mother_name && <p><strong>Nome da mãe:</strong> {item.mother_name}</p>}
+                                {item.father_name && <p><strong>Nome do pai:</strong> {item.father_name}</p>}
+                                {item.social_number && <p><strong>Número social:</strong> {item.social_number}</p>}
+                                {item.zodiac_sign && <p><strong>Signo:</strong> {displayExternalValue(item.zodiac_sign)}</p>}
+                              </section>
 
-                      <p>
-                        <strong>Cidade/UF:</strong>{" "}
-                        {item.cidade || "Não informado"}
-                      </p>
+                              {(Array.isArray(item.phones) && item.phones.length > 0) || (Array.isArray(item.emails) && item.emails.length > 0) ? (
+                                <section className="externalInfoCardV31">
+                                  <span>Contatos encontrados</span>
+                                  <h4>{(item.phones?.length || 0) + (item.emails?.length || 0)} contato(s)</h4>
+                                  {item.phones?.map((phone, index) => (
+                                    <p key={`phone-${index}`}><strong>Telefone {index + 1}:</strong> {[phone.number, phone.type, phone.status ? `status ${phone.status}` : null, phone.is_main === true ? 'principal' : null, phone.is_recent === true ? 'recente' : null, phone.relationship ? `relação ${phone.relationship}` : null, phone.ranking ? `prioridade ${phone.ranking}` : null].filter(Boolean).join(" • ")}</p>
+                                  ))}
+                                  {item.emails?.map((email, index) => (
+                                    <p key={`email-${index}`}><strong>E-mail {index + 1}:</strong> {[email.email, email.type, email.status ? `status ${email.status}` : null, email.is_main === true ? 'principal' : null, email.is_recent === true ? 'recente' : null, email.relationship ? `relação ${email.relationship}` : null, email.ranking ? `prioridade ${email.ranking}` : null].filter(Boolean).join(" • ")}</p>
+                                  ))}
+                                </section>
+                              ) : null}
 
-                      <p>
-                        <strong>Ocorrências:</strong>{" "}
-                        {item.tipos?.join(", ")}
-                      </p>
+                              {Array.isArray(item.addresses) && item.addresses.length > 0 ? (
+                                <section className="externalInfoCardV31">
+                                  <span>Endereços encontrados</span>
+                                  <h4>{item.addresses.length} endereço(s)</h4>
+                                  {item.addresses.map((address, index) => (
+                                    <p key={`address-${index}`}><strong>Endereço {index + 1}:</strong> {[address.full, address.type, address.is_main === true ? 'principal' : null, address.is_recent === true ? 'recente' : null, address.relationship ? `relação ${address.relationship}` : null].filter(Boolean).join(" • ")}</p>
+                                  ))}
+                                </section>
+                              ) : null}
 
-                      <p>
-                        <strong>Descrição:</strong> {item.descricao}
-                      </p>
+                              {Array.isArray(item.related_people) && item.related_people.length > 0 ? (
+                                <section className="externalInfoCardV31 wide relatedPeopleV34">
+                                  <span>Pessoas relacionadas</span>
+                                  <h4>{item.related_people.length} pessoa(s) ou relacionamento(s)</h4>
+                                  {item.related_people.map((person, index) => (
+                                    <div className="externalMiniBlockV32" key={`related-${index}`}>
+                                      <strong>{person.name || relatedPersonLabel(person, index)}</strong>
+                                      {person.full_name && person.full_name !== person.name && <p><strong>Nome completo:</strong> {person.full_name}</p>}
+                                      {person.tax_id && <p><strong>CPF/CNPJ:</strong> {person.tax_id}</p>}
+                                      {person.relationship && <p><strong>Grau de parentesco/relacionamento:</strong> {person.relationship}</p>}
+                                      {person.email && <p><strong>E-mail:</strong> {person.email}</p>}
+                                      {Array.isArray(person.phones) && person.phones.length > 0 && (
+                                        <p><strong>Telefones:</strong> {person.phones.map((phone) => [phone.number, phone.type, phone.status].filter(Boolean).join(' • ')).filter(Boolean).join(" | ")}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </section>
+                              ) : null}
 
-                      {item.imagem_url && (
-                        <div className="imagePreviewBox">
-                          <strong>Documento/comprovante:</strong>
-                          <a
-                            href={item.imagem_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {getDocumentoLabel(item.imagem_url)}
-                          </a>
-                          <p className="documentPublicNotice">Documento disponível para usuários que realizarem uma consulta com resultado aprovado.</p>
-                          {isImageUrl(item.imagem_url) && (
-                            <img src={item.imagem_url} alt="Documento/comprovante" />
+                              <section className="externalInfoCardV31">
+                                <span>Processos</span>
+                                <h4>{item.has_lawsuit_indicators ? "Há informações encontradas" : "Sem informações relevantes"}</h4>
+                                <p><strong>Quantidade informada:</strong> {item.lawsuits_total || item.processes?.length || 0}</p>
+                                {!item.processes?.length && <p>Não foram retornados detalhes de processos nesta consulta.</p>}
+                              </section>
+
+                              {Array.isArray(item.processes) && item.processes.length > 0 ? (
+                                <section className="externalInfoCardV31 wide">
+                                  <span>Resumo dos principais processos</span>
+                                  <h4>{item.processes.length} processo(s) listado(s)</h4>
+                                  {item.processes.slice(0, 20).map((process, index) => (
+                                    <div className="externalMiniBlockV32" key={`process-${index}`}>
+                                      <strong>{process.number || `Processo ${index + 1}`}</strong>
+                                      <p>{[process.court, process.state, process.type, process.status].filter(Boolean).join(" • ") || "Informações principais disponíveis."}</p>
+                                      {(process.specific_type || process.person_role) && <p><strong>Envolvimento da pessoa:</strong> {process.specific_type || process.person_role}</p>}
+                                      {process.distribution_date && <p><strong>Data:</strong> {formatSimpleDate(process.distribution_date)}</p>}
+                                      {process.subject && <p><strong>Assunto:</strong> {process.subject}</p>}
+                                      {process.value && <p><strong>Valor informado:</strong> {process.value}</p>}
+                                    </div>
+                                  ))}
+                                </section>
+                              ) : null}
+
+                              {/* Consumo e origem removidos da visualização do usuário na V36 */}
+                            </div>
+
+                            <div className="externalResultNoticeV31">
+                              <strong>Uso responsável:</strong> As informações são fornecidas por fonte externa integrada e devem ser usadas apenas como apoio à decisão, respeitando finalidade legítima e análise própria do locador.
+                            </div>
+
+                            <div className="modalActionsRow externalResultActions">
+                              <button type="button" className="btn secondary" onClick={() => copiarResumoConsultaExterna(item)}>
+                                Copiar resumo
+                              </button>
+                              <button type="button" className="btn primary" onClick={() => exportarConsultaExterna(item)}>
+                                Exportar consulta
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <h3>{item.nome}</h3>
+
+                          <p>
+                            <strong>CPF:</strong>{" "}
+                            {item.cpf_masked || item.cpf4 || "Não informado"}
+                          </p>
+
+                          <p>
+                            <strong>Cidade/UF:</strong>{" "}
+                            {item.cidade || "Não informado"}
+                          </p>
+
+                          <p>
+                            <strong>Ocorrências:</strong>{" "}
+                            {item.tipos?.join(", ")}
+                          </p>
+
+                          <p>
+                            <strong>Descrição:</strong> {item.descricao}
+                          </p>
+
+                          {item.imagem_url && (
+                            <div className="imagePreviewBox">
+                              <strong>Documento/comprovante:</strong>
+                              <a
+                                href={item.imagem_url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {getDocumentoLabel(item.imagem_url)}
+                              </a>
+                              <p className="documentPublicNotice">Documento disponível para usuários que realizarem uma consulta com resultado aprovado.</p>
+                              {isImageUrl(item.imagem_url) && (
+                                <img src={item.imagem_url} alt="Documento/comprovante" />
+                              )}
+                            </div>
                           )}
-                        </div>
+
+                          <div className="modalActionsRow externalResultActions">
+                            <button type="button" className="btn primary" onClick={() => exportarConsultaInterna(item)}>
+                              Exportar relatório
+                            </button>
+                          </div>
+                        </>
                       )}
                     </div>
                   ))}
@@ -4556,7 +5572,7 @@ function App() {
               className="btn primary large"
               onClick={() => setAuthMode("login")}
             >
-              Consultar Locatário
+              Consultar CPF
             </button>
 
             <button
@@ -4565,45 +5581,6 @@ function App() {
             >
               Registrar Ocorrência
             </button>
-          </div>
-        </section>
-
-        <section className="landingTrustStats" aria-label="Credibilidade da plataforma LocaCheck">
-          <div className="sectionTitle compactSectionTitle">
-            <span>Credibilidade</span>
-            <h2>Consulta com mais critério antes de liberar o veículo</h2>
-            <p>
-              Indicadores de confiança pensados para transmitir segurança sem expor dados pessoais
-              ou prometer números que não estejam comprovados na operação.
-            </p>
-          </div>
-
-          <div className="landingStatsGrid">
-            <div className="landingStatCard highlightStat">
-              <strong>Consulta preventiva</strong>
-              <span>apoio à decisão antes da entrega do veículo</span>
-            </div>
-
-            <div className="landingStatCard">
-              <strong>Histórico registrado</strong>
-              <span>consultas e ações ficam organizadas para auditoria</span>
-            </div>
-
-            <div className="landingStatCard">
-              <strong>Ocorrência analisada</strong>
-              <span>registros passam por aprovação antes de aparecerem nas buscas</span>
-            </div>
-
-            <div className="landingStatCard">
-              <strong>CPF protegido</strong>
-              <span>exibição controlada e consulta com responsabilidade</span>
-            </div>
-          </div>
-
-          <div className="trustSealGrid">
-            <div>✓ Comprovantes vinculados à ocorrência</div>
-            <div>✓ Pagamento PIX com liberação automática</div>
-            <div>✓ Planos ativos exibidos automaticamente</div>
           </div>
         </section>
 
@@ -4682,23 +5659,23 @@ function App() {
                   normalizePlanRow({ id: "fallback-20", name: "20 Créditos", credits: 20, price_cents: 1990, active: true, plan_type: "credits" }),
                   normalizePlanRow({ id: "fallback-50", name: "50 Créditos", credits: 50, price_cents: 3990, active: true, plan_type: "credits" }),
                   normalizePlanRow({ id: "fallback-100", name: "100 Créditos", credits: 100, price_cents: 6990, active: true, plan_type: "credits" }),
-                  normalizePlanRow({ id: "fallback-ilimitado", name: "Ilimitado Mensal", credits: 0, price_cents: 9700, active: true, plan_type: "unlimited", is_unlimited: true, duration_days: 30 }),
+                  normalizePlanRow({ id: "fallback-150", name: "150 Créditos", credits: 150, price_cents: 9750, active: true, plan_type: "credits" }),
                 ]
             ).map((plano, index, list) => {
               const isUnlimited = plano.is_unlimited === true;
-              const isBestValue = !isUnlimited && index === list.findIndex((item) => !item.is_unlimited && Number(item.credits || 0) === Math.max(...list.filter((p) => !p.is_unlimited).map((p) => Number(p.credits || 0))));
+              const isBestValue = false;
+              const isLargePack = !isUnlimited && Number(plano.credits || 0) === 150;
 
               return (
-                <div className={`planCard ${isUnlimited ? "unlimited" : ""}`} key={plano.id || plano.name}>
-                  {isUnlimited && <div className="recommended">Mais indicado para locadoras</div>}
-                  {isBestValue && !isUnlimited && <div className="recommended secondaryRecommended">Melhor custo por consulta</div>}
+                <div className={`planCard ${isUnlimited ? "unlimited" : ""} ${isLargePack ? "largePack" : ""}`} key={plano.id || plano.name}>
+                  {isLargePack && <div className="recommended recommendedGreen">Mais econômico</div>}
 
                   <h3>{plano.name}</h3>
                   <strong>{formatMoneyCents(plano.price_cents)}</strong>
                   <p>{getPlanDescription(plano)}</p>
 
-                  <button className={isUnlimited ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
-                    {isUnlimited ? "Assinar plano" : "Comprar créditos"}
+                  <button className={isLargePack ? "btn primary full" : "btn outline full"} onClick={abrirCompraPublica}>
+                    Comprar créditos
                   </button>
                 </div>
               );
@@ -4713,7 +5690,7 @@ function App() {
             <div>
               <span>01</span>
               <h4>Cadastre-se</h4>
-              <p>Crie sua conta e receba 10 créditos grátis.</p>
+              <p>Crie sua conta com segurança e adicione créditos para consultar.</p>
             </div>
 
             <div>
@@ -4736,7 +5713,14 @@ function App() {
         </section>
       </main>
 
-      <div className="heroActions" style={{ justifyContent: "center", marginBottom: "24px" }}>
+      <div className="heroActions landingSupportActionsV39" style={{ justifyContent: "center", marginBottom: "24px" }}>
+        <button
+          className="btn primary"
+          onClick={() => setShowPublicSupport(true)}
+        >
+          Falar com suporte
+        </button>
+
         <button
           className="btn outline"
           onClick={() => setShowTermsPrivacy(true)}
@@ -4753,15 +5737,19 @@ function App() {
             </button>
 
             <h2>
-              {authMode === "login"
+              {authMode === "reset"
+                ? "Recuperar senha"
+                : authMode === "login"
                 ? "Entrar na LocaCheck"
                 : "Criar conta grátis"}
             </h2>
 
             <p>
-              {authMode === "login"
-                ? "Acesse seu painel para consultar locatários."
-                : "Cadastre-se e receba 10 créditos grátis."}
+              {authMode === "reset"
+                ? "Informe seu e-mail para receber o link de recuperação de senha."
+                : authMode === "login"
+                ? "Para realizar consultas, confirme seu e-mail após criar a conta."
+                : "Cadastre-se com seus dados reais. O e-mail precisa ser confirmado para realizar consultas."}
             </p>
 
             <button
@@ -4772,22 +5760,26 @@ function App() {
               Ver Termos de Uso e Política de Privacidade
             </button>
 
-            <button
-              type="button"
-              className="btn googleAuthButton full"
-              onClick={entrarComGoogle}
-              disabled={loading}
-            >
-              <span className="googleAuthIcon">G</span>
-              {loading ? "Aguarde..." : "Entrar com Google"}
-            </button>
+            {authMode !== "reset" && (
+              <>
+                <button
+                  type="button"
+                  className="btn googleAuthButton full"
+                  onClick={entrarComGoogle}
+                  disabled={loading}
+                >
+                  <span className="googleAuthIcon">G</span>
+                  {loading ? "Aguarde..." : "Entrar com Google"}
+                </button>
 
-            <div className="authDivider">
-              <span>ou continue com e-mail</span>
-            </div>
+                <div className="authDivider">
+                  <span>ou continue com e-mail</span>
+                </div>
+              </>
+            )}
 
             <form
-              onSubmit={authMode === "login" ? entrarUsuario : cadastrarUsuario}
+              onSubmit={authMode === "reset" ? recuperarSenha : authMode === "login" ? entrarUsuario : cadastrarUsuario}
             >
               {authMode === "cadastro" && (
                 <>
@@ -4822,13 +5814,15 @@ function App() {
                 required
               />
 
-              <input
-                type="password"
-                placeholder="Senha"
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                required
-              />
+              {authMode !== "reset" && (
+                <input
+                  type="password"
+                  placeholder="Senha"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  required
+                />
+              )}
 
               {authMode === "cadastro" && (
                 <label className="termsAcceptBox">
@@ -4847,10 +5841,23 @@ function App() {
               <button className="btn primary full" disabled={loading}>
                 {loading
                   ? "Aguarde..."
+                  : authMode === "reset"
+                  ? "Enviar link de recuperação"
                   : authMode === "login"
                   ? "Entrar"
-                  : "Cadastrar grátis"}
+                  : "Criar conta"}
               </button>
+
+              {authMode === "login" && (
+                <button
+                  type="button"
+                  className="switchAuth forgotPasswordLinkV39"
+                  onClick={() => { setMessage(""); setAuthMode("reset"); }}
+                  disabled={loading}
+                >
+                  Esqueci minha senha
+                </button>
+              )}
             </form>
 
             {message && <div className="authMessage">{message}</div>}
@@ -4862,12 +5869,66 @@ function App() {
                 setAuthMode(authMode === "login" ? "cadastro" : "login");
               }}
             >
-              {authMode === "login" ? "Ainda não tenho conta" : "Já tenho conta"}
+              {authMode === "reset" ? "Voltar para entrar" : authMode === "login" ? "Ainda não tenho conta" : "Já tenho conta"}
             </button>
           </div>
         </div>
       )}
 
+
+      {showPublicSupport && (
+        <div className="modalOverlay">
+          <div className="recordModal publicSupportModalV39">
+            <button className="closeModal" onClick={() => setShowPublicSupport(false)}>
+              ×
+            </button>
+
+            <h2>Suporte LocaCheck</h2>
+            <p>Envie sua dúvida ou solicitação. A mensagem chegará no painel de suporte do administrador.</p>
+
+            <form className="recordForm" onSubmit={enviarSuportePublico}>
+              <input
+                type="text"
+                placeholder="Nome ou empresa"
+                value={publicSupportName}
+                onChange={(e) => setPublicSupportName(e.target.value)}
+                required
+              />
+
+              <input
+                type="email"
+                placeholder="E-mail para retorno"
+                value={publicSupportEmail}
+                onChange={(e) => setPublicSupportEmail(e.target.value)}
+                onBlur={() => setPublicSupportEmail(normalizeEmail(publicSupportEmail))}
+              />
+
+              <input
+                type="tel"
+                inputMode="numeric"
+                placeholder="WhatsApp com DDD"
+                value={publicSupportWhatsapp}
+                onChange={(e) => setPublicSupportWhatsapp(formatWhatsappInput(e.target.value))}
+                maxLength={15}
+              />
+
+              <textarea
+                placeholder="Digite sua mensagem"
+                value={publicSupportMessage}
+                onChange={(e) => setPublicSupportMessage(e.target.value)}
+                rows="5"
+                required
+              />
+
+              <button className="btn primary full" disabled={loading}>
+                {loading ? "Enviando..." : "Enviar mensagem"}
+              </button>
+            </form>
+
+            {publicSupportFeedback && <div className="authMessage">{publicSupportFeedback}</div>}
+          </div>
+        </div>
+      )}
 
       {showTermsPrivacy && (
         <div className="modalOverlay">
