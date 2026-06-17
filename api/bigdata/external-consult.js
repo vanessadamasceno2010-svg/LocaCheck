@@ -8,8 +8,15 @@ const CACHE_DAYS = Number(process.env.BIGDATA_CACHE_DAYS || 7);
 const BASIC_CREDITS = Number(process.env.EXTERNAL_BASIC_CREDITS || 2);
 const COMPLETE_CREDITS = Number(process.env.EXTERNAL_COMPLETE_CREDITS || 2);
 const ADVANCED_CREDITS = Number(process.env.EXTERNAL_ADVANCED_CREDITS || 3);
+const COMPLETE_DATASETS = String(
+  process.env.BIGDATA_COMPLETE_DATASETS || 'basic_data,registration_data,addresses_extended.limit(20),phones_extended.limit(20),emails_extended.limit(20)'
+)
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean);
+
 const ADVANCED_DATASETS = String(
-  process.env.BIGDATA_ADVANCED_DATASETS || 'basic_data,registration_data,processes.limit(10)'
+  process.env.BIGDATA_ADVANCED_DATASETS || 'basic_data,registration_data,addresses_extended.limit(20),phones_extended.limit(20),emails_extended.limit(20),related_people_phones.limit(20),related_people_emails.limit(20),processes.limit(20)'
 )
   .split(',')
   .map((item) => item.trim())
@@ -52,7 +59,7 @@ function getConsultConfig(type) {
       type: 'external_complete',
       label: 'Consulta Externa Completa',
       credits: COMPLETE_CREDITS,
-      datasets: ['basic_data', 'registration_data', 'lawsuits_distribution_data'],
+      datasets: COMPLETE_DATASETS.length ? COMPLETE_DATASETS : ['basic_data', 'registration_data', 'addresses_extended.limit(20)', 'phones_extended.limit(20)', 'emails_extended.limit(20)'],
     };
   }
 
@@ -61,7 +68,7 @@ function getConsultConfig(type) {
       type,
       label: 'Consulta Externa Avançada',
       credits: ADVANCED_CREDITS,
-      datasets: ADVANCED_DATASETS.length ? ADVANCED_DATASETS : ['basic_data', 'registration_data', 'processes.limit(10)'],
+      datasets: ADVANCED_DATASETS.length ? ADVANCED_DATASETS : ['basic_data', 'registration_data', 'addresses_extended.limit(20)', 'phones_extended.limit(20)', 'emails_extended.limit(20)', 'related_people_phones.limit(20)', 'related_people_emails.limit(20)', 'processes.limit(20)'],
     };
   }
 
@@ -69,7 +76,7 @@ function getConsultConfig(type) {
     type: 'external_complete',
     label: 'Consulta Externa Completa',
     credits: COMPLETE_CREDITS,
-    datasets: ['basic_data', 'registration_data', 'lawsuits_distribution_data'],
+    datasets: COMPLETE_DATASETS.length ? COMPLETE_DATASETS : ['basic_data', 'registration_data', 'addresses_extended.limit(20)', 'phones_extended.limit(20)', 'emails_extended.limit(20)'],
   };
 }
 
@@ -172,8 +179,8 @@ function translateExtraLabel(key) {
   const map = {
     'zodiac sign': 'Signo',
     'zodiacsign': 'Signo',
-    'specific type': 'Tipo específico',
-    'specifictype': 'Tipo específico',
+    'specific type': 'Envolvimento da pessoa',
+    'specifictype': 'Envolvimento da pessoa',
     'tax id number': 'CPF/CNPJ',
     'taxidnumber': 'CPF/CNPJ',
     'tax id': 'CPF/CNPJ',
@@ -221,6 +228,10 @@ function normalizePhone(item) {
     number: String(number),
     type: findDeep(item, ['Type', 'Tipo']) || null,
     ranking: findDeep(item, ['Ranking', 'Priority', 'Score']) || null,
+    status: findDeep(item, ['ValidationStatus', 'Status', 'IsActive', 'Active', 'Ativo']) || null,
+    is_main: findDeep(item, ['IsMain', 'Main', 'Principal']) || null,
+    is_recent: findDeep(item, ['IsRecent', 'Recent', 'Recente']) || null,
+    relationship: findDeep(item, ['Relationship', 'RelationshipType', 'TipoRelacionamento']) || null,
   };
 }
 
@@ -232,6 +243,11 @@ function normalizeEmail(item) {
   return {
     email: String(email),
     ranking: findDeep(item, ['Ranking', 'Priority', 'Score']) || null,
+    type: findDeep(item, ['Type', 'Tipo']) || null,
+    status: findDeep(item, ['ValidationStatus', 'Status', 'IsActive', 'Active', 'Ativo']) || null,
+    is_main: findDeep(item, ['IsMain', 'Main', 'Principal']) || null,
+    is_recent: findDeep(item, ['IsRecent', 'Recent', 'Recente']) || null,
+    relationship: findDeep(item, ['Relationship', 'RelationshipType', 'TipoRelacionamento']) || null,
   };
 }
 
@@ -249,7 +265,20 @@ function normalizeAddress(item) {
   const full = [street, number, complement, neighborhood, city, state, zip].filter(Boolean).join(', ');
   if (!full) return null;
 
-  return { full, street: street || null, number: number || null, complement: complement || null, neighborhood: neighborhood || null, city: city || null, state: state || null, zip: zip || null };
+  return {
+    full,
+    street: street || null,
+    number: number || null,
+    complement: complement || null,
+    neighborhood: neighborhood || null,
+    city: city || null,
+    state: state || null,
+    zip: zip || null,
+    type: findDeep(item, ['Type', 'Tipo']) || null,
+    is_main: findDeep(item, ['IsMain', 'Main', 'Principal']) || null,
+    is_recent: findDeep(item, ['IsRecent', 'Recent', 'Recente']) || null,
+    relationship: findDeep(item, ['Relationship', 'RelationshipType', 'TipoRelacionamento']) || null,
+  };
 }
 
 function normalizeProcess(item, index = 0, cpf = '') {
@@ -318,9 +347,9 @@ function simplifyProcessRole(polarity, partyType, specificType) {
 }
 
 function collectContacts(firstResult) {
-  const phoneNodes = findAllDeep(firstResult, ['Phones', 'PhoneNumbers', 'Telefones', 'PhoneData', 'MobilePhones']);
-  const emailNodes = findAllDeep(firstResult, ['Emails', 'EmailAddresses', 'E-mails', 'EmailData']);
-  const addressNodes = findAllDeep(firstResult, ['Addresses', 'Enderecos', 'Endereços', 'AddressData']);
+  const phoneNodes = findAllDeep(firstResult, ['Phones', 'PhoneNumbers', 'Telefones', 'PhoneData', 'MobilePhones', 'PhonesExtended', 'ExtendedPhones', 'PhonesData']);
+  const emailNodes = findAllDeep(firstResult, ['Emails', 'EmailAddresses', 'E-mails', 'EmailData', 'EmailsExtended', 'ExtendedEmails', 'EmailsData']);
+  const addressNodes = findAllDeep(firstResult, ['Addresses', 'Enderecos', 'Endereços', 'AddressData', 'AddressesExtended', 'ExtendedAddresses', 'AddressesData']);
 
   const phones = uniqueByText(phoneNodes.flatMap(asArray).map(normalizePhone).filter(Boolean), 50);
   const emails = uniqueByText(emailNodes.flatMap(asArray).map(normalizeEmail).filter(Boolean), 50);
@@ -333,7 +362,7 @@ function normalizeRelatedPerson(item) {
   if (!item || typeof item !== 'object') return null;
   const name = findDeep(item, ['Name', 'FullName', 'Nome', 'PersonName', 'RelatedName']);
   const taxId = findDeep(item, ['TaxIdNumber', 'TaxId', 'CPF', 'CNPJ', 'Document', 'DocumentNumber', 'FiscalNumber', 'NumeroIdentificacaoFiscal']);
-  const relationship = findDeep(item, ['Relationship', 'RelationshipType', 'Type', 'TipoRelacionamento', 'EconomicRelationship', 'EconomicRelationshipType']);
+  const relationship = findDeep(item, ['Relationship', 'RelationshipType', 'Type', 'TipoRelacionamento', 'EconomicRelationship', 'EconomicRelationshipType', 'SpecificType']);
   const phonesRaw = findAllDeep(item, ['Phones', 'PhoneNumbers', 'Telefones', 'PhoneData', 'MobilePhones', 'Phone']);
   const phones = uniqueByText(phonesRaw.flatMap(asArray).map(normalizePhone).filter(Boolean), 10);
   if (!name && !taxId && !relationship && phones.length === 0) return null;
@@ -342,6 +371,7 @@ function normalizeRelatedPerson(item) {
     tax_id: taxId ? String(taxId) : null,
     relationship: relationship ? normalizeRoleText(relationship) : null,
     phones,
+    email: findDeep(item, ['Email', 'EmailAddress', 'E-mail']) || null,
   };
 }
 
@@ -357,6 +387,9 @@ function collectRelatedPeople(firstResult) {
     'PersonalRelationships',
     'PeopleRelationships',
     'KycRelationships',
+    'RelatedPeoplePhones',
+    'RelatedPeopleEmails',
+    'RelatedPeopleData',
     'Relacionamentos',
     'PessoasRelacionadas',
   ]);

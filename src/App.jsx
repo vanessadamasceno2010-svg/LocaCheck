@@ -446,8 +446,6 @@ function buildExternalSummaryText(item) {
     `Processos/indicadores encontrados: ${item.has_lawsuit_indicators ? "Sim" : "Não"}`,
     `Quantidade informada: ${item.lawsuits_total || processes.length || 0}`,
     ...processes.slice(0, 20).map((process, index) => `Processo ${index + 1}: ${[process.number, process.court, process.state, process.type, process.status, process.person_role || process.specific_type].filter(Boolean).join(" - ")}`),
-    Array.isArray(item.extra_fields) && item.extra_fields.length ? "Outras informações retornadas:" : null,
-    ...(Array.isArray(item.extra_fields) ? item.extra_fields.slice(0, 80).map((field) => `${field.label}: ${field.value}`) : []),
     `Créditos descontados: ${item.credits_charged || 0}`,
     "Fonte: BigDataCorp",
     "Observação: resultado externo tratado para apoio à decisão do locador.",
@@ -4838,7 +4836,7 @@ function App() {
                     <div className="resultCard" key={item.id}>
                       {item.result_origin === "external" ? (
                         <>
-                          <div className="externalResultV31" data-version="external-advanced-v32">
+                          <div className="externalResultV31" data-version="external-advanced-v35">
                             <div className="externalResultTopV31">
                               <div>
                                 <span className="externalResultEyebrowV31">Consulta externa</span>
@@ -4868,10 +4866,10 @@ function App() {
                                   <span>Contatos encontrados</span>
                                   <h4>{(item.phones?.length || 0) + (item.emails?.length || 0)} contato(s)</h4>
                                   {item.phones?.map((phone, index) => (
-                                    <p key={`phone-${index}`}><strong>Telefone {index + 1}:</strong> {[phone.number, phone.type, phone.ranking ? `prioridade ${phone.ranking}` : null].filter(Boolean).join(" • ")}</p>
+                                    <p key={`phone-${index}`}><strong>Telefone {index + 1}:</strong> {[phone.number, phone.type, phone.status ? `status ${phone.status}` : null, phone.is_main === true ? 'principal' : null, phone.is_recent === true ? 'recente' : null, phone.relationship ? `relação ${phone.relationship}` : null, phone.ranking ? `prioridade ${phone.ranking}` : null].filter(Boolean).join(" • ")}</p>
                                   ))}
                                   {item.emails?.map((email, index) => (
-                                    <p key={`email-${index}`}><strong>E-mail {index + 1}:</strong> {[email.email, email.ranking ? `prioridade ${email.ranking}` : null].filter(Boolean).join(" • ")}</p>
+                                    <p key={`email-${index}`}><strong>E-mail {index + 1}:</strong> {[email.email, email.type, email.status ? `status ${email.status}` : null, email.is_main === true ? 'principal' : null, email.is_recent === true ? 'recente' : null, email.relationship ? `relação ${email.relationship}` : null, email.ranking ? `prioridade ${email.ranking}` : null].filter(Boolean).join(" • ")}</p>
                                   ))}
                                 </section>
                               ) : null}
@@ -4881,7 +4879,7 @@ function App() {
                                   <span>Endereços encontrados</span>
                                   <h4>{item.addresses.length} endereço(s)</h4>
                                   {item.addresses.map((address, index) => (
-                                    <p key={`address-${index}`}><strong>Endereço {index + 1}:</strong> {address.full}</p>
+                                    <p key={`address-${index}`}><strong>Endereço {index + 1}:</strong> {[address.full, address.type, address.is_main === true ? 'principal' : null, address.is_recent === true ? 'recente' : null, address.relationship ? `relação ${address.relationship}` : null].filter(Boolean).join(" • ")}</p>
                                   ))}
                                 </section>
                               ) : null}
@@ -4895,8 +4893,9 @@ function App() {
                                       <strong>{relatedPersonLabel(person, index)}</strong>
                                       {person.tax_id && <p><strong>Identificação fiscal:</strong> {person.tax_id}</p>}
                                       {person.relationship && <p><strong>Relacionamento:</strong> {person.relationship}</p>}
+                                      {person.email && <p><strong>E-mail:</strong> {person.email}</p>}
                                       {Array.isArray(person.phones) && person.phones.length > 0 && (
-                                        <p><strong>Telefones:</strong> {person.phones.map((phone) => phone.number).filter(Boolean).join(" | ")}</p>
+                                        <p><strong>Telefones:</strong> {person.phones.map((phone) => [phone.number, phone.type, phone.status].filter(Boolean).join(' • ')).filter(Boolean).join(" | ")}</p>
                                       )}
                                     </div>
                                   ))}
@@ -4924,18 +4923,6 @@ function App() {
                                       {process.value && <p><strong>Valor informado:</strong> {process.value}</p>}
                                     </div>
                                   ))}
-                                </section>
-                              ) : null}
-
-                              {Array.isArray(item.extra_fields) && item.extra_fields.length > 0 ? (
-                                <section className="externalInfoCardV31 wide extraFieldsV33">
-                                  <span>Outras informações retornadas</span>
-                                  <h4>Dados adicionais</h4>
-                                  <div className="extraFieldsGridV33">
-                                    {item.extra_fields.slice(0, 200).map((field, index) => (
-                                      <p key={`extra-${index}`}><strong>{field.label}:</strong> {String(field.value)}</p>
-                                    ))}
-                                  </div>
                                 </section>
                               ) : null}
 
