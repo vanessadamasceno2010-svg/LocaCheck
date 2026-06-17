@@ -407,6 +407,22 @@ function formatSimpleDate(value) {
   return date.toLocaleDateString("pt-BR");
 }
 
+
+function displayExternalValue(value) {
+  if (value === null || value === undefined || value === "") return "Não informado";
+  const text = String(value);
+  if (text.toUpperCase() === "LEAO") return "Leão";
+  return text;
+}
+
+function relatedPersonLabel(person, index) {
+  return person?.name || person?.tax_id || `Pessoa relacionada ${index + 1}`;
+}
+
+function shouldShowTopNotifications(notificationItems, notificationReadIds) {
+  return (notificationItems || []).some((item) => !(notificationReadIds || []).includes(item.id));
+}
+
 function buildExternalSummaryText(item) {
   const phones = Array.isArray(item.phones) ? item.phones : [];
   const emails = Array.isArray(item.emails) ? item.emails : [];
@@ -422,12 +438,14 @@ function buildExternalSummaryText(item) {
     item.mother_name ? `Nome da mãe: ${item.mother_name}` : null,
     item.father_name ? `Nome do pai: ${item.father_name}` : null,
     item.social_number ? `Número social: ${item.social_number}` : null,
-    phones.length ? `Telefones: ${phones.map((phone) => phone.number).filter(Boolean).join(" | ")}` : null,
+    item.zodiac_sign ? `Signo: ${displayExternalValue(item.zodiac_sign)}` : null,
+    phones.length ? `Telefones: ${phones.map((phone) => [phone.number, phone.type].filter(Boolean).join(" - ")).filter(Boolean).join(" | ")}` : null,
     emails.length ? `E-mails: ${emails.map((email) => email.email).filter(Boolean).join(" | ")}` : null,
     addresses.length ? `Endereços: ${addresses.map((address) => address.full).filter(Boolean).join(" | ")}` : null,
+    Array.isArray(item.related_people) && item.related_people.length ? `Pessoas relacionadas: ${item.related_people.map((person) => [person.name, person.tax_id, person.relationship, person.phones?.map((p) => p.number).join("/")].filter(Boolean).join(" - ")).join(" | ")}` : null,
     `Processos/indicadores encontrados: ${item.has_lawsuit_indicators ? "Sim" : "Não"}`,
     `Quantidade informada: ${item.lawsuits_total || processes.length || 0}`,
-    ...processes.slice(0, 10).map((process, index) => `Processo ${index + 1}: ${[process.number, process.court, process.state, process.type, process.status, process.person_role].filter(Boolean).join(" - ")}`),
+    ...processes.slice(0, 20).map((process, index) => `Processo ${index + 1}: ${[process.number, process.court, process.state, process.type, process.status, process.person_role || process.specific_type].filter(Boolean).join(" - ")}`),
     Array.isArray(item.extra_fields) && item.extra_fields.length ? "Outras informações retornadas:" : null,
     ...(Array.isArray(item.extra_fields) ? item.extra_fields.slice(0, 80).map((field) => `${field.label}: ${field.value}`) : []),
     `Créditos descontados: ${item.credits_charged || 0}`,
@@ -618,6 +636,7 @@ function App() {
   const [paymentsHistoryMessage, setPaymentsHistoryMessage] = useState("");
   const [myRecords, setMyRecords] = useState([]);
   const [myRecordsMessage, setMyRecordsMessage] = useState("");
+  const [myPendingRecordsCount, setMyPendingRecordsCount] = useState(0);
   const [notificationItems, setNotificationItems] = useState([]);
   const [notificationMessage, setNotificationMessage] = useState("");
 
@@ -871,6 +890,7 @@ function App() {
 
   useEffect(() => {
     if (session?.user?.id && profile) {
+      carregarResumoOcorrenciasUsuario();
       carregarNotificacoes();
     }
   }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
@@ -1430,6 +1450,7 @@ function App() {
           "Ocorrência registrada com sucesso! Breve a ocorrência já estará disponível para consulta na plataforma."
         );
         showToast("success", "Ocorrência registrada", "Sua ocorrência foi enviada para análise do administrador.");
+        carregarResumoOcorrenciasUsuario();
         limparFormularioOcorrencia();
       }
     } catch (error) {
@@ -2232,6 +2253,25 @@ function App() {
     setLoading(false);
   }
 
+
+  async function carregarResumoOcorrenciasUsuario() {
+    if (!session?.user?.id) return;
+
+    const { count, error } = await supabase
+      .from("records")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by", session.user.id)
+      .eq("status", "pendente");
+
+    if (error) {
+      console.log("Erro ao carregar resumo de ocorrências:", error);
+      setMyPendingRecordsCount(0);
+      return;
+    }
+
+    setMyPendingRecordsCount(Number(count || 0));
+  }
+
   async function carregarHistoricoConsultas() {
     if (!session?.user?.id) return;
 
@@ -2749,17 +2789,19 @@ function App() {
               <strong>{profile.credits}</strong>
             </div>
 
-            <button
-              type="button"
-              className={`topOccurrenceButtonV33 ${Number(profile.consultas || 0) > 0 ? "hasSignal" : ""}`}
-              onClick={() => {
-                setShowMyRecords(true);
-                carregarMinhasOcorrencias();
-              }}
-            >
-              Ocorrências
-              {Number(profile.consultas || 0) > 0 && <span className="topSignalDotV33" />}
-            </button>
+            {myPendingRecordsCount > 0 && (
+              <button
+                type="button"
+                className="topOccurrenceButtonV33 hasSignal"
+                onClick={() => {
+                  setShowMyRecords(true);
+                  carregarMinhasOcorrencias();
+                }}
+              >
+                Ocorrências pendentes
+                <span className="topSignalCountV34">{myPendingRecordsCount}</span>
+              </button>
+            )}
 
             <button type="button" className="topProfileButtonV33" onClick={abrirMeusDados}>
               Perfil
@@ -2807,18 +2849,18 @@ function App() {
               Comprar Créditos
             </button>
 
-            <button
-              className="btn outline large notificationButton actionNotifications"
-              onClick={() => {
-                setShowNotifications(true);
-                carregarNotificacoes();
-              }}
-            >
-              Notificações
-              {notificationItems.some((item) => notificacaoNaoLida(item)) && (
+            {shouldShowTopNotifications(notificationItems, notificationReadIds) && (
+              <button
+                className="btn outline large notificationButton actionNotifications"
+                onClick={() => {
+                  setShowNotifications(true);
+                  carregarNotificacoes();
+                }}
+              >
+                Notificações
                 <span className="notificationDot" />
-              )}
-            </button>
+              </button>
+            )}
           </section>
 
           {profile.role === "admin" && (
@@ -4213,6 +4255,7 @@ function App() {
         <button className="btn outline" type="button" onClick={() => { setShowConsultationHistory(true); carregarHistoricoConsultas(); }}>Minhas Consultas</button>
         <button className="btn outline" type="button" onClick={() => { setShowExternalConsultationHistory(true); carregarMinhasConsultasExternas(); }}>Consultas Externas</button>
         <button className="btn outline" type="button" onClick={() => { setShowPaymentsHistory(true); carregarHistoricoPagamentos(); }}>Meus Pagamentos</button>
+        <button className="btn outline" type="button" onClick={() => { setShowNotifications(true); carregarNotificacoes(); }}>Notificações</button>
         <button className="btn outline" type="button" onClick={() => setShowSupport(true)}>Suporte</button>
         <button className="btn outline" type="button" onClick={() => setShowTermsPrivacy(true)}>Termos e Privacidade</button>
       </div>
@@ -4738,7 +4781,7 @@ function App() {
                 >
                   <strong>Consulta Interna</strong>
                   <span>1 crédito</span>
-                  <small>Busca registros aprovados dentro da LocaCheck.</small>
+                  <small>Busca registro do locador em outras locadoras.</small>
                 </button>
 
                 <button
@@ -4748,7 +4791,7 @@ function App() {
                 >
                   <strong>Consulta Externa Completa</strong>
                   <span>2 créditos</span>
-                  <small>Dados cadastrais, contatos disponíveis e resumo por CPF em fonte externa.</small>
+                  <small>Dados pessoais e contatos.</small>
                 </button>
 
                 <button
@@ -4758,7 +4801,7 @@ function App() {
                 >
                   <strong>Consulta Externa Avançada</strong>
                   <span>3 créditos</span>
-                  <small>Endereços, telefones, e-mails e processos principais em linguagem simples.</small>
+                  <small>Dados pessoais + processos judiciais nacional.</small>
                 </button>
               </div>
 
@@ -4776,7 +4819,7 @@ function App() {
 
                 <p className="documentPublicNotice">
                   {consultationMode === "internal"
-                    ? "Consulta interna: consome 1 crédito e busca somente ocorrências aprovadas na base LocaCheck."
+                    ? "Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras."
                     : "Consulta externa: usa fonte integrada e salva log de auditoria para segurança da plataforma."}
                 </p>
 
@@ -4817,17 +4860,18 @@ function App() {
                                 {item.mother_name && <p><strong>Nome da mãe:</strong> {item.mother_name}</p>}
                                 {item.father_name && <p><strong>Nome do pai:</strong> {item.father_name}</p>}
                                 {item.social_number && <p><strong>Número social:</strong> {item.social_number}</p>}
+                                {item.zodiac_sign && <p><strong>Signo:</strong> {displayExternalValue(item.zodiac_sign)}</p>}
                               </section>
 
                               {(Array.isArray(item.phones) && item.phones.length > 0) || (Array.isArray(item.emails) && item.emails.length > 0) ? (
                                 <section className="externalInfoCardV31">
                                   <span>Contatos encontrados</span>
                                   <h4>{(item.phones?.length || 0) + (item.emails?.length || 0)} contato(s)</h4>
-                                  {item.phones?.slice(0, 5).map((phone, index) => (
-                                    <p key={`phone-${index}`}><strong>Telefone:</strong> {phone.number}</p>
+                                  {item.phones?.map((phone, index) => (
+                                    <p key={`phone-${index}`}><strong>Telefone {index + 1}:</strong> {[phone.number, phone.type, phone.ranking ? `prioridade ${phone.ranking}` : null].filter(Boolean).join(" • ")}</p>
                                   ))}
-                                  {item.emails?.slice(0, 5).map((email, index) => (
-                                    <p key={`email-${index}`}><strong>E-mail:</strong> {email.email}</p>
+                                  {item.emails?.map((email, index) => (
+                                    <p key={`email-${index}`}><strong>E-mail {index + 1}:</strong> {[email.email, email.ranking ? `prioridade ${email.ranking}` : null].filter(Boolean).join(" • ")}</p>
                                   ))}
                                 </section>
                               ) : null}
@@ -4836,8 +4880,25 @@ function App() {
                                 <section className="externalInfoCardV31">
                                   <span>Endereços encontrados</span>
                                   <h4>{item.addresses.length} endereço(s)</h4>
-                                  {item.addresses.slice(0, 4).map((address, index) => (
-                                    <p key={`address-${index}`}>{address.full}</p>
+                                  {item.addresses.map((address, index) => (
+                                    <p key={`address-${index}`}><strong>Endereço {index + 1}:</strong> {address.full}</p>
+                                  ))}
+                                </section>
+                              ) : null}
+
+                              {Array.isArray(item.related_people) && item.related_people.length > 0 ? (
+                                <section className="externalInfoCardV31 wide relatedPeopleV34">
+                                  <span>Pessoas relacionadas</span>
+                                  <h4>{item.related_people.length} pessoa(s) ou relacionamento(s)</h4>
+                                  {item.related_people.map((person, index) => (
+                                    <div className="externalMiniBlockV32" key={`related-${index}`}>
+                                      <strong>{relatedPersonLabel(person, index)}</strong>
+                                      {person.tax_id && <p><strong>Identificação fiscal:</strong> {person.tax_id}</p>}
+                                      {person.relationship && <p><strong>Relacionamento:</strong> {person.relationship}</p>}
+                                      {Array.isArray(person.phones) && person.phones.length > 0 && (
+                                        <p><strong>Telefones:</strong> {person.phones.map((phone) => phone.number).filter(Boolean).join(" | ")}</p>
+                                      )}
+                                    </div>
                                   ))}
                                 </section>
                               ) : null}
@@ -4853,11 +4914,11 @@ function App() {
                                 <section className="externalInfoCardV31 wide">
                                   <span>Resumo dos principais processos</span>
                                   <h4>{item.processes.length} processo(s) listado(s)</h4>
-                                  {item.processes.slice(0, 10).map((process, index) => (
+                                  {item.processes.slice(0, 20).map((process, index) => (
                                     <div className="externalMiniBlockV32" key={`process-${index}`}>
                                       <strong>{process.number || `Processo ${index + 1}`}</strong>
                                       <p>{[process.court, process.state, process.type, process.status].filter(Boolean).join(" • ") || "Informações principais disponíveis."}</p>
-                                      {process.person_role && <p><strong>Envolvimento da pessoa:</strong> {process.person_role}</p>}
+                                      {(process.specific_type || process.person_role) && <p><strong>Envolvimento da pessoa:</strong> {process.specific_type || process.person_role}</p>}
                                       {process.distribution_date && <p><strong>Data:</strong> {formatSimpleDate(process.distribution_date)}</p>}
                                       {process.subject && <p><strong>Assunto:</strong> {process.subject}</p>}
                                       {process.value && <p><strong>Valor informado:</strong> {process.value}</p>}
@@ -4871,7 +4932,7 @@ function App() {
                                   <span>Outras informações retornadas</span>
                                   <h4>Dados adicionais</h4>
                                   <div className="extraFieldsGridV33">
-                                    {item.extra_fields.slice(0, 100).map((field, index) => (
+                                    {item.extra_fields.slice(0, 200).map((field, index) => (
                                       <p key={`extra-${index}`}><strong>{field.label}:</strong> {String(field.value)}</p>
                                     ))}
                                   </div>

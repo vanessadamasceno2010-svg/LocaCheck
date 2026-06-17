@@ -153,6 +153,60 @@ function formatMaybeDate(value) {
   return date.toISOString().slice(0, 10);
 }
 
+function titleCasePt(value) {
+  const text = String(value || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  return text
+    .toLowerCase()
+    .split(' ')
+    .map((word) => {
+      if (['de', 'da', 'do', 'das', 'dos', 'e', 'em'].includes(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
+function translateExtraLabel(key) {
+  const clean = String(key || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  const lower = clean.toLowerCase();
+  const map = {
+    'zodiac sign': 'Signo',
+    'zodiacsign': 'Signo',
+    'specific type': 'Tipo específico',
+    'specifictype': 'Tipo específico',
+    'tax id number': 'CPF/CNPJ',
+    'taxidnumber': 'CPF/CNPJ',
+    'tax id': 'CPF/CNPJ',
+    'taxid': 'CPF/CNPJ',
+    'name': 'Nome',
+    'full name': 'Nome completo',
+    'phone': 'Telefone',
+    'phones': 'Telefones',
+    'email': 'E-mail',
+    'emails': 'E-mails',
+    'address': 'Endereço',
+    'addresses': 'Endereços',
+    'relationship': 'Relacionamento',
+    'relationship type': 'Tipo de relacionamento',
+    'economic relationship': 'Relacionamento econômico',
+    'economic relationships': 'Relacionamentos econômicos',
+    'mother name': 'Nome da mãe',
+    'father name': 'Nome do pai',
+    'birth date': 'Nascimento',
+    'social number': 'Número social',
+  };
+  return map[lower] || clean;
+}
+
+function normalizeRoleText(value) {
+  const text = titleCasePt(value);
+  if (!text) return null;
+  const upper = String(value || '').toUpperCase();
+  if (upper.includes('VITIMA')) return text.replace('Vitima', 'Vítima');
+  if (upper === 'LEAO') return 'Leão';
+  return text;
+}
+
 function normalizePhone(item) {
   if (!item) return null;
   if (typeof item === 'string' || typeof item === 'number') {
@@ -220,7 +274,12 @@ function normalizeProcess(item, index = 0, cpf = '') {
     return polarity || role;
   });
   const polarity = userParty ? findDeep(userParty, ['Polarity', 'Polaridade']) : findDeep(item, ['PartyPolarity', 'Polaridade']);
-  const partyType = userParty ? findDeep(userParty, ['Role', 'Type', 'PartyType', 'Tipo', 'Parte']) : findDeep(item, ['PartyType', 'TipoParte', 'Role']);
+  const specificType = userParty
+    ? findDeep(userParty, ['SpecificType', 'Specific Type', 'TipoEspecifico', 'TipoEspecífico'])
+    : findDeep(item, ['SpecificType', 'Specific Type', 'TipoEspecifico', 'TipoEspecífico']);
+  const partyType = userParty
+    ? findDeep(userParty, ['Role', 'Type', 'PartyType', 'Tipo', 'Parte'])
+    : findDeep(item, ['PartyType', 'TipoParte', 'Role']);
 
   if (!number && !court && !type && !subject && !status) return null;
 
@@ -234,12 +293,14 @@ function normalizeProcess(item, index = 0, cpf = '') {
     status: status || null,
     distribution_date: distributionDate || null,
     value: value || null,
-    person_role: simplifyProcessRole(polarity, partyType),
-    raw_role: partyType || polarity || null,
+    person_role: simplifyProcessRole(polarity, partyType, specificType),
+    specific_type: normalizeRoleText(specificType) || null,
+    raw_role: specificType || partyType || polarity || null,
   };
 }
 
-function simplifyProcessRole(polarity, partyType) {
+function simplifyProcessRole(polarity, partyType, specificType) {
+  if (specificType) return normalizeRoleText(specificType);
   const joined = `${polarity || ''} ${partyType || ''}`.toUpperCase();
 
   if (joined.includes('TESTEM') || joined.includes('WITNESS')) return 'Testemunha';
@@ -261,11 +322,56 @@ function collectContacts(firstResult) {
   const emailNodes = findAllDeep(firstResult, ['Emails', 'EmailAddresses', 'E-mails', 'EmailData']);
   const addressNodes = findAllDeep(firstResult, ['Addresses', 'Enderecos', 'Endereços', 'AddressData']);
 
-  const phones = uniqueByText(phoneNodes.flatMap(asArray).map(normalizePhone).filter(Boolean), 8);
-  const emails = uniqueByText(emailNodes.flatMap(asArray).map(normalizeEmail).filter(Boolean), 8);
-  const addresses = uniqueByText(addressNodes.flatMap(asArray).map(normalizeAddress).filter(Boolean), 6);
+  const phones = uniqueByText(phoneNodes.flatMap(asArray).map(normalizePhone).filter(Boolean), 50);
+  const emails = uniqueByText(emailNodes.flatMap(asArray).map(normalizeEmail).filter(Boolean), 50);
+  const addresses = uniqueByText(addressNodes.flatMap(asArray).map(normalizeAddress).filter(Boolean), 50);
 
   return { phones, emails, addresses };
+}
+
+function normalizeRelatedPerson(item) {
+  if (!item || typeof item !== 'object') return null;
+  const name = findDeep(item, ['Name', 'FullName', 'Nome', 'PersonName', 'RelatedName']);
+  const taxId = findDeep(item, ['TaxIdNumber', 'TaxId', 'CPF', 'CNPJ', 'Document', 'DocumentNumber', 'FiscalNumber', 'NumeroIdentificacaoFiscal']);
+  const relationship = findDeep(item, ['Relationship', 'RelationshipType', 'Type', 'TipoRelacionamento', 'EconomicRelationship', 'EconomicRelationshipType']);
+  const phonesRaw = findAllDeep(item, ['Phones', 'PhoneNumbers', 'Telefones', 'PhoneData', 'MobilePhones', 'Phone']);
+  const phones = uniqueByText(phonesRaw.flatMap(asArray).map(normalizePhone).filter(Boolean), 10);
+  if (!name && !taxId && !relationship && phones.length === 0) return null;
+  return {
+    name: name ? String(name) : null,
+    tax_id: taxId ? String(taxId) : null,
+    relationship: relationship ? normalizeRoleText(relationship) : null,
+    phones,
+  };
+}
+
+function collectRelatedPeople(firstResult) {
+  const relationNodes = findAllDeep(firstResult, [
+    'RelatedPeople',
+    'RelatedPersons',
+    'RelatedEntities',
+    'Relationships',
+    'EconomicRelationships',
+    'EconomicRelationshipData',
+    'BusinessRelationships',
+    'PersonalRelationships',
+    'PeopleRelationships',
+    'KycRelationships',
+    'Relacionamentos',
+    'PessoasRelacionadas',
+  ]);
+
+  const flattened = [];
+  for (const node of relationNodes) {
+    if (Array.isArray(node)) flattened.push(...node);
+    else if (node && typeof node === 'object') {
+      const nested = findDeep(node, ['Items', 'Results', 'People', 'Persons', 'Relationships', 'RelatedPeople', 'RelatedPersons']);
+      if (Array.isArray(nested)) flattened.push(...nested);
+      else flattened.push(node);
+    }
+  }
+
+  return uniqueByText(flattened.map(normalizeRelatedPerson).filter(Boolean), 50);
 }
 
 function collectProcesses(firstResult, cpf = '') {
@@ -283,11 +389,7 @@ function collectProcesses(firstResult, cpf = '') {
 }
 
 function prettifyKey(key) {
-  return String(key || '')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/_/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return translateExtraLabel(key);
 }
 
 function collectExtraFields(obj, limit = 120) {
@@ -338,11 +440,13 @@ function buildSummary(rawResponse, consultationType, cached = false, cpf = '') {
   const motherName = findDeep(firstResult, ['MotherName', 'NomeMae', 'MothersName', 'Mother']);
   const fatherName = findDeep(firstResult, ['FatherName', 'NomePai', 'FathersName', 'Father']);
   const socialNumber = findDeep(firstResult, ['SocialNumber', 'NIS', 'PIS', 'PASEP', 'NisPisPasep', 'SocialSecurityNumber']);
+  const zodiacSign = normalizeRoleText(findDeep(firstResult, ['ZodiacSign', 'Zodiac Sign', 'Signo']));
   const lawsuitsNode = findDeep(firstResult, ['Processes', 'Lawsuits', 'LawsuitsDistributionData', 'LawsuitsDistribution']);
   const lawsuitsTotal = countFromAny(lawsuitsNode || firstResult);
   const queryId = rawResponse?.QueryId || rawResponse?.QueryID || findDeep(rawResponse, ['QueryId', 'QueryID']);
   const contacts = consultationType === 'external_advanced' || consultationType === 'external_complete' ? collectContacts(firstResult) : { phones: [], emails: [], addresses: [] };
   const processes = consultationType === 'external_advanced' ? collectProcesses(firstResult, cpf) : [];
+  const related_people = consultationType === 'external_advanced' || consultationType === 'external_complete' ? collectRelatedPeople(firstResult) : [];
 
   return {
     source: 'BigDataCorp',
@@ -356,12 +460,14 @@ function buildSummary(rawResponse, consultationType, cached = false, cpf = '') {
     mother_name: motherName || null,
     father_name: fatherName || null,
     social_number: socialNumber || null,
+    zodiac_sign: zodiacSign || null,
     mother_name_available: Boolean(motherName),
     lawsuits_total: lawsuitsTotal || processes.length || 0,
     has_lawsuit_indicators: Boolean(lawsuitsTotal > 0 || lawsuitsNode || processes.length),
     phones: contacts.phones,
     emails: contacts.emails,
     addresses: contacts.addresses,
+    related_people,
     processes: processes,
     query_id: queryId || null,
     extra_fields: collectExtraFields(firstResult),

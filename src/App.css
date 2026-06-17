@@ -3353,3 +3353,82 @@ body {
     padding: 8px 10px;
   }
 }
+
+/* V34 - Ajustes de avisos, resultado externo e planos compactos */
+.topSignalCountV34 {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #22c55e;
+  color: #052e16;
+  font-size: 0.76rem;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
+}
+
+.relatedPeopleV34 .externalMiniBlockV32 {
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.compactBuyPlansGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  margin-top: 10px !important;
+}
+
+.compactBuyPlanCard {
+  padding: 10px !important;
+  min-height: 112px !important;
+  border-radius: 16px !important;
+}
+
+.compactBuyPlanCard h3 {
+  font-size: 13px !important;
+  margin-bottom: 4px !important;
+  line-height: 1.15 !important;
+}
+
+.compactBuyPlanCard strong {
+  font-size: 18px !important;
+  margin-bottom: 4px !important;
+}
+
+.compactBuyPlanCard p {
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  margin-bottom: 6px !important;
+}
+
+.compactBuyPlanCard small {
+  font-size: 10px !important;
+}
+
+.buyCreditsModal.compactModal {
+  max-height: 94vh;
+}
+
+@media (max-width: 760px) {
+  .compactBuyPlansGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .compactBuyPlanCard {
+    min-height: 104px !important;
+    padding: 9px !important;
+  }
+
+  .selectedPlanSummaryTopV33 {
+    font-size: 12px !important;
+    padding: 8px !important;
+  }
+
+  .generatePixTopV33 {
+    min-height: 46px !important;
+    margin: 8px 0 10px !important;
+  }
+}
