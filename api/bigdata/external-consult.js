@@ -6,8 +6,8 @@ const BIGDATA_TOKEN_ID = process.env.BIGDATA_TOKEN_ID;
 const BIGDATA_ACCESS_TOKEN = process.env.BIGDATA_ACCESS_TOKEN;
 const CACHE_DAYS = Number(process.env.BIGDATA_CACHE_DAYS || 7);
 const BASIC_CREDITS = Number(process.env.EXTERNAL_BASIC_CREDITS || 2);
-const COMPLETE_CREDITS = Number(process.env.EXTERNAL_COMPLETE_CREDITS || 3);
-const ADVANCED_CREDITS = Number(process.env.EXTERNAL_ADVANCED_CREDITS || 5);
+const COMPLETE_CREDITS = Number(process.env.EXTERNAL_COMPLETE_CREDITS || 2);
+const ADVANCED_CREDITS = Number(process.env.EXTERNAL_ADVANCED_CREDITS || 3);
 const ADVANCED_DATASETS = String(
   process.env.BIGDATA_ADVANCED_DATASETS || 'basic_data,registration_data,processes.limit(10)'
 )
@@ -49,10 +49,10 @@ function normalizeDatasetName(dataset) {
 function getConsultConfig(type) {
   if (type === 'external_basic') {
     return {
-      type,
-      label: 'Consulta Externa Básica',
-      credits: BASIC_CREDITS,
-      datasets: ['basic_data'],
+      type: 'external_complete',
+      label: 'Consulta Externa Completa',
+      credits: COMPLETE_CREDITS,
+      datasets: ['basic_data', 'registration_data', 'lawsuits_distribution_data'],
     };
   }
 
@@ -69,7 +69,7 @@ function getConsultConfig(type) {
     type: 'external_complete',
     label: 'Consulta Externa Completa',
     credits: COMPLETE_CREDITS,
-    datasets: ['basic_data', 'lawsuits_distribution_data'],
+    datasets: ['basic_data', 'registration_data', 'lawsuits_distribution_data'],
   };
 }
 
@@ -198,7 +198,7 @@ function normalizeAddress(item) {
   return { full, street: street || null, number: number || null, complement: complement || null, neighborhood: neighborhood || null, city: city || null, state: state || null, zip: zip || null };
 }
 
-function normalizeProcess(item, index = 0) {
+function normalizeProcess(item, index = 0, cpf = '') {
   if (!item || typeof item !== 'object') return null;
   const number = findDeep(item, ['Number', 'ProcessNumber', 'LawsuitNumber', 'CaseNumber', 'CNJNumber', 'NumeroProcesso']);
   const court = findDeep(item, ['CourtName', 'Court', 'Tribunal', 'ForumName']);
@@ -208,14 +208,19 @@ function normalizeProcess(item, index = 0) {
   const status = findDeep(item, ['Status', 'Situation', 'Situacao']);
   const distributionDate = formatMaybeDate(findDeep(item, ['NoticeDate', 'DistributionDate', 'DataDistribuicao', 'FilingDate']));
   const value = findDeep(item, ['Value', 'Amount', 'Valor']);
-  const parties = asArray(findDeep(item, ['Parties', 'Partes']));
-  const userParty = parties.find((party) => {
+  const parties = asArray(findDeep(item, ['Parties', 'Partes', 'RelatedParties']));
+  const cpfDigits = onlyDigits(cpf);
+  const matchedParty = parties.find((party) => {
+    const partyDoc = onlyDigits(findDeep(party, ['Doc', 'Document', 'TaxIdNumber', 'TaxId', 'CPF', 'Cpf', 'DocumentNumber']));
+    return cpfDigits && partyDoc && partyDoc === cpfDigits;
+  });
+  const userParty = matchedParty || parties.find((party) => {
     const polarity = String(findDeep(party, ['Polarity', 'Polaridade']) || '').toUpperCase();
-    const type = String(findDeep(party, ['Type', 'PartyType', 'Tipo']) || '').toUpperCase();
-    return polarity || type;
+    const role = String(findDeep(party, ['Role', 'Type', 'PartyType', 'Tipo', 'Parte']) || '').toUpperCase();
+    return polarity || role;
   });
   const polarity = userParty ? findDeep(userParty, ['Polarity', 'Polaridade']) : findDeep(item, ['PartyPolarity', 'Polaridade']);
-  const partyType = userParty ? findDeep(userParty, ['Type', 'PartyType', 'Tipo']) : findDeep(item, ['PartyType', 'TipoParte']);
+  const partyType = userParty ? findDeep(userParty, ['Role', 'Type', 'PartyType', 'Tipo', 'Parte']) : findDeep(item, ['PartyType', 'TipoParte', 'Role']);
 
   if (!number && !court && !type && !subject && !status) return null;
 
@@ -230,18 +235,25 @@ function normalizeProcess(item, index = 0) {
     distribution_date: distributionDate || null,
     value: value || null,
     person_role: simplifyProcessRole(polarity, partyType),
+    raw_role: partyType || polarity || null,
   };
 }
 
 function simplifyProcessRole(polarity, partyType) {
-  const pol = String(polarity || '').toUpperCase();
-  const typ = String(partyType || '').toUpperCase();
-  if (pol === 'ACTIVE') return 'Entrou com a ação';
-  if (pol === 'PASSIVE') return 'Foi acionado no processo';
-  if (typ.includes('DEFEND') || typ.includes('CLAIMED')) return 'Foi acionado no processo';
-  if (typ.includes('AUTHOR') || typ.includes('CLAIMANT')) return 'Entrou com a ação';
-  if (typ) return 'Aparece como parte relacionada';
-  return null;
+  const joined = `${polarity || ''} ${partyType || ''}`.toUpperCase();
+
+  if (joined.includes('TESTEM') || joined.includes('WITNESS')) return 'Testemunha';
+  if (joined.includes('ACUS') || joined.includes('REU') || joined.includes('RÉU') || joined.includes('DEFEND') || joined.includes('PASSIVE') || joined.includes('CLAIMED') || joined.includes('REQUERIDO') || joined.includes('EXECUTADO')) {
+    return 'Réu, acusado ou parte acionada';
+  }
+  if (joined.includes('VICTIM') || joined.includes('VITIMA') || joined.includes('VÍTIMA')) return 'Vítima';
+  if (joined.includes('AUTHOR') || joined.includes('AUTOR') || joined.includes('ACTIVE') || joined.includes('CLAIMANT') || joined.includes('REQUERENTE') || joined.includes('EXEQUENTE')) {
+    return 'Autor, requerente ou parte que entrou com a ação';
+  }
+  if (joined.includes('ADVOG')) return 'Advogado vinculado ao processo';
+  if (joined.includes('TERCEIRO') || joined.includes('INTERESS')) return 'Terceiro ou interessado';
+  if (partyType || polarity) return `Parte relacionada: ${partyType || polarity}`;
+  return 'Envolvimento não especificado pela fonte';
 }
 
 function collectContacts(firstResult) {
@@ -256,7 +268,7 @@ function collectContacts(firstResult) {
   return { phones, emails, addresses };
 }
 
-function collectProcesses(firstResult) {
+function collectProcesses(firstResult, cpf = '') {
   const processNodes = findAllDeep(firstResult, ['Processes', 'Lawsuits', 'LawsuitData', 'Processos']);
   const flattened = [];
   for (const node of processNodes) {
@@ -267,7 +279,54 @@ function collectProcesses(firstResult) {
       else flattened.push(node);
     }
   }
-  return uniqueByText(flattened.map(normalizeProcess).filter(Boolean), 10);
+  return uniqueByText(flattened.map((item, index) => normalizeProcess(item, index, cpf)).filter(Boolean), 20);
+}
+
+function prettifyKey(key) {
+  return String(key || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function collectExtraFields(obj, limit = 120) {
+  const ignored = new Set(['result', 'results', 'queryid', 'queryid', 'raw_response', 'processes', 'lawsuits', 'parties', 'addresses', 'phones', 'emails']);
+  const fields = [];
+  const seen = new Set();
+
+  function walk(value, path = []) {
+    if (fields.length >= limit) return;
+    if (value === null || value === undefined || value === '') return;
+
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      const key = path[path.length - 1] || 'Informação';
+      const lower = String(key).toLowerCase();
+      if (ignored.has(lower)) return;
+      const label = path.slice(-2).map(prettifyKey).join(' - ');
+      const text = String(value);
+      const signature = `${label}:${text}`.toLowerCase();
+      if (!seen.has(signature) && text.length <= 240) {
+        seen.add(signature);
+        fields.push({ label: label || 'Informação', value: text });
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.slice(0, 12).forEach((item, index) => walk(item, [...path, `${path[path.length - 1] || 'Item'} ${index + 1}`]));
+      return;
+    }
+
+    if (typeof value === 'object') {
+      Object.entries(value).forEach(([key, val]) => {
+        if (!ignored.has(String(key).toLowerCase())) walk(val, [...path, key]);
+      });
+    }
+  }
+
+  walk(obj, []);
+  return fields;
 }
 
 function buildSummary(rawResponse, consultationType, cached = false, cpf = '') {
@@ -282,8 +341,8 @@ function buildSummary(rawResponse, consultationType, cached = false, cpf = '') {
   const lawsuitsNode = findDeep(firstResult, ['Processes', 'Lawsuits', 'LawsuitsDistributionData', 'LawsuitsDistribution']);
   const lawsuitsTotal = countFromAny(lawsuitsNode || firstResult);
   const queryId = rawResponse?.QueryId || rawResponse?.QueryID || findDeep(rawResponse, ['QueryId', 'QueryID']);
-  const contacts = consultationType === 'external_advanced' ? collectContacts(firstResult) : { phones: [], emails: [], addresses: [] };
-  const processes = consultationType === 'external_advanced' ? collectProcesses(firstResult) : [];
+  const contacts = consultationType === 'external_advanced' || consultationType === 'external_complete' ? collectContacts(firstResult) : { phones: [], emails: [], addresses: [] };
+  const processes = consultationType === 'external_advanced' ? collectProcesses(firstResult, cpf) : [];
 
   return {
     source: 'BigDataCorp',
@@ -305,6 +364,7 @@ function buildSummary(rawResponse, consultationType, cached = false, cpf = '') {
     addresses: contacts.addresses,
     processes: processes,
     query_id: queryId || null,
+    extra_fields: collectExtraFields(firstResult),
     message: 'Resultado externo tratado para apoio à análise. Use com responsabilidade e finalidade legítima.',
   };
 }

@@ -198,6 +198,22 @@ function BuyCreditsModal({ onClose }) {
                 <p>Nenhum plano ativo encontrado.</p>
               </div>
             ) : (
+              <>
+                {selectedPlan && (
+                  <div className="selectedPlanSummary selectedPlanSummaryTopV33">
+                    Plano selecionado: <strong>{selectedPlan.name} - {formatMoney(selectedPlan.price_cents)}</strong>
+                  </div>
+                )}
+
+                <button
+                  className="btn full primary generatePixTopV33"
+                  onClick={gerarPix}
+                  disabled={generatingPix || loadingPlans || plans.length === 0}
+                  type="button"
+                >
+                  {generatingPix ? "Gerando PIX..." : "Gerar PIX"}
+                </button>
+
               <div className="buyPlansGrid compactBuyPlansGrid">
                 {plans.map((plano) => {
                   const isSelected = selectedPlanId === plano.id;
@@ -229,22 +245,8 @@ function BuyCreditsModal({ onClose }) {
                   );
                 })}
               </div>
+              </>
             )}
-
-            {selectedPlan && (
-              <div className="selectedPlanSummary">
-                Plano selecionado: <strong>{selectedPlan.name} - {formatMoney(selectedPlan.price_cents)}</strong>
-              </div>
-            )}
-
-            <button
-              className="btn full primary"
-              onClick={gerarPix}
-              disabled={generatingPix || loadingPlans || plans.length === 0}
-              type="button"
-            >
-              {generatingPix ? "Gerando PIX..." : "Gerar PIX"}
-            </button>
           </>
         )}
 

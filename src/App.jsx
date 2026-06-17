@@ -344,6 +344,18 @@ function baixarCsv(nomeArquivo, linhas) {
   URL.revokeObjectURL(url);
 }
 
+function baixarTexto(nomeArquivo, texto) {
+  const blob = new Blob(["\ufeff" + texto], { type: "text/plain;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nomeArquivo;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 
 function formatDate(value) {
   if (!value) return "Não informado";
@@ -359,15 +371,13 @@ function formatDate(value) {
 
 
 function externalConsultationLabel(type) {
-  if (type === "external_basic") return "Consulta Externa Básica";
   if (type === "external_advanced") return "Consulta Externa Avançada";
   return "Consulta Externa Completa";
 }
 
 function externalConsultationCredits(type) {
-  if (type === "external_basic") return 2;
-  if (type === "external_advanced") return 5;
-  return 3;
+  if (type === "external_advanced") return 3;
+  return 2;
 }
 
 function externalDatasetLabel(dataset) {
@@ -417,7 +427,9 @@ function buildExternalSummaryText(item) {
     addresses.length ? `Endereços: ${addresses.map((address) => address.full).filter(Boolean).join(" | ")}` : null,
     `Processos/indicadores encontrados: ${item.has_lawsuit_indicators ? "Sim" : "Não"}`,
     `Quantidade informada: ${item.lawsuits_total || processes.length || 0}`,
-    ...processes.slice(0, 5).map((process, index) => `Processo ${index + 1}: ${[process.number, process.court, process.state, process.type, process.status, process.person_role].filter(Boolean).join(" - ")}`),
+    ...processes.slice(0, 10).map((process, index) => `Processo ${index + 1}: ${[process.number, process.court, process.state, process.type, process.status, process.person_role].filter(Boolean).join(" - ")}`),
+    Array.isArray(item.extra_fields) && item.extra_fields.length ? "Outras informações retornadas:" : null,
+    ...(Array.isArray(item.extra_fields) ? item.extra_fields.slice(0, 80).map((field) => `${field.label}: ${field.value}`) : []),
     `Créditos descontados: ${item.credits_charged || 0}`,
     "Fonte: BigDataCorp",
     "Observação: resultado externo tratado para apoio à decisão do locador.",
@@ -1669,6 +1681,13 @@ function App() {
     }
   }
 
+  function exportarConsultaExterna(item) {
+    const cpfFinal = onlyDigits(item?.cpf || item?.cpf_masked || item?.cpf4 || "").slice(-4) || "consulta";
+    const data = new Date().toISOString().slice(0, 10);
+    baixarTexto(`locacheck-consulta-externa-${cpfFinal}-${data}.txt`, buildExternalSummaryText(item));
+    setSearchMessage("Consulta exportada com sucesso.");
+  }
+
   async function carregarOcorrenciasAdmin() {
     const { data, error } = await supabase
       .from("records")
@@ -2724,31 +2743,32 @@ function App() {
             </p>
           </section>
 
-          <section className="dashboardGrid">
-            <div className="dashboardCard">
-              <small>Créditos disponíveis</small>
+          <section className="userTopStripV33">
+            <div className="creditMiniPillV33">
+              <span>Créditos</span>
               <strong>{profile.credits}</strong>
             </div>
 
-            <div className="dashboardCard">
-              <small>Consultas realizadas</small>
-              <strong>{profile.consultas}</strong>
-            </div>
+            <button
+              type="button"
+              className={`topOccurrenceButtonV33 ${Number(profile.consultas || 0) > 0 ? "hasSignal" : ""}`}
+              onClick={() => {
+                setShowMyRecords(true);
+                carregarMinhasOcorrencias();
+              }}
+            >
+              Ocorrências
+              {Number(profile.consultas || 0) > 0 && <span className="topSignalDotV33" />}
+            </button>
 
-            <div className="dashboardCard">
-              <small>Plano ilimitado</small>
-              <strong>{unlimitedActive ? "Ativo" : "Inativo"}</strong>
-            </div>
-
-            <div className="dashboardCard referralSummaryCard">
-              <small>Bônus por indicação</small>
-              <strong>{profile.referral_bonus_credits || 0}</strong>
-            </div>
+            <button type="button" className="topProfileButtonV33" onClick={abrirMeusDados}>
+              Perfil
+            </button>
           </section>
 
-          <section className="dashboardActions">
+          <section className="dashboardActions dashboardActionsV33">
             <button
-              className="btn primary large actionConsult"
+              className="btn primary large actionConsult actionConsultFeaturedV33"
               onClick={() => {
                 setSearchMessage("");
                 setSearchResults([]);
@@ -2758,6 +2778,7 @@ function App() {
               }}
             >
               Consultar Locatário
+              <small>Consulta interna, completa ou avançada</small>
             </button>
 
             <button
@@ -2768,16 +2789,6 @@ function App() {
               }}
             >
               Registrar Ocorrência
-            </button>
-
-            <button
-              className="btn outline large actionRecords"
-              onClick={() => {
-                setShowMyRecords(true);
-                carregarMinhasOcorrencias();
-              }}
-            >
-              Minhas Ocorrências
             </button>
 
             <button
@@ -2797,43 +2808,6 @@ function App() {
             </button>
 
             <button
-              className="btn outline large actionHistory"
-              onClick={() => {
-                setShowConsultationHistory(true);
-                carregarHistoricoConsultas();
-              }}
-            >
-              Minhas Consultas
-            </button>
-
-            <button
-              className="btn outline large actionExternalHistory"
-              onClick={() => {
-                setShowExternalConsultationHistory(true);
-                carregarMinhasConsultasExternas();
-              }}
-            >
-              Consultas Externas
-            </button>
-
-            <button
-              className="btn outline large actionPayments"
-              onClick={() => {
-                setShowPaymentsHistory(true);
-                carregarHistoricoPagamentos();
-              }}
-            >
-              Meus Pagamentos
-            </button>
-
-            <button
-              className="btn outline large actionProfile"
-              onClick={abrirMeusDados}
-            >
-              Meus Dados
-            </button>
-
-            <button
               className="btn outline large notificationButton actionNotifications"
               onClick={() => {
                 setShowNotifications(true);
@@ -2844,20 +2818,6 @@ function App() {
               {notificationItems.some((item) => notificacaoNaoLida(item)) && (
                 <span className="notificationDot" />
               )}
-            </button>
-
-            <button
-              className="btn outline large actionTerms"
-              onClick={() => setShowTermsPrivacy(true)}
-            >
-              Termos e Privacidade
-            </button>
-
-            <button
-              className="btn outline large actionSupport"
-              onClick={() => setShowSupport(true)}
-            >
-              Suporte
             </button>
           </section>
 
@@ -3737,7 +3697,6 @@ function App() {
                 />
                 <select value={adminExternalFilterType} onChange={(e) => setAdminExternalFilterType(e.target.value)}>
                   <option value="todos">Todos os tipos</option>
-                  <option value="external_basic">Externa básica</option>
                   <option value="external_complete">Externa completa</option>
                   <option value="external_advanced">Externa avançada</option>
                 </select>
@@ -4245,8 +4204,20 @@ function App() {
         ×
       </button>
 
-      <h2>Meus Dados</h2>
+      <h2>Perfil</h2>
 
+      <p>Gerencie seus dados, ocorrências, pagamentos, consultas, suporte e termos em um só lugar.</p>
+
+      <div className="profileMenuGridV33">
+        <button className="btn outline" type="button" onClick={() => { setShowMyRecords(true); carregarMinhasOcorrencias(); }}>Minhas Ocorrências</button>
+        <button className="btn outline" type="button" onClick={() => { setShowConsultationHistory(true); carregarHistoricoConsultas(); }}>Minhas Consultas</button>
+        <button className="btn outline" type="button" onClick={() => { setShowExternalConsultationHistory(true); carregarMinhasConsultasExternas(); }}>Consultas Externas</button>
+        <button className="btn outline" type="button" onClick={() => { setShowPaymentsHistory(true); carregarHistoricoPagamentos(); }}>Meus Pagamentos</button>
+        <button className="btn outline" type="button" onClick={() => setShowSupport(true)}>Suporte</button>
+        <button className="btn outline" type="button" onClick={() => setShowTermsPrivacy(true)}>Termos e Privacidade</button>
+      </div>
+
+      <h3>Meus Dados</h3>
       <p>Atualize seus dados de contato da conta LocaCheck.</p>
 
       <form onSubmit={salvarMeusDados} className="recordForm">
@@ -4772,22 +4743,12 @@ function App() {
 
                 <button
                   type="button"
-                  className={consultationMode === "external_basic" ? "consultTypeCard active" : "consultTypeCard"}
-                  onClick={() => setConsultationMode("external_basic")}
-                >
-                  <strong>Consulta Externa Básica</strong>
-                  <span>2 créditos</span>
-                  <small>Dados cadastrais básicos por CPF em fonte externa.</small>
-                </button>
-
-                <button
-                  type="button"
                   className={consultationMode === "external_complete" ? "consultTypeCard active" : "consultTypeCard"}
                   onClick={() => setConsultationMode("external_complete")}
                 >
                   <strong>Consulta Externa Completa</strong>
-                  <span>3 créditos</span>
-                  <small>Dados básicos + resumo de processos por CPF.</small>
+                  <span>2 créditos</span>
+                  <small>Dados cadastrais, contatos disponíveis e resumo por CPF em fonte externa.</small>
                 </button>
 
                 <button
@@ -4796,8 +4757,8 @@ function App() {
                   onClick={() => setConsultationMode("external_advanced")}
                 >
                   <strong>Consulta Externa Avançada</strong>
-                  <span>5 créditos</span>
-                  <small>Endereços, contatos, e-mails e resumo dos principais processos.</small>
+                  <span>3 créditos</span>
+                  <small>Endereços, telefones, e-mails e processos principais em linguagem simples.</small>
                 </button>
               </div>
 
@@ -4892,15 +4853,28 @@ function App() {
                                 <section className="externalInfoCardV31 wide">
                                   <span>Resumo dos principais processos</span>
                                   <h4>{item.processes.length} processo(s) listado(s)</h4>
-                                  {item.processes.slice(0, 5).map((process, index) => (
+                                  {item.processes.slice(0, 10).map((process, index) => (
                                     <div className="externalMiniBlockV32" key={`process-${index}`}>
                                       <strong>{process.number || `Processo ${index + 1}`}</strong>
                                       <p>{[process.court, process.state, process.type, process.status].filter(Boolean).join(" • ") || "Informações principais disponíveis."}</p>
-                                      {process.person_role && <p><strong>Participação:</strong> {process.person_role}</p>}
+                                      {process.person_role && <p><strong>Envolvimento da pessoa:</strong> {process.person_role}</p>}
                                       {process.distribution_date && <p><strong>Data:</strong> {formatSimpleDate(process.distribution_date)}</p>}
                                       {process.subject && <p><strong>Assunto:</strong> {process.subject}</p>}
+                                      {process.value && <p><strong>Valor informado:</strong> {process.value}</p>}
                                     </div>
                                   ))}
+                                </section>
+                              ) : null}
+
+                              {Array.isArray(item.extra_fields) && item.extra_fields.length > 0 ? (
+                                <section className="externalInfoCardV31 wide extraFieldsV33">
+                                  <span>Outras informações retornadas</span>
+                                  <h4>Dados adicionais</h4>
+                                  <div className="extraFieldsGridV33">
+                                    {item.extra_fields.slice(0, 100).map((field, index) => (
+                                      <p key={`extra-${index}`}><strong>{field.label}:</strong> {String(field.value)}</p>
+                                    ))}
+                                  </div>
                                 </section>
                               ) : null}
 
@@ -4918,6 +4892,9 @@ function App() {
                             <div className="modalActionsRow externalResultActions">
                               <button type="button" className="btn secondary" onClick={() => copiarResumoConsultaExterna(item)}>
                                 Copiar resumo
+                              </button>
+                              <button type="button" className="btn primary" onClick={() => exportarConsultaExterna(item)}>
+                                Exportar consulta
                               </button>
                             </div>
                           </div>
