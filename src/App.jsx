@@ -441,6 +441,40 @@ function externalConsultationCredits(type) {
   return 1;
 }
 
+function adminConsultationLabel(type, source) {
+  if (type === "internal_included") return "Base interna incluída";
+  if (source === "internal" || type === "internal") return "Consulta interna";
+  return "Consulta externa completa";
+}
+
+function getAnalyticsSessionKey() {
+  const storageKey = "locacheck-analytics-session";
+  const maxIdleMs = 30 * 60 * 1000;
+  const now = Date.now();
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+    if (saved?.key && Number(saved?.lastSeen || 0) > now - maxIdleMs) {
+      localStorage.setItem(storageKey, JSON.stringify({ key: saved.key, lastSeen: now }));
+      return saved.key;
+    }
+  } catch {
+    // Cria uma nova sessão quando o navegador bloqueia ou invalida o armazenamento.
+  }
+
+  const key = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `visit_${now}_${Math.random().toString(36).slice(2, 18)}`;
+
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({ key, lastSeen: now }));
+  } catch {
+    // A visita continua funcionando mesmo sem localStorage.
+  }
+
+  return key;
+}
+
 function externalDatasetLabel(dataset) {
   const clean = String(dataset || "").replace(/\.limit\(.*?\)/g, "");
   const map = {
@@ -829,7 +863,7 @@ function App() {
   const [toast, setToast] = useState(null);
   const [notificationReadIds, setNotificationReadIds] = useState([]);
   const [showAllRecentPayments, setShowAllRecentPayments] = useState(false);
-  const [adminActiveSection, setAdminActiveSection] = useState("financeiro");
+  const [adminActiveSection, setAdminActiveSection] = useState("resumo");
   const [adminPlans, setAdminPlans] = useState([]);
   const [adminPlansMessage, setAdminPlansMessage] = useState("");
   const [loadingAdminPlans, setLoadingAdminPlans] = useState(false);
@@ -897,6 +931,13 @@ function App() {
   const [adminExternalFilterType, setAdminExternalFilterType] = useState("todos");
   const [adminExternalFilterCache, setAdminExternalFilterCache] = useState("todos");
   const [adminExternalSearch, setAdminExternalSearch] = useState("");
+  const [adminActivityData, setAdminActivityData] = useState(null);
+  const [adminActivityMessage, setAdminActivityMessage] = useState("");
+  const [adminActivityPeriod, setAdminActivityPeriod] = useState("7");
+  const [adminActivityType, setAdminActivityType] = useState("todos");
+  const [adminActivitySearch, setAdminActivitySearch] = useState("");
+  const [loadingAdminActivity, setLoadingAdminActivity] = useState(false);
+  const [combinedConsultationStatus, setCombinedConsultationStatus] = useState(null);
   const [showExternalConsultationHistory, setShowExternalConsultationHistory] = useState(false);
   const [externalConsultationHistory, setExternalConsultationHistory] = useState([]);
   const [externalConsultationHistoryMessage, setExternalConsultationHistoryMessage] = useState("");
@@ -1052,6 +1093,28 @@ function App() {
     }
   }
 
+  async function registrarVisitaSite(currentSession) {
+    try {
+      const sessionKey = getAnalyticsSessionKey();
+      const headers = { "Content-Type": "application/json" };
+
+      if (currentSession?.access_token) {
+        headers.Authorization = `Bearer ${currentSession.access_token}`;
+      }
+
+      await fetch("/api/analytics/visit", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          sessionKey,
+          path: window.location.pathname.slice(0, 250),
+        }),
+      });
+    } catch (error) {
+      console.log("Registro de visita indisponível:", error);
+    }
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -1087,8 +1150,13 @@ function App() {
       carregarMensagensSuporteAdmin();
       carregarLogsSistema();
       carregarConsultasExternasAdmin();
+      carregarAtividadeAdmin();
     }
   }, [session, profile]);
+
+  useEffect(() => {
+    registrarVisitaSite(session);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (profile) {
@@ -1800,6 +1868,7 @@ function App() {
     setLoading(true);
     setSearchMessage("");
     setSearchResults([]);
+    setCombinedConsultationStatus(null);
 
     try {
       const { data: limitData, error: limitError } = await supabase.rpc("can_start_consultation", {
@@ -1872,7 +1941,7 @@ function App() {
     }
 
     const confirmed = window.confirm(
-      `${consultationLabel}\n\nEsta consulta consome ${creditsNeeded} créditos. O resultado vem de fonte externa integrada e deve ser usado apenas como apoio à análise. Deseja continuar?`
+      `${consultationLabel}\n\nEsta consulta consome ${creditsNeeded} créditos e também verifica a base interna sem cobrança adicional. O resultado externo deve ser usado apenas como apoio à análise. Deseja continuar?`
     );
 
     if (!confirmed) return;
@@ -1880,6 +1949,7 @@ function App() {
     setLoading(true);
     setSearchMessage("");
     setSearchResults([]);
+    setCombinedConsultationStatus(null);
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1912,18 +1982,33 @@ function App() {
         return;
       }
 
-      const results = (data.results || []).map((item, index) => ({
+      const externalResults = (data.results || []).map((item, index) => ({
         ...item,
-        id: `${data.consultationType || consultationMode}-${Date.now()}-${index}`,
+        id: `${data.consultationType || consultationMode}-${Date.now()}-external-${index}`,
         result_origin: "external",
         consultation_label: data.consultationLabel || consultationLabel,
         credits_charged: data.creditsCharged || creditsNeeded,
         cache_hit: data.cacheHit || item.cached || false,
       }));
 
-      setSearchResults(results);
+      const internalResults = (data.internalResults || []).map((item, index) => ({
+        ...item,
+        id: item.id || `internal-included-${Date.now()}-${index}`,
+        result_origin: "internal",
+        included_with_external: true,
+      }));
+
+      setSearchResults([...externalResults, ...internalResults]);
+      setCombinedConsultationStatus({
+        externalCompleted: externalResults.length > 0,
+        internalVerified: data.internalCheckSuccess !== false,
+        internalCount: internalResults.length,
+        creditsCharged: data.creditsCharged || creditsNeeded,
+      });
       setSearchMessage(
-        `${data.consultationLabel || consultationLabel} realizada com sucesso. Resultado obtido em fonte externa.`
+        data.internalCheckSuccess === false
+          ? `${data.consultationLabel || consultationLabel} concluída, mas a base interna ficou temporariamente indisponível. Nenhum crédito adicional foi cobrado.`
+          : `${data.consultationLabel || consultationLabel} concluída. A base interna também foi verificada sem cobrança adicional.`
       );
 
       await loadProfile(session.user.id);
@@ -1933,6 +2018,32 @@ function App() {
     }
 
     setLoading(false);
+  }
+
+  async function carregarAtividadeAdmin(days = adminActivityPeriod) {
+    if (profile?.role !== "admin") return;
+
+    setLoadingAdminActivity(true);
+    setAdminActivityMessage("Carregando visitas e consultas...");
+
+    const selectedDays = Math.max(1, Math.min(Number(days || 7), 90));
+    const { data, error } = await supabase.rpc("get_admin_activity_overview", {
+      p_days: selectedDays,
+    });
+
+    if (error) {
+      console.log("Erro ao carregar atividade administrativa:", error);
+      setAdminActivityData(null);
+      setAdminActivityMessage(
+        "Não foi possível carregar visitas e consultas. Rode a migração V43 no Supabase."
+      );
+      setLoadingAdminActivity(false);
+      return;
+    }
+
+    setAdminActivityData(data || null);
+    setAdminActivityMessage("");
+    setLoadingAdminActivity(false);
   }
 
   async function carregarConsultasExternasAdmin() {
@@ -3085,6 +3196,23 @@ function App() {
     return typeOk && cacheOk && textOk;
   });
 
+  const adminActivitySummary = adminActivityData?.summary || {};
+  const adminDailyVisits = Array.isArray(adminActivityData?.daily_visits) ? adminActivityData.daily_visits : [];
+  const adminActivityConsultations = (Array.isArray(adminActivityData?.consultations)
+    ? adminActivityData.consultations
+    : []
+  ).filter((item) => {
+    const typeOk =
+      adminActivityType === "todos" ||
+      (adminActivityType === "internal" && item.source === "internal" && item.consultation_type !== "internal_included") ||
+      (adminActivityType === "internal_included" && item.consultation_type === "internal_included") ||
+      (adminActivityType === "external" && item.source === "external");
+    const search = String(adminActivitySearch || "").trim().toLowerCase();
+    const searchable = `${item.user_name || ""} ${item.user_email || ""} ${item.searched_display || ""}`.toLowerCase();
+    return typeOk && (!search || searchable.includes(search));
+  });
+  const maxDailyVisits = Math.max(1, ...adminDailyVisits.map((item) => Number(item.visits || 0)));
+
   if (session && !profile) {
     return (
       <div className="page">
@@ -3206,6 +3334,7 @@ function App() {
                 setSearchResults([]);
                 setSearchText("");
                 setConsultationMode("internal");
+                setCombinedConsultationStatus(null);
                 setShowSearchForm(true);
               }}
             >
@@ -3254,81 +3383,306 @@ function App() {
           </section>
 
           {profile.role === "admin" && (
-            <section className="adminCategoryMenu" aria-label="Menus separados do painel administrativo">
-              <button
-                type="button"
-                className={adminActiveSection === "financeiro" ? "active financeShortcut" : "financeShortcut"}
-                onClick={() => setAdminActiveSection("financeiro")}
-              >
-                <span>Financeiro</span>
-                <strong>Receita, PIX e pagamentos</strong>
-              </button>
+            <section className="adminNavigationPanel" aria-label="Navegação do painel administrativo">
+              <div className="adminNavigationIntro">
+                <div>
+                  <span>Administração</span>
+                  <h2>Escolha o que deseja acompanhar</h2>
+                  <p>Os itens estão separados por atividade para facilitar o uso no celular e no computador.</p>
+                </div>
+              </div>
 
-              <button
-                type="button"
-                className={adminActiveSection === "planos" ? "active plansShortcut" : "plansShortcut"}
-                onClick={() => setAdminActiveSection("planos")}
-              >
-                <span>Planos</span>
-                <strong>Preços, créditos e ativação</strong>
-              </button>
+              <div className="adminMenuGroup">
+                <strong className="adminMenuGroupTitle">Acompanhamento</strong>
+                <div className="adminCategoryMenu">
+                  <button
+                    type="button"
+                    className={adminActiveSection === "resumo" ? "active overviewShortcut" : "overviewShortcut"}
+                    onClick={() => setAdminActiveSection("resumo")}
+                  >
+                    <span>Visão geral</span>
+                    <strong>Resumo do que precisa de atenção</strong>
+                  </button>
 
-              <button
-                type="button"
-                className={adminActiveSection === "usuarios" ? "active usersShortcut" : "usersShortcut"}
-                onClick={() => setAdminActiveSection("usuarios")}
-              >
-                <span>Usuários</span>
-                <strong>Créditos, planos e contas</strong>
-              </button>
+                  <button
+                    type="button"
+                    className={adminActiveSection === "atividade" ? "active activityShortcut" : "activityShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("atividade");
+                      carregarAtividadeAdmin();
+                    }}
+                  >
+                    <span>Visitas e consultas</span>
+                    <strong>Dia, semana, usuários e buscas</strong>
+                  </button>
+                </div>
+              </div>
 
-              <button
-                type="button"
-                className={adminActiveSection === "ocorrencias" ? "active recordsShortcut" : "recordsShortcut"}
-                onClick={() => setAdminActiveSection("ocorrencias")}
-              >
-                <span>Ocorrências</span>
-                <strong>Aprovação, análise e registros</strong>
-              </button>
+              <div className="adminMenuGroup">
+                <strong className="adminMenuGroupTitle">Operação</strong>
+                <div className="adminCategoryMenu">
+                  <button
+                    type="button"
+                    className={adminActiveSection === "ocorrencias" ? "active recordsShortcut" : "recordsShortcut"}
+                    onClick={() => setAdminActiveSection("ocorrencias")}
+                  >
+                    <span>Ocorrências</span>
+                    <strong>Aprovar, editar e revisar registros</strong>
+                  </button>
 
-              <button
-                type="button"
-                className={adminActiveSection === "consulta_externa" ? "active externalShortcut" : "externalShortcut"}
-                onClick={() => {
-                  setAdminActiveSection("consulta_externa");
-                  carregarConsultasExternasAdmin();
-                }}
-              >
-                <span>Consulta Externa</span>
-                <strong>BigDataCorp, cache e créditos</strong>
-              </button>
+                  <button
+                    type="button"
+                    className={adminActiveSection === "usuarios" ? "active usersShortcut" : "usersShortcut"}
+                    onClick={() => setAdminActiveSection("usuarios")}
+                  >
+                    <span>Usuários</span>
+                    <strong>Contas, créditos e permissões</strong>
+                  </button>
 
-              <button
-                type="button"
-                className={adminActiveSection === "relatorios" ? "active reportsShortcut" : "reportsShortcut"}
-                onClick={() => setAdminActiveSection("relatorios")}
-              >
-                <span>Relatórios</span>
-                <strong>Exportações em CSV</strong>
-              </button>
+                  <button
+                    type="button"
+                    className={adminActiveSection === "suporte" ? "active supportShortcut" : "supportShortcut"}
+                    onClick={() => setAdminActiveSection("suporte")}
+                  >
+                    <span>Suporte</span>
+                    <strong>Mensagens e solicitações recebidas</strong>
+                  </button>
+                </div>
+              </div>
 
-              <button
-                type="button"
-                className={adminActiveSection === "suporte" ? "active supportShortcut" : "supportShortcut"}
-                onClick={() => setAdminActiveSection("suporte")}
-              >
-                <span>Suporte</span>
-                <strong>Mensagens recebidas</strong>
-              </button>
+              <div className="adminMenuGroup">
+                <strong className="adminMenuGroupTitle">Financeiro e controle</strong>
+                <div className="adminCategoryMenu">
+                  <button
+                    type="button"
+                    className={adminActiveSection === "financeiro" ? "active financeShortcut" : "financeShortcut"}
+                    onClick={() => setAdminActiveSection("financeiro")}
+                  >
+                    <span>Financeiro</span>
+                    <strong>Receita, PIX e pagamentos</strong>
+                  </button>
 
-              <button
-                type="button"
-                className={adminActiveSection === "auditoria" ? "active auditShortcut" : "auditShortcut"}
-                onClick={() => setAdminActiveSection("auditoria")}
-              >
-                <span>Auditoria</span>
-                <strong>Logs do sistema</strong>
-              </button>
+                  <button
+                    type="button"
+                    className={adminActiveSection === "planos" ? "active plansShortcut" : "plansShortcut"}
+                    onClick={() => setAdminActiveSection("planos")}
+                  >
+                    <span>Planos</span>
+                    <strong>Preços, créditos e ativação</strong>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={adminActiveSection === "relatorios" ? "active reportsShortcut" : "reportsShortcut"}
+                    onClick={() => setAdminActiveSection("relatorios")}
+                  >
+                    <span>Relatórios</span>
+                    <strong>Exportações para conferência</strong>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={adminActiveSection === "auditoria" ? "active auditShortcut" : "auditShortcut"}
+                    onClick={() => setAdminActiveSection("auditoria")}
+                  >
+                    <span>Auditoria</span>
+                    <strong>Logs e ações administrativas</strong>
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {profile.role === "admin" && adminActiveSection === "resumo" && (
+            <section className="adminPanel adminArea adminOverviewArea" id="admin-resumo">
+              <div className="adminHeader">
+                <div>
+                  <span>Visão geral</span>
+                  <h2>Resumo do painel administrativo</h2>
+                  <p>Veja rapidamente o movimento do site e os pontos que precisam de atenção.</p>
+                </div>
+
+                <button className="btn secondary" onClick={() => carregarAtividadeAdmin()} disabled={loadingAdminActivity}>
+                  {loadingAdminActivity ? "Atualizando..." : "Atualizar resumo"}
+                </button>
+              </div>
+
+              {adminActivityMessage && <div className="authMessage">{adminActivityMessage}</div>}
+
+              <section className="adminMiniDashboard overviewMiniDashboard">
+                <button type="button" className="adminStatCard featured clickable" onClick={() => setAdminActiveSection("atividade")}>
+                  <small>Visitas hoje</small>
+                  <strong>{adminActivitySummary.visits_today || 0}</strong>
+                  <span>Acessos contabilizados no dia</span>
+                </button>
+                <button type="button" className="adminStatCard clickable" onClick={() => setAdminActiveSection("atividade")}>
+                  <small>Visitas em 7 dias</small>
+                  <strong>{adminActivitySummary.visits_7_days || 0}</strong>
+                  <span>Movimento da última semana</span>
+                </button>
+                <button type="button" className="adminStatCard success clickable" onClick={() => setAdminActiveSection("atividade")}>
+                  <small>Consultas hoje</small>
+                  <strong>{adminActivitySummary.consultations_today || 0}</strong>
+                  <span>Internas e externas</span>
+                </button>
+                <button type="button" className="adminStatCard clickable" onClick={() => setAdminActiveSection("atividade")}>
+                  <small>Consultas em 7 dias</small>
+                  <strong>{adminActivitySummary.consultations_7_days || 0}</strong>
+                  <span>Atividade da semana</span>
+                </button>
+                <button type="button" className="adminStatCard warning clickable" onClick={() => setAdminActiveSection("ocorrencias")}>
+                  <small>Ocorrências pendentes</small>
+                  <strong>{adminRecordStats.pendentes}</strong>
+                  <span>Aguardando sua análise</span>
+                </button>
+                <button type="button" className="adminStatCard clickable" onClick={() => setAdminActiveSection("usuarios")}>
+                  <small>Usuários cadastrados</small>
+                  <strong>{adminUserStats.total}</strong>
+                  <span>Contas na plataforma</span>
+                </button>
+              </section>
+
+              <div className="adminQuickActions">
+                <button className="btn primary" type="button" onClick={() => setAdminActiveSection("ocorrencias")}>Analisar ocorrências</button>
+                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("atividade")}>Ver visitas e consultas</button>
+                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("suporte")}>Abrir suporte</button>
+                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("financeiro")}>Abrir financeiro</button>
+              </div>
+            </section>
+          )}
+
+          {profile.role === "admin" && adminActiveSection === "atividade" && (
+            <section className="adminPanel adminArea activityArea" id="admin-atividade">
+              <div className="adminHeader">
+                <div>
+                  <span>Visitas e consultas</span>
+                  <h2>Atividade do site</h2>
+                  <p>Confira quantas visitas ocorreram e qual usuário realizou cada consulta.</p>
+                </div>
+
+                <button className="btn secondary" onClick={() => carregarAtividadeAdmin()} disabled={loadingAdminActivity}>
+                  {loadingAdminActivity ? "Atualizando..." : "Atualizar atividade"}
+                </button>
+              </div>
+
+              {adminActivityMessage && <div className="authMessage">{adminActivityMessage}</div>}
+
+              <div className="adminFilters activityFilters">
+                <select
+                  value={adminActivityPeriod}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setAdminActivityPeriod(value);
+                    carregarAtividadeAdmin(value);
+                  }}
+                >
+                  <option value="1">Hoje</option>
+                  <option value="7">Últimos 7 dias</option>
+                  <option value="30">Últimos 30 dias</option>
+                  <option value="90">Últimos 90 dias</option>
+                </select>
+                <select value={adminActivityType} onChange={(e) => setAdminActivityType(e.target.value)}>
+                  <option value="todos">Todas as consultas</option>
+                  <option value="internal">Somente internas</option>
+                  <option value="internal_included">Internas incluídas na externa</option>
+                  <option value="external">Somente externas</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Buscar usuário, e-mail ou CPF final"
+                  value={adminActivitySearch}
+                  onChange={(e) => setAdminActivitySearch(e.target.value)}
+                />
+              </div>
+
+              <section className="adminMiniDashboard activityMiniDashboard">
+                <div className="adminStatCard featured">
+                  <small>Visitas hoje</small>
+                  <strong>{adminActivitySummary.visits_today || 0}</strong>
+                  <span>Uma sessão por dia</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Visitas em 7 dias</small>
+                  <strong>{adminActivitySummary.visits_7_days || 0}</strong>
+                  <span>Última semana</span>
+                </div>
+                <div className="adminStatCard success">
+                  <small>Consultas no período</small>
+                  <strong>{adminActivitySummary.consultations_period || 0}</strong>
+                  <span>Internas e externas</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Consultas internas</small>
+                  <strong>{adminActivitySummary.internal_period || 0}</strong>
+                  <span>Inclui buscas combinadas</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Consultas externas</small>
+                  <strong>{adminActivitySummary.external_period || 0}</strong>
+                  <span>Fonte externa integrada</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Usuários ativos</small>
+                  <strong>{adminActivitySummary.active_users_period || 0}</strong>
+                  <span>Realizaram consulta</span>
+                </div>
+              </section>
+
+              <div className="adminActivityLayout">
+                <section className="adminVisitsChart" aria-label="Visitas por dia">
+                  <div className="adminSubHeader">
+                    <div>
+                      <h3>Visitas por dia</h3>
+                      <p>Cada barra representa as sessões contabilizadas naquele dia.</p>
+                    </div>
+                  </div>
+                  <div className="visitBars">
+                    {adminDailyVisits.length === 0 && <div className="adminEmpty">Nenhuma visita contabilizada no período.</div>}
+                    {adminDailyVisits.map((day) => (
+                      <div className="visitBarRow" key={day.date}>
+                        <span>{new Date(`${day.date}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+                        <div className="visitBarTrack">
+                          <div className="visitBarFill" style={{ width: `${Math.max(4, (Number(day.visits || 0) / maxDailyVisits) * 100)}%` }} />
+                        </div>
+                        <strong>{day.visits || 0}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="adminConsultationsList">
+                  <div className="adminSubHeader">
+                    <div>
+                      <h3>Consultas realizadas</h3>
+                      <p>CPF aparece apenas com os números finais para reduzir exposição de dados.</p>
+                    </div>
+                  </div>
+
+                  <div className="adminList compactList">
+                    {adminActivityConsultations.length === 0 && (
+                      <div className="adminEmpty">Nenhuma consulta encontrada para os filtros selecionados.</div>
+                    )}
+                    {adminActivityConsultations.map((item) => (
+                      <div className="adminRecord consultationAuditCard" key={`${item.source}-${item.id}`}>
+                        <div className="adminRecordTop">
+                          <h3>{adminConsultationLabel(item.consultation_type, item.source)}</h3>
+                          <span className={`statusBadge ${item.status === "error" ? "reprovado" : "aprovado"}`}>
+                            {item.status === "error" ? "Erro" : "Concluída"}
+                          </span>
+                        </div>
+                        <p><strong>Usuário:</strong> {item.user_name || "Usuário sem nome"}</p>
+                        <p><strong>E-mail:</strong> {item.user_email || "Não informado"}</p>
+                        <p><strong>Busca:</strong> {item.searched_display || "Não informado"}</p>
+                        <p><strong>Resultados:</strong> {item.results_count || 0}</p>
+                        <p><strong>Créditos:</strong> {item.credits_charged || 0}</p>
+                        {item.included_with_external && <p className="includedConsultNote"><strong>Incluída:</strong> verificação interna feita junto com a externa, sem cobrança adicional.</p>}
+                        {item.source === "external" && <p><strong>Cache:</strong> {item.cache_hit ? "Sim" : "Não"}</p>}
+                        <p><strong>Data:</strong> {formatDate(item.created_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
             </section>
           )}
 
@@ -4392,29 +4746,23 @@ function App() {
             <>
               <button
                 type="button"
-                className={adminActiveSection === "financeiro" ? "active" : ""}
-                onClick={() => setAdminActiveSection("financeiro")}
+                className={adminActiveSection === "resumo" ? "active" : ""}
+                onClick={() => setAdminActiveSection("resumo")}
               >
-                <span>▣</span>
-                Financeiro
+                <span>⌂</span>
+                Resumo
               </button>
 
               <button
                 type="button"
-                className={adminActiveSection === "planos" ? "active" : ""}
-                onClick={() => setAdminActiveSection("planos")}
+                className={adminActiveSection === "atividade" ? "active" : ""}
+                onClick={() => {
+                  setAdminActiveSection("atividade");
+                  carregarAtividadeAdmin();
+                }}
               >
-                <span>R$</span>
-                Planos
-              </button>
-
-              <button
-                type="button"
-                className={adminActiveSection === "usuarios" ? "active" : ""}
-                onClick={() => setAdminActiveSection("usuarios")}
-              >
-                <span>◎</span>
-                Usuários
+                <span>▥</span>
+                Atividade
               </button>
 
               <button
@@ -4428,11 +4776,20 @@ function App() {
 
               <button
                 type="button"
-                className={adminActiveSection === "consulta_externa" || adminActiveSection === "relatorios" || adminActiveSection === "suporte" || adminActiveSection === "auditoria" ? "active" : ""}
-                onClick={() => setAdminActiveSection(adminActiveSection === "consulta_externa" ? "relatorios" : adminActiveSection === "relatorios" ? "suporte" : adminActiveSection === "suporte" ? "auditoria" : "consulta_externa")}
+                className={adminActiveSection === "usuarios" ? "active" : ""}
+                onClick={() => setAdminActiveSection("usuarios")}
               >
-                <span>☰</span>
-                Mais
+                <span>◎</span>
+                Usuários
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "financeiro" ? "active" : ""}
+                onClick={() => setAdminActiveSection("financeiro")}
+              >
+                <span>R$</span>
+                Financeiro
               </button>
             </>
           ) : (
@@ -4447,6 +4804,7 @@ function App() {
                 setSearchResults([]);
                 setSearchText("");
                 setConsultationMode("internal");
+                setCombinedConsultationStatus(null);
                 setShowSearchForm(true);
               }}>
                 <span>⌕</span>
@@ -5202,7 +5560,12 @@ function App() {
                 <button
                   type="button"
                   className={consultationMode === "internal" ? "consultTypeCard active" : "consultTypeCard"}
-                  onClick={() => setConsultationMode("internal")}
+                  onClick={() => {
+                    setConsultationMode("internal");
+                    setSearchResults([]);
+                    setSearchMessage("");
+                    setCombinedConsultationStatus(null);
+                  }}
                 >
                   <strong>Consulta Interna</strong>
                   <span>1 crédito</span>
@@ -5212,11 +5575,16 @@ function App() {
                 <button
                   type="button"
                   className={consultationMode === "external_advanced" ? "consultTypeCard active featuredExternalCompleteV36" : "consultTypeCard featuredExternalCompleteV36"}
-                  onClick={() => setConsultationMode("external_advanced")}
+                  onClick={() => {
+                    setConsultationMode("external_advanced");
+                    setSearchResults([]);
+                    setSearchMessage("");
+                    setCombinedConsultationStatus(null);
+                  }}
                 >
                   <strong>Consulta Externa Completa</strong>
                   <span>3 créditos</span>
-                  <small>Dados pessoais, contatos, vínculos e processos judiciais nacionais.</small>
+                  <small>Fonte externa completa + verificação da base interna, sem crédito extra.</small>
                 </button>
               </div>
 
@@ -5235,7 +5603,7 @@ function App() {
                 <p className="documentPublicNotice">
                   {consultationMode === "internal"
                     ? "Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras."
-                    : "Consulta externa completa: dados pessoais, contatos, vínculos e processos judiciais nacionais."}
+                    : "Consulta externa completa: consulta a fonte externa e também verifica a base interna. Total: 3 créditos."}
                 </p>
 
                 <button className="btn primary full" disabled={loading}>
@@ -5245,6 +5613,36 @@ function App() {
 
               {searchMessage && (
                 <div className="authMessage">{searchMessage}</div>
+              )}
+
+              {combinedConsultationStatus && (
+                <div className="combinedConsultationSummary">
+                  <div>
+                    <span>Consulta combinada concluída</span>
+                    <strong>Fonte externa + base interna LocaCheck</strong>
+                  </div>
+                  <div className="combinedConsultationChecks">
+                    <span className="completed">✓ Externa concluída</span>
+                    <span className={combinedConsultationStatus.internalVerified ? "completed" : "warning"}>
+                      {combinedConsultationStatus.internalVerified ? "✓ Interna verificada" : "! Interna indisponível"}
+                    </span>
+                    <span>{combinedConsultationStatus.internalCount || 0} ocorrência(s) interna(s)</span>
+                    <span>{combinedConsultationStatus.creditsCharged || 3} créditos no total</span>
+                  </div>
+                </div>
+              )}
+
+              {combinedConsultationStatus && combinedConsultationStatus.internalVerified && Number(combinedConsultationStatus.internalCount || 0) === 0 && (
+                <div className="resultCard internalEmptyResultCard">
+                  <div className="internalResultSourceHeader">
+                    <div>
+                      <span>Base interna LocaCheck</span>
+                      <strong>Verificação concluída</strong>
+                    </div>
+                    <span className="internalSourcePill">Nenhum registro</span>
+                  </div>
+                  <p>Nenhuma ocorrência aprovada foi encontrada na base interna para o CPF consultado.</p>
+                </div>
               )}
 
               {searchResults.length > 0 && (
@@ -5363,6 +5761,13 @@ function App() {
                         </>
                       ) : (
                         <>
+                          <div className="internalResultSourceHeader">
+                            <div>
+                              <span>Base interna LocaCheck</span>
+                              <strong>{item.included_with_external ? "Verificação incluída na consulta externa" : "Consulta interna"}</strong>
+                            </div>
+                            <span className="internalSourcePill">Registro interno</span>
+                          </div>
                           <h3>{item.nome}</h3>
 
                           <p>

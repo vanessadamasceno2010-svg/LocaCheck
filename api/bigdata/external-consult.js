@@ -514,6 +514,96 @@ async function insertSafe(table, payload) {
   if (error) console.error(`Erro ao inserir em ${table}:`, error);
 }
 
+async function loadInternalResultsForCpf(cpf, userId, externalLogId = null) {
+  const cpf4 = onlyDigits(cpf).slice(-4);
+  const selectFields = 'id,nome,cpf_full,cpf4,cidade,tipos,descricao,imagem_url,created_at,approved_at';
+
+  const [exactResponse, legacyResponse] = await Promise.all([
+    supabaseAdmin
+      .from('records')
+      .select(selectFields)
+      .ilike('status', 'aprovado')
+      .eq('cpf_full', cpf)
+      .order('approved_at', { ascending: false, nullsFirst: false })
+      .limit(20),
+    supabaseAdmin
+      .from('records')
+      .select(selectFields)
+      .ilike('status', 'aprovado')
+      .eq('cpf4', cpf4)
+      .order('approved_at', { ascending: false, nullsFirst: false })
+      .limit(20),
+  ]);
+
+  if (exactResponse.error) console.error('Erro ao buscar CPF exato na base interna:', exactResponse.error);
+  if (legacyResponse.error) console.error('Erro ao buscar CPF final na base interna:', legacyResponse.error);
+
+  if (exactResponse.error && legacyResponse.error) {
+    throw new Error('A base interna não respondeu à consulta combinada.');
+  }
+
+  const safeLegacyResults = (legacyResponse.data || []).filter((item) => {
+    const storedCpf = onlyDigits(item?.cpf_full || '');
+    return !storedCpf || storedCpf === cpf;
+  });
+
+  const merged = [...(exactResponse.data || []), ...safeLegacyResults];
+  const seen = new Set();
+  const results = merged
+    .filter((item) => {
+      if (!item?.id || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    })
+    .slice(0, 20)
+    .map((item) => {
+      const { cpf_full: _privateCpf, ...safeItem } = item;
+      return {
+        ...safeItem,
+        cpf_masked: cpf4 ? `***.***.***-${cpf4}` : 'CPF não informado',
+        documento_url: item.imagem_url || null,
+        result_origin: 'internal',
+        included_with_external: true,
+      };
+    });
+
+  const extendedLog = {
+    user_id: userId,
+    searched_text: `CPF final ${cpf4}`,
+    searched_cpf: cpf4,
+    results_count: results.length,
+    credit_charged: false,
+    used_unlimited: false,
+    consultation_type: 'internal_included',
+    included_with_external: true,
+    external_log_id: externalLogId,
+    created_at: new Date().toISOString(),
+  };
+
+  const { error: extendedLogError } = await supabaseAdmin
+    .from('consultation_logs')
+    .insert(extendedLog);
+
+  if (extendedLogError) {
+    console.error('Erro ao registrar consulta interna incluída:', extendedLogError);
+    const { error: fallbackLogError } = await supabaseAdmin
+      .from('consultation_logs')
+      .insert({
+        user_id: userId,
+        searched_text: `CPF final ${cpf4}`,
+        searched_cpf: cpf4,
+        results_count: results.length,
+        credit_charged: false,
+        used_unlimited: false,
+        created_at: new Date().toISOString(),
+      });
+
+    if (fallbackLogError) console.error('Erro no fallback do log interno:', fallbackLogError);
+  }
+
+  return results;
+}
+
 
 function getServerAccountStatus(profile) {
   const rawStatus = String(
@@ -763,14 +853,27 @@ export default async function handler(req, res) {
       },
     });
 
+    let internalResults = [];
+    let internalCheckSuccess = true;
+    try {
+      internalResults = await loadInternalResultsForCpf(cpf, user.id, logData?.id || null);
+    } catch (internalError) {
+      internalCheckSuccess = false;
+      console.error('Erro ao incluir verificação da base interna:', internalError);
+    }
+
     return res.status(200).json({
       success: true,
-      message: 'Consulta externa realizada com sucesso.',
+      message: 'Consulta externa e verificação interna realizadas com sucesso.',
       consultationType: config.type,
       consultationLabel: config.label,
       creditsCharged: config.credits,
       cacheHit,
       results: [resultSummary],
+      internalResults,
+      internalResultsCount: internalResults.length,
+      internalIncluded: true,
+      internalCheckSuccess,
     });
   } catch (error) {
     console.error('Erro inesperado na consulta externa:', error);
