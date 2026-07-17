@@ -157,6 +157,67 @@ function getUserSecurityBlock(session, profile) {
 }
 
 
+function getUserAccountStatus(profile) {
+  const rawStatus = String(
+    profile?.account_status ||
+      profile?.status_conta ||
+      profile?.user_status ||
+      profile?.status ||
+      "ativo"
+  ).toLowerCase();
+
+  if (profile?.is_blocked === true || profile?.blocked === true || rawStatus === "bloqueado" || rawStatus === "blocked") {
+    return "bloqueado";
+  }
+
+  if (rawStatus === "pendente" || rawStatus === "pending" || rawStatus === "aguardando") {
+    return "pendente";
+  }
+
+  return "ativo";
+}
+
+function isSessionEmailConfirmed(session) {
+  const user = session?.user;
+  if (!user) return false;
+
+  const provider = String(user?.app_metadata?.provider || "email").toLowerCase();
+  if (provider === "google") return true;
+
+  return Boolean(user.email_confirmed_at || user.confirmed_at || user.user_metadata?.email_verified);
+}
+
+function getUserSecurityBlock(session, profile) {
+  if (!session?.user || !profile) {
+    return "Faça login novamente para continuar.";
+  }
+
+  if (String(profile?.role || "user").toLowerCase() === "admin") {
+    return "";
+  }
+
+  const status = getUserAccountStatus(profile);
+  if (status === "bloqueado") {
+    return profile?.blocked_reason || "Sua conta está bloqueada. Entre em contato com o suporte.";
+  }
+
+  if (status === "pendente") {
+    return "Sua conta ainda está em análise. Aguarde a liberação do administrador.";
+  }
+
+  if (!isSessionEmailConfirmed(session)) {
+    return "Confirme seu e-mail antes de realizar consultas. Verifique sua caixa de entrada ou spam.";
+  }
+
+  const whatsappDigits = onlyDigits(profile?.whatsapp || "");
+  if (whatsappDigits.length < 10) {
+    return "Complete seu perfil com um WhatsApp válido antes de realizar consultas.";
+  }
+
+  return "";
+}
+
+
 function onlyDigits(value) {
   return String(value || "").replace(/\D/g, "");
 }
@@ -209,6 +270,38 @@ function formatWhatsappInput(value) {
 
 function isValidWhatsapp(value) {
   const digits = onlyDigits(value);
+ atualiza43
+
+
+  if (digits.length !== 10 && digits.length !== 11) return false;
+  if (digits.length === 11 && digits[2] !== "9") return false;
+  if (/^(\d)\1+$/.test(digits)) return false;
+
+  return true;
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  const emailText = normalizeEmail(value);
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailText);
+}
+
+function looksLikeCpfSearch(value) {
+  const text = String(value || "").trim();
+  const digits = onlyDigits(text);
+
+  if (digits.length === 0) return false;
+  if (/^\d+$/.test(text)) return true;
+  return digits.length !== text.length || digits.length >= 8;
+}
+
+async function solicitarBonusIndicacao(referralCode, newUserId) {
+  const code = String(referralCode || "").trim();
+ main
 
   if (digits.length !== 10 && digits.length !== 11) return false;
   if (digits.length === 11 && digits[2] !== "9") return false;
@@ -358,6 +451,7 @@ function externalConsultationCredits(type) {
   return 1;
 }
 
+ atualiza43
 function adminConsultationLabel(type, source) {
   if (type === "internal_included") return "Base interna incluída";
   if (source === "internal" || type === "internal") return "Consulta interna";
@@ -392,6 +486,8 @@ function getAnalyticsSessionKey() {
   return key;
 }
 
+
+ main
 function externalDatasetLabel(dataset) {
   const clean = String(dataset || "").replace(/\.limit\(.*?\)/g, "");
   const map = {
@@ -845,6 +941,7 @@ function App() {
   const [adminExternalFilterType, setAdminExternalFilterType] = useState("todos");
   const [adminExternalFilterCache, setAdminExternalFilterCache] = useState("todos");
   const [adminExternalSearch, setAdminExternalSearch] = useState("");
+ atualiza43
   const [adminActivityData, setAdminActivityData] = useState(null);
   const [adminActivityMessage, setAdminActivityMessage] = useState("");
   const [adminActivityPeriod, setAdminActivityPeriod] = useState("7");
@@ -852,6 +949,8 @@ function App() {
   const [adminActivitySearch, setAdminActivitySearch] = useState("");
   const [loadingAdminActivity, setLoadingAdminActivity] = useState(false);
   const [combinedConsultationStatus, setCombinedConsultationStatus] = useState(null);
+
+ main
   const [showExternalConsultationHistory, setShowExternalConsultationHistory] = useState(false);
   const [externalConsultationHistory, setExternalConsultationHistory] = useState([]);
   const [externalConsultationHistoryMessage, setExternalConsultationHistoryMessage] = useState("");
@@ -910,6 +1009,45 @@ function App() {
       user?.user_metadata?.name ||
       userEmail ||
       "Usuário";
+ atualiza43
+
+
+    const referralCode =
+      user?.user_metadata?.referral_code ||
+      user?.user_metadata?.ref ||
+      getStoredReferralCode();
+
+    async function aplicarIndicacaoPendente(profileData) {
+      if (!profileData) return profileData;
+
+      if (profileData.referred_by) {
+        removeStoredReferralCode();
+        return profileData;
+      }
+
+      if (!referralCode) return profileData;
+
+      try {
+        const claimData = await solicitarBonusIndicacao(referralCode, userId);
+
+        if (claimData?.success || claimData?.already_applied) {
+          removeStoredReferralCode();
+
+          const { data: refreshedProfile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .maybeSingle();
+
+          return refreshedProfile || profileData;
+        }
+      } catch (error) {
+        console.log("Erro inesperado ao aplicar indicação:", error);
+      }
+
+      return profileData;
+    }
+ main
 
     const { data } = await supabase
       .from("profiles")
@@ -940,7 +1078,12 @@ function App() {
         }
       }
 
+ atualiza43
       setProfile(profileData);
+
+      const updatedProfile = await aplicarIndicacaoPendente(profileData);
+      setProfile(updatedProfile);
+ main
       return;
     }
 
@@ -952,11 +1095,19 @@ function App() {
         email: userEmail || null,
         whatsapp: user?.user_metadata?.whatsapp || "",
         role: "user",
+ atualiza43
         credits: 5,
+
+        credits: 0,
+ main
         consultas: 0,
         account_status: "ativo",
         is_blocked: false,
         blocked_reason: null,
+ atualiza43
+
+        referred_by_code: referralCode || null,
+ main
       })
       .select()
       .single();
@@ -1025,7 +1176,10 @@ function App() {
       carregarMensagensSuporteAdmin();
       carregarLogsSistema();
       carregarConsultasExternasAdmin();
+ atualiza43
       carregarAtividadeAdmin();
+
+ main
     }
   }, [session, profile]);
 
@@ -1391,6 +1545,14 @@ function App() {
 
     const cadastroWhatsappDigits = onlyDigits(whatsapp);
     const cadastroEmailNormalized = normalizeEmail(email);
+ atualiza43
+
+    if (!nome.trim()) {
+      setMessage("Informe seu nome ou nome da empresa.");
+      setLoading(false);
+      return;
+    }
+
 
     if (!nome.trim()) {
       setMessage("Informe seu nome ou nome da empresa.");
@@ -1410,6 +1572,44 @@ function App() {
       return;
     }
 
+    if (senha.trim().length < 6) {
+      setMessage("A senha precisa ter pelo menos 6 caracteres.");
+      setLoading(false);
+      return;
+    }
+
+    const referralCode = getStoredReferralCode();
+
+    const { data: signUpData, error } = await supabase.auth.signUp({
+      email: cadastroEmailNormalized,
+      password: senha,
+      options: {
+        data: {
+          nome: nome.trim(),
+          email: cadastroEmailNormalized,
+          whatsapp: cadastroWhatsappDigits,
+          referral_code: referralCode || null,
+          terms_accepted: true,
+          terms_version: "2026-06-14",
+          terms_accepted_at: new Date().toISOString(),
+        },
+      },
+    });
+ main
+
+    if (!isValidWhatsapp(cadastroWhatsappDigits)) {
+      setMessage("Informe um WhatsApp válido com DDD. Exemplo: (88) 99999-9999.");
+      setLoading(false);
+      return;
+    }
+
+    if (!isValidEmail(cadastroEmailNormalized)) {
+      setMessage("Informe um e-mail válido.");
+      setLoading(false);
+      return;
+    }
+
+ atualiza43
     if (senha.trim().length < 6) {
       setMessage("A senha precisa ter pelo menos 6 caracteres.");
       setLoading(false);
@@ -1436,6 +1636,10 @@ function App() {
     } else {
       setMessage("Cadastro realizado com sucesso. Confirme seu e-mail. Sua conta terá 5 créditos iniciais.");
       showToast("success", "Cadastro realizado", "Confirme seu e-mail. Sua conta terá 5 créditos iniciais.");
+
+      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail para realizar consultas.");
+      showToast("success", "Cadastro realizado", "Confirme seu e-mail para realizar consultas.");
+ main
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -1484,6 +1688,11 @@ function App() {
     setMessage("");
 
     try {
+ atualiza43
+
+      const referralCode = getStoredReferralCode();
+
+ main
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -1503,6 +1712,16 @@ function App() {
         return;
       }
 
+ atualiza43
+
+      if (referralCode) {
+        try {
+          localStorage.setItem("locacheck-referral-code", referralCode);
+        } catch {
+          // Mantém o fluxo mesmo se o navegador bloquear localStorage.
+        }
+      }
+ main
     } catch (error) {
       console.log("Erro ao iniciar login com Google:", error);
       setMessage("Não foi possível iniciar o login com Google. Tente novamente.");
@@ -1700,7 +1919,13 @@ function App() {
     setSearchResults(results);
 
     if (results.length === 0) {
+ atualiza43
       setSearchMessage(INTERNAL_NO_RECORDS_MESSAGE);
+
+      setSearchMessage(
+        "Consulta interna realizada. Nenhum registro aprovado foi encontrado para os dados informados."
+      );
+ main
     } else {
       setSearchMessage(
         `Consulta interna realizada. ${results.length} registro(s) encontrado(s).`
@@ -1729,7 +1954,11 @@ function App() {
     }
 
     const confirmed = window.confirm(
+ atualiza43
       `${consultationLabel}\n\nEsta consulta consome ${creditsNeeded} créditos e também verifica a base interna sem cobrança adicional. O resultado externo deve ser usado apenas como apoio à análise. Deseja continuar?`
+
+      `${consultationLabel}\n\nEsta consulta consome ${creditsNeeded} créditos. O resultado vem de fonte externa integrada e deve ser usado apenas como apoio à análise. Deseja continuar?`
+ main
     );
 
     if (!confirmed) return;
@@ -1737,7 +1966,10 @@ function App() {
     setLoading(true);
     setSearchMessage("");
     setSearchResults([]);
+ atualiza43
     setCombinedConsultationStatus(null);
+=======
+ main
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1770,6 +2002,7 @@ function App() {
         return;
       }
 
+ atualiza43
       const externalResults = (data.results || []).map((item, index) => ({
         ...item,
         id: `${data.consultationType || consultationMode}-${Date.now()}-external-${index}`,
@@ -1798,6 +2031,20 @@ function App() {
         data.internalCheckSuccess === false
           ? `${data.consultationLabel || consultationLabel} concluída, mas a base interna ficou temporariamente indisponível. Nenhum crédito adicional foi cobrado.`
           : `${data.consultationLabel || consultationLabel} concluída. A base interna também foi verificada sem cobrança adicional.`
+=======
+      const results = (data.results || []).map((item, index) => ({
+        ...item,
+        id: `${data.consultationType || consultationMode}-${Date.now()}-${index}`,
+        result_origin: "external",
+        consultation_label: data.consultationLabel || consultationLabel,
+        credits_charged: data.creditsCharged || creditsNeeded,
+        cache_hit: data.cacheHit || item.cached || false,
+      }));
+
+      setSearchResults(results);
+      setSearchMessage(
+        `${data.consultationLabel || consultationLabel} realizada com sucesso. Resultado obtido em fonte externa.`
+ main
       );
 
       await loadProfile(session.user.id);
@@ -1809,6 +2056,7 @@ function App() {
     setLoading(false);
   }
 
+ atualiza43
   async function carregarAtividadeAdmin(days = adminActivityPeriod) {
     if (profile?.role !== "admin") return;
 
@@ -1835,6 +2083,8 @@ function App() {
     setLoadingAdminActivity(false);
   }
 
+=======
+ main
   async function carregarConsultasExternasAdmin() {
     if (profile?.role !== "admin") return;
 
@@ -2981,6 +3231,7 @@ function App() {
       (adminExternalFilterCache === "nao" && !Boolean(log.cache_hit));
     const search = String(adminExternalSearch || "").trim().toLowerCase();
     const userText = `${log.profiles?.nome || ""} ${log.profiles?.email || ""} ${log.user_id || ""}`.toLowerCase();
+ atualiza43
     const cpfText = `${log.cpf_full || ""} ${log.cpf4 || ""}`.toLowerCase();
     const textOk = !search || userText.includes(search) || cpfText.includes(search);
     return typeOk && cacheOk && textOk;
@@ -3003,6 +3254,12 @@ function App() {
   });
   const maxDailyVisits = Math.max(1, ...adminDailyVisits.map((item) => Number(item.visits || 0)));
 
+=======
+    const textOk = !search || userText.includes(search) || String(log.cpf4 || "").includes(search);
+    return typeOk && cacheOk && textOk;
+  });
+
+ main
   if (session && !profile) {
     return (
       <div className="page">
@@ -3124,7 +3381,10 @@ function App() {
                 setSearchResults([]);
                 setSearchText("");
                 setConsultationMode("internal");
+ atualiza43
                 setCombinedConsultationStatus(null);
+
+ main
                 setShowSearchForm(true);
               }}
             >
@@ -3143,6 +3403,16 @@ function App() {
             </button>
 
             <button
+ atualiza43
+
+              className="btn outline large actionReferral"
+              onClick={abrirPainelIndicacoes}
+            >
+              Indique e ganhe créditos
+            </button>
+
+            <button
+ main
               className="btn outline large actionCredits"
               onClick={() => {
                 setShowBuyCredits(true);
@@ -3164,6 +3434,7 @@ function App() {
               </button>
             )}
           </section>
+ atualiza43
 
           {profile.role === "admin" && (
             <section className="adminNavigationPanel" aria-label="Navegação do painel administrativo">
@@ -3221,6 +3492,8 @@ function App() {
                     <span>Usuários</span>
                     <strong>Contas, créditos e permissões</strong>
                   </button>
+=======
+ main
 
                   <button
                     type="button"
@@ -3263,6 +3536,7 @@ function App() {
                     <strong>Exportações para conferência</strong>
                   </button>
 
+ atualiza43
                   <button
                     type="button"
                     className={adminActiveSection === "auditoria" ? "active auditShortcut" : "auditShortcut"}
@@ -3275,6 +3549,28 @@ function App() {
               </div>
             </section>
           )}
+=======
+              <button
+                type="button"
+                className={adminActiveSection === "consulta_externa" ? "active externalShortcut" : "externalShortcut"}
+                onClick={() => {
+                  setAdminActiveSection("consulta_externa");
+                  carregarConsultasExternasAdmin();
+                }}
+              >
+                <span>Consulta Externa</span>
+                <strong>BigDataCorp, cache e créditos</strong>
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "relatorios" ? "active reportsShortcut" : "reportsShortcut"}
+                onClick={() => setAdminActiveSection("relatorios")}
+              >
+                <span>Relatórios</span>
+                <strong>Exportações em CSV</strong>
+              </button>
+ main
 
           {profile.role === "admin" && adminActiveSection === "resumo" && (
             <section className="adminPanel adminArea adminOverviewArea" id="admin-resumo">
@@ -4297,7 +4593,11 @@ function App() {
               <div className="adminFilters externalFilters">
                 <input
                   type="text"
+ atualiza43
                   placeholder="Buscar por usuário, e-mail ou CPF"
+=======
+                  placeholder="Buscar por usuário, e-mail ou CPF final"
+ main
                   value={adminExternalSearch}
                   onChange={(e) => setAdminExternalSearch(e.target.value)}
                 />
@@ -4321,19 +4621,28 @@ function App() {
                 {adminExternalLogsFiltered.map((log) => (
                   <div className="adminRecord" key={log.id}>
                     <div className="adminRecordTop">
+ atualiza43
                       <h3>Consulta Externa</h3>
+
+                      <h3>{externalConsultationLabel(log.consultation_type)}</h3>
+ main
                       <span className={`statusBadge ${log.status === "success" ? "aprovado" : "reprovado"}`}>
                         {log.status}
                       </span>
                     </div>
 
                     <p><strong>Usuário:</strong> {log.profiles?.nome || log.profiles?.email || log.user_id}</p>
+ atualiza43
                     <p>
                       <strong>CPF consultado:</strong>{" "}
                       {log.cpf_full ? formatCpfInput(log.cpf_full) : log.cpf4 ? `CPF final ${log.cpf4}` : "Não informado"}
                     </p>
                     <p><strong>Créditos consumidos:</strong> {log.credits_charged || 0}</p>
                     <p><strong>Saldo após a consulta:</strong> {log.credits_balance_after === null || log.credits_balance_after === undefined ? "Não registrado" : `${log.credits_balance_after} crédito(s)`}</p>
+=======
+                    <p><strong>CPF final:</strong> {log.cpf4 || "----"}</p>
+                    <p><strong>Créditos:</strong> {log.credits_charged || 0}</p>
+ main
                     <p><strong>Cache:</strong> {log.cache_hit ? "Sim" : "Não"}</p>
                     <p><strong>Dados consultados:</strong> {externalDatasetsText(log.datasets)}</p>
                     <p><strong>Data:</strong> {formatDate(log.created_at)}</p>
@@ -4574,8 +4883,13 @@ function App() {
 
               <button
                 type="button"
+ atualiza43
                 className={adminActiveSection === "financeiro" ? "active" : ""}
                 onClick={() => setAdminActiveSection("financeiro")}
+
+                className={adminActiveSection === "consulta_externa" || adminActiveSection === "relatorios" || adminActiveSection === "suporte" || adminActiveSection === "auditoria" ? "active" : ""}
+                onClick={() => setAdminActiveSection(adminActiveSection === "consulta_externa" ? "relatorios" : adminActiveSection === "relatorios" ? "suporte" : adminActiveSection === "suporte" ? "auditoria" : "consulta_externa")}
+ main
               >
                 <span>R$</span>
                 Financeiro
@@ -4593,7 +4907,10 @@ function App() {
                 setSearchResults([]);
                 setSearchText("");
                 setConsultationMode("internal");
+ atualiza43
                 setCombinedConsultationStatus(null);
+=======
+ main
                 setShowSearchForm(true);
               }}>
                 <span>⌕</span>
@@ -4615,6 +4932,51 @@ function App() {
             </>
           )}
         </nav>
+{showExternalConsultationHistory && (
+  <div className="modalOverlay">
+    <div className="recordModal externalHistoryModal">
+      <button
+        className="closeModal"
+        onClick={() => setShowExternalConsultationHistory(false)}
+      >
+        ×
+      </button>
+
+      <h2>Consultas Externas</h2>
+      <p>Acompanhe suas consultas realizadas em fonte externa e os créditos descontados.</p>
+
+      <div className="modalActionsRow">
+        <button className="btn secondary" type="button" onClick={carregarMinhasConsultasExternas}>
+          Atualizar
+        </button>
+      </div>
+
+      {externalConsultationHistoryMessage && (
+        <div className="authMessage">{externalConsultationHistoryMessage}</div>
+      )}
+
+      {externalConsultationHistory.length > 0 && (
+        <div className="resultsBox">
+          {externalConsultationHistory.map((item) => (
+            <div className="resultCard externalHistoryCard" key={item.id}>
+              <div className="adminRecordTop">
+                <h3>{externalConsultationLabel(item.consultation_type)}</h3>
+                <span className="statusBadge aprovado">
+                  Concluída
+                </span>
+              </div>
+              <p><strong>CPF final:</strong> {item.cpf4 || "----"}</p>
+              <p><strong>Créditos descontados:</strong> {item.credits_charged || 0}</p>
+              <p><strong>Dados consultados:</strong> {externalDatasetsText(item.datasets)}</p>
+              <p><strong>Data:</strong> {formatDate(item.created_at)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
 {showExternalConsultationHistory && (
   <div className="modalOverlay">
     <div className="recordModal externalHistoryModal">
@@ -5271,12 +5633,16 @@ function App() {
                 <button
                   type="button"
                   className={consultationMode === "internal" ? "consultTypeCard active" : "consultTypeCard"}
+ atualiza43
                   onClick={() => {
                     setConsultationMode("internal");
                     setSearchResults([]);
                     setSearchMessage("");
                     setCombinedConsultationStatus(null);
                   }}
+=======
+                  onClick={() => setConsultationMode("internal")}
+ main
                 >
                   <strong>Consulta Interna</strong>
                   <span>1 crédito</span>
@@ -5286,6 +5652,7 @@ function App() {
                 <button
                   type="button"
                   className={consultationMode === "external_advanced" ? "consultTypeCard active featuredExternalCompleteV36" : "consultTypeCard featuredExternalCompleteV36"}
+ atualiza43
                   onClick={() => {
                     setConsultationMode("external_advanced");
                     setSearchResults([]);
@@ -5296,6 +5663,13 @@ function App() {
                   <strong>Consulta Externa Completa</strong>
                   <span>3 créditos</span>
                   <small>Fonte externa completa + verificação da base interna, sem crédito extra.</small>
+
+                  onClick={() => setConsultationMode("external_advanced")}
+                >
+                  <strong>Consulta Externa Completa</strong>
+                  <span>3 créditos</span>
+                  <small>Dados pessoais, contatos, vínculos e processos judiciais nacionais.</small>
+ main
                 </button>
               </div>
 
@@ -5314,7 +5688,11 @@ function App() {
                 <p className="documentPublicNotice">
                   {consultationMode === "internal"
                     ? "Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras."
+ atualiza43
                     : "Consulta externa completa: consulta a fonte externa e também verifica a base interna. Total: 3 créditos."}
+
+                    : "Consulta externa completa: dados pessoais, contatos, vínculos e processos judiciais nacionais."}
+ main
                 </p>
 
                 <button className="btn primary full" disabled={loading}>
@@ -5472,6 +5850,7 @@ function App() {
                         </>
                       ) : (
                         <>
+ atualiza43
                           <div className="internalResultSourceHeader">
                             <div>
                               <span>Base interna LocaCheck</span>
@@ -5479,6 +5858,8 @@ function App() {
                             </div>
                             <span className="internalSourcePill">Registro interno</span>
                           </div>
+
+ main
                           <h3>{item.nome}</h3>
 
                           <p>

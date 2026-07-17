@@ -514,6 +514,7 @@ async function insertSafe(table, payload) {
   if (error) console.error(`Erro ao inserir em ${table}:`, error);
 }
 
+ atualiza43
 async function insertExternalConsultationLog(payload) {
   const {
     cpf_full: _cpfFull,
@@ -663,6 +664,7 @@ async function loadInternalResultsForCpf(cpf, userId, externalLogId = null) {
   return results;
 }
 
+ main
 
 function getServerAccountStatus(profile) {
   const rawStatus = String(
@@ -818,16 +820,26 @@ export default async function handler(req, res) {
 
       if (!response.ok) {
         bigDataError = parsed?.message || parsed?.Message || `Erro externo HTTP ${response.status}`;
+ atualiza43
         await insertExternalConsultationLog({
           user_id: user.id,
           cpf_hash: cpfHash,
           cpf4,
           cpf_full: cpf,
+
+        await insertSafe('external_consultation_logs', {
+          user_id: user.id,
+          cpf_hash: cpfHash,
+          cpf4,
+ main
           provider: 'BigDataCorp',
           consultation_type: config.type,
           datasets: config.datasets,
           credits_charged: 0,
+ atualiza43
           credits_balance_after: Number(profile.credits || 0),
+
+ main
           cache_hit: false,
           status: 'error',
           result_summary: {},
@@ -880,6 +892,7 @@ export default async function handler(req, res) {
       description: `${config.label} - CPF ${cpf}`,
     });
 
+ atualiza43
     const { data: logData, error: logError } = await insertExternalConsultationLog({
       user_id: user.id,
       cpf_hash: cpfHash,
@@ -899,13 +912,38 @@ export default async function handler(req, res) {
 
     if (logError) console.error('Erro definitivo ao salvar log externo:', logError);
 
+    const { data: logData, error: logError } = await supabaseAdmin
+      .from('external_consultation_logs')
+      .insert({
+        user_id: user.id,
+        cpf_hash: cpfHash,
+        cpf4,
+        provider: 'BigDataCorp',
+        consultation_type: config.type,
+        datasets: config.datasets,
+        credits_charged: config.credits,
+        cache_hit: cacheHit,
+        status: 'success',
+        result_summary: resultSummary,
+        raw_response: rawResponse,
+        error_message: bigDataError || null,
+      })
+      .select('id')
+      .maybeSingle();
+
+    if (logError) console.error('Erro ao salvar log externo:', logError);
+ main
+
     await insertSafe('activity_logs', {
       user_id: user.id,
       action: 'external_consultation_completed',
       details: {
         consultation_type: config.type,
         credits_charged: config.credits,
+ atualiza43
         credits_balance_after: newCredits,
+
+ main
         cpf4,
         cache_hit: cacheHit,
         datasets: config.datasets,
@@ -913,6 +951,7 @@ export default async function handler(req, res) {
       },
     });
 
+ atualiza43
     let internalResults = [];
     let internalCheckSuccess = true;
     try {
@@ -935,6 +974,16 @@ export default async function handler(req, res) {
       internalResultsCount: internalResults.length,
       internalIncluded: true,
       internalCheckSuccess,
+
+    return res.status(200).json({
+      success: true,
+      message: 'Consulta externa realizada com sucesso.',
+      consultationType: config.type,
+      consultationLabel: config.label,
+      creditsCharged: config.credits,
+      cacheHit,
+      results: [resultSummary],
+ main
     });
   } catch (error) {
     console.error('Erro inesperado na consulta externa:', error);
