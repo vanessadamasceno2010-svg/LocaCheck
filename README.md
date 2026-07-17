@@ -1,4 +1,4 @@
-
+# LocaCheck V44
 
 Versão com:
 
@@ -8,4 +8,16 @@ Versão com:
 - CPF externo completo e saldo após consulta no painel admin;
 - mensagem clara quando a base interna não possui ocorrência.
 
+Leia primeiro:
 
+```text
+AJUSTES-V44-CREDITOS-LOGS-EXTERNOS-SEM-INDICACAO.md
+```
+
+Migração obrigatória:
+
+```text
+MIGRACAO-V44-CREDITOS-LOGS-EXTERNOS-SEM-INDICACAO.sql
+```
+
+Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.
