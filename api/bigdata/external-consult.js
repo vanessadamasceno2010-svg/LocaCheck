@@ -514,6 +514,157 @@ async function insertSafe(table, payload) {
   if (error) console.error(`Erro ao inserir em ${table}:`, error);
 }
 
+ atualiza43
+async function insertExternalConsultationLog(payload) {
+  const {
+    cpf_full: _cpfFull,
+    credits_balance_after: _creditsBalanceAfter,
+    ...legacyPayload
+  } = payload;
+
+  const compatibilityPayload = {
+    ...legacyPayload,
+    consultation_type:
+      legacyPayload.consultation_type === 'external_advanced'
+        ? 'external_complete'
+        : legacyPayload.consultation_type,
+    raw_response: legacyPayload.raw_response || {},
+  };
+
+  // Último fallback: registra somente os dados essenciais de auditoria.
+  // Isso evita perder o histórico caso um retorno bruto muito grande ou um
+  // campo antigo do banco impeça a gravação completa.
+  const minimalCompatibilityPayload = {
+    user_id: compatibilityPayload.user_id,
+    cpf_hash: compatibilityPayload.cpf_hash,
+    cpf4: compatibilityPayload.cpf4,
+    provider: compatibilityPayload.provider || 'BigDataCorp',
+    consultation_type: compatibilityPayload.consultation_type,
+    datasets: compatibilityPayload.datasets || [],
+    credits_charged: compatibilityPayload.credits_charged || 0,
+    cache_hit: Boolean(compatibilityPayload.cache_hit),
+    status: compatibilityPayload.status || 'success',
+    result_summary: compatibilityPayload.result_summary || {},
+    raw_response: {},
+    error_message: compatibilityPayload.error_message || null,
+    created_at: compatibilityPayload.created_at,
+  };
+
+  const attempts = [
+    payload,
+    legacyPayload,
+    compatibilityPayload,
+    minimalCompatibilityPayload,
+  ];
+  let lastError = null;
+
+  for (const candidate of attempts) {
+    const { data, error } = await supabaseAdmin
+      .from('external_consultation_logs')
+      .insert(candidate)
+      .select('id')
+      .maybeSingle();
+
+    if (!error) return { data, error: null };
+
+    lastError = error;
+    console.error('Tentativa de registrar consulta externa falhou:', error);
+  }
+
+  return { data: null, error: lastError };
+}
+
+async function loadInternalResultsForCpf(cpf, userId, externalLogId = null) {
+  const cpf4 = onlyDigits(cpf).slice(-4);
+  const selectFields = 'id,nome,cpf_full,cpf4,cidade,tipos,descricao,imagem_url,created_at,approved_at';
+
+  const [exactResponse, legacyResponse] = await Promise.all([
+    supabaseAdmin
+      .from('records')
+      .select(selectFields)
+      .ilike('status', 'aprovado')
+      .eq('cpf_full', cpf)
+      .order('approved_at', { ascending: false, nullsFirst: false })
+      .limit(20),
+    supabaseAdmin
+      .from('records')
+      .select(selectFields)
+      .ilike('status', 'aprovado')
+      .eq('cpf4', cpf4)
+      .order('approved_at', { ascending: false, nullsFirst: false })
+      .limit(20),
+  ]);
+
+  if (exactResponse.error) console.error('Erro ao buscar CPF exato na base interna:', exactResponse.error);
+  if (legacyResponse.error) console.error('Erro ao buscar CPF final na base interna:', legacyResponse.error);
+
+  if (exactResponse.error && legacyResponse.error) {
+    throw new Error('A base interna não respondeu à consulta combinada.');
+  }
+
+  const safeLegacyResults = (legacyResponse.data || []).filter((item) => {
+    const storedCpf = onlyDigits(item?.cpf_full || '');
+    return !storedCpf || storedCpf === cpf;
+  });
+
+  const merged = [...(exactResponse.data || []), ...safeLegacyResults];
+  const seen = new Set();
+  const results = merged
+    .filter((item) => {
+      if (!item?.id || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    })
+    .slice(0, 20)
+    .map((item) => {
+      const { cpf_full: _privateCpf, ...safeItem } = item;
+      return {
+        ...safeItem,
+        cpf_masked: cpf4 ? `***.***.***-${cpf4}` : 'CPF não informado',
+        documento_url: item.imagem_url || null,
+        result_origin: 'internal',
+        included_with_external: true,
+      };
+    });
+
+  const extendedLog = {
+    user_id: userId,
+    searched_text: `CPF final ${cpf4}`,
+    searched_cpf: cpf4,
+    results_count: results.length,
+    credit_charged: false,
+    used_unlimited: false,
+    consultation_type: 'internal_included',
+    included_with_external: true,
+    external_log_id: externalLogId,
+    created_at: new Date().toISOString(),
+  };
+
+  const { error: extendedLogError } = await supabaseAdmin
+    .from('consultation_logs')
+    .insert(extendedLog);
+
+  if (extendedLogError) {
+    console.error('Erro ao registrar consulta interna incluída:', extendedLogError);
+    const { error: fallbackLogError } = await supabaseAdmin
+      .from('consultation_logs')
+      .insert({
+        user_id: userId,
+        searched_text: `CPF final ${cpf4}`,
+        searched_cpf: cpf4,
+        results_count: results.length,
+        credit_charged: false,
+        used_unlimited: false,
+        created_at: new Date().toISOString(),
+      });
+
+    if (fallbackLogError) console.error('Erro no fallback do log interno:', fallbackLogError);
+  }
+
+  return results;
+}
+
+ main
 
 function getServerAccountStatus(profile) {
   const rawStatus = String(
@@ -669,14 +820,26 @@ export default async function handler(req, res) {
 
       if (!response.ok) {
         bigDataError = parsed?.message || parsed?.Message || `Erro externo HTTP ${response.status}`;
+ atualiza43
+        await insertExternalConsultationLog({
+          user_id: user.id,
+          cpf_hash: cpfHash,
+          cpf4,
+          cpf_full: cpf,
+
         await insertSafe('external_consultation_logs', {
           user_id: user.id,
           cpf_hash: cpfHash,
           cpf4,
+ main
           provider: 'BigDataCorp',
           consultation_type: config.type,
           datasets: config.datasets,
           credits_charged: 0,
+ atualiza43
+          credits_balance_after: Number(profile.credits || 0),
+
+ main
           cache_hit: false,
           status: 'error',
           result_summary: {},
@@ -729,6 +892,26 @@ export default async function handler(req, res) {
       description: `${config.label} - CPF ${cpf}`,
     });
 
+ atualiza43
+    const { data: logData, error: logError } = await insertExternalConsultationLog({
+      user_id: user.id,
+      cpf_hash: cpfHash,
+      cpf4,
+      cpf_full: cpf,
+      provider: 'BigDataCorp',
+      consultation_type: config.type,
+      datasets: config.datasets,
+      credits_charged: config.credits,
+      credits_balance_after: newCredits,
+      cache_hit: cacheHit,
+      status: 'success',
+      result_summary: resultSummary,
+      raw_response: rawResponse,
+      error_message: bigDataError || null,
+    });
+
+    if (logError) console.error('Erro definitivo ao salvar log externo:', logError);
+
     const { data: logData, error: logError } = await supabaseAdmin
       .from('external_consultation_logs')
       .insert({
@@ -749,6 +932,7 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (logError) console.error('Erro ao salvar log externo:', logError);
+ main
 
     await insertSafe('activity_logs', {
       user_id: user.id,
@@ -756,12 +940,40 @@ export default async function handler(req, res) {
       details: {
         consultation_type: config.type,
         credits_charged: config.credits,
+ atualiza43
+        credits_balance_after: newCredits,
+
+ main
         cpf4,
         cache_hit: cacheHit,
         datasets: config.datasets,
         log_id: logData?.id || null,
       },
     });
+
+ atualiza43
+    let internalResults = [];
+    let internalCheckSuccess = true;
+    try {
+      internalResults = await loadInternalResultsForCpf(cpf, user.id, logData?.id || null);
+    } catch (internalError) {
+      internalCheckSuccess = false;
+      console.error('Erro ao incluir verificação da base interna:', internalError);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Consulta externa e verificação interna realizadas com sucesso.',
+      consultationType: config.type,
+      consultationLabel: config.label,
+      creditsCharged: config.credits,
+      creditsBalanceAfter: newCredits,
+      cacheHit,
+      results: [resultSummary],
+      internalResults,
+      internalResultsCount: internalResults.length,
+      internalIncluded: true,
+      internalCheckSuccess,
 
     return res.status(200).json({
       success: true,
@@ -771,6 +983,7 @@ export default async function handler(req, res) {
       creditsCharged: config.credits,
       cacheHit,
       results: [resultSummary],
+ main
     });
   } catch (error) {
     console.error('Erro inesperado na consulta externa:', error);

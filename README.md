@@ -1,16 +1,11 @@
-LocaCheck - V22
-
-Ajuste: novos usuários recebem 10 créditos iniciais.
-
-# LocaCheck
-
-Projeto LocaCheck com layout Premium Mobile-First.
-
-Este pacote foi ajustado para manter as integrações existentes com Supabase, PushinPay, GitHub e Vercel, alterando primeiro a parte visual do projeto.
-
-Leia o arquivo `LEIA-ANTES-DE-SUBIR.md` antes de publicar.
 
 
-## V25
+Versão com:
 
-Adicionado botão Entrar com Google. Não precisa rodar SQL. Configure o provider Google no Supabase antes de usar em produção.
+- 5 créditos iniciais para novos usuários;
+- programa de indicação desativado;
+- correção do registro das consultas externas;
+- CPF externo completo e saldo após consulta no painel admin;
+- mensagem clara quando a base interna não possui ocorrência.
+
+
