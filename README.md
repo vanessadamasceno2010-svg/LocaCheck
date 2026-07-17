@@ -1,16 +1,23 @@
-LocaCheck - V22
+# LocaCheck V44
 
-Ajuste: novos usuários recebem 10 créditos iniciais.
+Versão com:
 
-# LocaCheck
+- 5 créditos iniciais para novos usuários;
+- programa de indicação desativado;
+- correção do registro das consultas externas;
+- CPF externo completo e saldo após consulta no painel admin;
+- mensagem clara quando a base interna não possui ocorrência.
 
-Projeto LocaCheck com layout Premium Mobile-First.
+Leia primeiro:
 
-Este pacote foi ajustado para manter as integrações existentes com Supabase, PushinPay, GitHub e Vercel, alterando primeiro a parte visual do projeto.
+```text
+AJUSTES-V44-CREDITOS-LOGS-EXTERNOS-SEM-INDICACAO.md
+```
 
-Leia o arquivo `LEIA-ANTES-DE-SUBIR.md` antes de publicar.
+Migração obrigatória:
 
+```text
+MIGRACAO-V44-CREDITOS-LOGS-EXTERNOS-SEM-INDICACAO.sql
+```
 
-## V25
-
-Adicionado botão Entrar com Google. Não precisa rodar SQL. Configure o provider Google no Supabase antes de usar em produção.
+Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.

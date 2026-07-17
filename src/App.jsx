@@ -92,36 +92,8 @@ function sortPlansByPrice(a, b) {
   return String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR");
 }
 
-function getStoredReferralCode() {
-  try {
-    return localStorage.getItem("locacheck-referral-code") || "";
-  } catch {
-    return "";
-  }
-}
-
-function getReferralCodeFromUrl() {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return String(params.get("ref") || "").trim();
-  } catch {
-    return "";
-  }
-}
-
-function buildReferralLink(code) {
-  if (!code) return "";
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/?ref=${encodeURIComponent(code)}`;
-}
-
-function removeStoredReferralCode() {
-  try {
-    localStorage.removeItem("locacheck-referral-code");
-  } catch {
-    // Ignora bloqueio de localStorage em navegador restrito.
-  }
-}
+const INTERNAL_NO_RECORDS_MESSAGE =
+  "A pessoa consultada não possui ocorrência registrada por outras locadoras em nosso banco de dados.";
 
 
 function getUserAccountStatus(profile) {
@@ -264,61 +236,6 @@ function looksLikeCpfSearch(value) {
   return digits.length !== text.length || digits.length >= 8;
 }
 
-async function solicitarBonusIndicacao(referralCode, newUserId) {
-  const code = String(referralCode || "").trim();
-
-  if (!code || !newUserId) {
-    return { success: false, message: "Indicação incompleta." };
-  }
-
-  let apiPayload = null;
-
-  try {
-    const response = await fetch("/api/referrals/claim", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        referralCode: code,
-        newUserId,
-      }),
-    });
-
-    apiPayload = await response.json().catch(() => ({}));
-
-    if (response.ok && (apiPayload?.success || apiPayload?.already_applied)) {
-      return apiPayload;
-    }
-
-    console.log("Indicação não aplicada pela rota segura. Tentando fallback RPC:", apiPayload);
-  } catch (error) {
-    console.log("Rota segura de indicação indisponível. Tentando fallback RPC:", error);
-  }
-
-  try {
-    const { data, error } = await supabase.rpc("claim_referral_bonus", {
-      p_referral_code: code,
-    });
-
-    if (error) {
-      console.log("Fallback RPC de indicação não aplicado:", error);
-      return {
-        success: false,
-        message: apiPayload?.message || error.message || "Não foi possível aplicar a indicação.",
-      };
-    }
-
-    return data || { success: false, message: "Indicação não aplicada." };
-  } catch (error) {
-    console.log("Erro inesperado no fallback de indicação:", error);
-    return {
-      success: false,
-      message: apiPayload?.message || "Falha ao aplicar indicação.",
-    };
-  }
-}
-
 function getPaymentCredits(payment) {
   return Number(payment?.credits || payment?.plan_credits || payment?.plan?.credits || 0);
 }
@@ -444,7 +361,7 @@ function externalConsultationCredits(type) {
 function adminConsultationLabel(type, source) {
   if (type === "internal_included") return "Base interna incluída";
   if (source === "internal" || type === "internal") return "Consulta interna";
-  return "Consulta externa completa";
+  return "Consulta Externa";
 }
 
 function getAnalyticsSessionKey() {
@@ -870,9 +787,6 @@ function App() {
   const [savingAdminPlanId, setSavingAdminPlanId] = useState("");
   const [publicPlans, setPublicPlans] = useState([]);
   const [landingMessage, setLandingMessage] = useState("");
-  const [showReferralPanel, setShowReferralPanel] = useState(false);
-  const [referralMovements, setReferralMovements] = useState([]);
-  const [referralMessage, setReferralMessage] = useState("");
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -997,42 +911,6 @@ function App() {
       userEmail ||
       "Usuário";
 
-    const referralCode =
-      user?.user_metadata?.referral_code ||
-      user?.user_metadata?.ref ||
-      getStoredReferralCode();
-
-    async function aplicarIndicacaoPendente(profileData) {
-      if (!profileData) return profileData;
-
-      if (profileData.referred_by) {
-        removeStoredReferralCode();
-        return profileData;
-      }
-
-      if (!referralCode) return profileData;
-
-      try {
-        const claimData = await solicitarBonusIndicacao(referralCode, userId);
-
-        if (claimData?.success || claimData?.already_applied) {
-          removeStoredReferralCode();
-
-          const { data: refreshedProfile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", userId)
-            .maybeSingle();
-
-          return refreshedProfile || profileData;
-        }
-      } catch (error) {
-        console.log("Erro inesperado ao aplicar indicação:", error);
-      }
-
-      return profileData;
-    }
-
     const { data } = await supabase
       .from("profiles")
       .select("*")
@@ -1062,8 +940,7 @@ function App() {
         }
       }
 
-      const updatedProfile = await aplicarIndicacaoPendente(profileData);
-      setProfile(updatedProfile);
+      setProfile(profileData);
       return;
     }
 
@@ -1075,19 +952,17 @@ function App() {
         email: userEmail || null,
         whatsapp: user?.user_metadata?.whatsapp || "",
         role: "user",
-        credits: 0,
+        credits: 5,
         consultas: 0,
         account_status: "ativo",
         is_blocked: false,
         blocked_reason: null,
-        referred_by_code: referralCode || null,
       })
       .select()
       .single();
 
     if (!error) {
-      const updatedProfile = await aplicarIndicacaoPendente(newProfile);
-      setProfile(updatedProfile);
+      setProfile(newProfile);
     } else {
       console.log("Erro ao criar perfil:", error);
     }
@@ -1189,15 +1064,6 @@ function App() {
   }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
 
   useEffect(() => {
-    const code = getReferralCodeFromUrl();
-    if (code) {
-      try {
-        localStorage.setItem("locacheck-referral-code", code);
-      } catch {
-        // Navegadores em modo restrito podem bloquear o localStorage.
-      }
-    }
-
     carregarDadosPublicosLanding();
   }, []);
 
@@ -1425,62 +1291,6 @@ function App() {
     setShowProfileData(true);
   }
 
-  async function carregarMovimentacoesIndicacao() {
-    if (!session?.user?.id) return;
-
-    setReferralMessage("");
-
-    const { data, error } = await supabase
-      .from("credit_movements")
-      .select("id, amount, movement_type, description, related_user_id, created_at")
-      .eq("user_id", session.user.id)
-      .eq("movement_type", "referral_bonus")
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) {
-      console.log("Erro ao carregar indicações:", error);
-      setReferralMovements([]);
-      setReferralMessage(
-        error.message || "Não foi possível carregar os bônus de indicação."
-      );
-      return;
-    }
-
-    setReferralMovements(data || []);
-
-    if (!data || data.length === 0) {
-      setReferralMessage("Nenhum bônus de indicação recebido ainda.");
-    }
-  }
-
-  function abrirPainelIndicacoes() {
-    setShowReferralPanel(true);
-    carregarMovimentacoesIndicacao();
-  }
-
-  async function copiarLinkIndicacao() {
-    const link = buildReferralLink(profile?.referral_code);
-
-    if (!link) {
-      showToast("warning", "Link indisponível", "Atualize a página ou entre novamente para gerar seu link.");
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(link);
-      showToast("success", "Link copiado", "Agora é só compartilhar com outra locadora.");
-    } catch {
-      showToast("warning", "Copie manualmente", "Seu navegador bloqueou a cópia automática.");
-    }
-  }
-
-  function compartilharLinkIndicacaoWhatsApp() {
-    const link = buildReferralLink(profile?.referral_code);
-    const texto = `Conheça a LocaCheck. Consulte ocorrências antes de alugar e proteja sua frota: ${link}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
-  }
-
   async function salvarMeusDados(e) {
     e.preventDefault();
 
@@ -1606,9 +1416,7 @@ function App() {
       return;
     }
 
-    const referralCode = getStoredReferralCode();
-
-    const { data: signUpData, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email: cadastroEmailNormalized,
       password: senha,
       options: {
@@ -1616,7 +1424,6 @@ function App() {
           nome: nome.trim(),
           email: cadastroEmailNormalized,
           whatsapp: cadastroWhatsappDigits,
-          referral_code: referralCode || null,
           terms_accepted: true,
           terms_version: "2026-06-14",
           terms_accepted_at: new Date().toISOString(),
@@ -1627,16 +1434,8 @@ function App() {
     if (error) {
       setMessage(error.message);
     } else {
-      if (referralCode && signUpData?.user?.id) {
-        const referralResult = await solicitarBonusIndicacao(referralCode, signUpData.user.id);
-
-        if (referralResult?.success || referralResult?.already_applied) {
-          removeStoredReferralCode();
-        }
-      }
-
-      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail para realizar consultas.");
-      showToast("success", "Cadastro realizado", "Confirme seu e-mail para realizar consultas.");
+      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail. Sua conta terá 5 créditos iniciais.");
+      showToast("success", "Cadastro realizado", "Confirme seu e-mail. Sua conta terá 5 créditos iniciais.");
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -1685,8 +1484,6 @@ function App() {
     setMessage("");
 
     try {
-      const referralCode = getStoredReferralCode();
-
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -1706,13 +1503,6 @@ function App() {
         return;
       }
 
-      if (referralCode) {
-        try {
-          localStorage.setItem("locacheck-referral-code", referralCode);
-        } catch {
-          // Mantém o fluxo mesmo se o navegador bloquear localStorage.
-        }
-      }
     } catch (error) {
       console.log("Erro ao iniciar login com Google:", error);
       setMessage("Não foi possível iniciar o login com Google. Tente novamente.");
@@ -1910,9 +1700,7 @@ function App() {
     setSearchResults(results);
 
     if (results.length === 0) {
-      setSearchMessage(
-        "Consulta interna realizada. Nenhum registro aprovado foi encontrado para os dados informados."
-      );
+      setSearchMessage(INTERNAL_NO_RECORDS_MESSAGE);
     } else {
       setSearchMessage(
         `Consulta interna realizada. ${results.length} registro(s) encontrado(s).`
@@ -1988,6 +1776,7 @@ function App() {
         result_origin: "external",
         consultation_label: data.consultationLabel || consultationLabel,
         credits_charged: data.creditsCharged || creditsNeeded,
+        credits_balance_after: data.creditsBalanceAfter,
         cache_hit: data.cacheHit || item.cached || false,
       }));
 
@@ -3192,7 +2981,8 @@ function App() {
       (adminExternalFilterCache === "nao" && !Boolean(log.cache_hit));
     const search = String(adminExternalSearch || "").trim().toLowerCase();
     const userText = `${log.profiles?.nome || ""} ${log.profiles?.email || ""} ${log.user_id || ""}`.toLowerCase();
-    const textOk = !search || userText.includes(search) || String(log.cpf4 || "").includes(search);
+    const cpfText = `${log.cpf_full || ""} ${log.cpf4 || ""}`.toLowerCase();
+    const textOk = !search || userText.includes(search) || cpfText.includes(search);
     return typeOk && cacheOk && textOk;
   });
 
@@ -3350,13 +3140,6 @@ function App() {
               }}
             >
               Registrar Ocorrência
-            </button>
-
-            <button
-              className="btn outline large actionReferral"
-              onClick={abrirPainelIndicacoes}
-            >
-              Indique e ganhe créditos
             </button>
 
             <button
@@ -3589,7 +3372,7 @@ function App() {
                 </select>
                 <input
                   type="text"
-                  placeholder="Buscar usuário, e-mail ou CPF final"
+                  placeholder="Buscar usuário, e-mail ou CPF"
                   value={adminActivitySearch}
                   onChange={(e) => setAdminActivitySearch(e.target.value)}
                 />
@@ -3654,7 +3437,7 @@ function App() {
                   <div className="adminSubHeader">
                     <div>
                       <h3>Consultas realizadas</h3>
-                      <p>CPF aparece apenas com os números finais para reduzir exposição de dados.</p>
+                      <p>O CPF completo aparece somente nas consultas externas e apenas para administradores.</p>
                     </div>
                   </div>
 
@@ -3672,10 +3455,12 @@ function App() {
                         </div>
                         <p><strong>Usuário:</strong> {item.user_name || "Usuário sem nome"}</p>
                         <p><strong>E-mail:</strong> {item.user_email || "Não informado"}</p>
-                        <p><strong>Busca:</strong> {item.searched_display || "Não informado"}</p>
+                        <p><strong>CPF consultado:</strong> {item.searched_display || "Não informado"}</p>
                         <p><strong>Resultados:</strong> {item.results_count || 0}</p>
-                        <p><strong>Créditos:</strong> {item.credits_charged || 0}</p>
-                        {item.included_with_external && <p className="includedConsultNote"><strong>Incluída:</strong> verificação interna feita junto com a externa, sem cobrança adicional.</p>}
+                        <p><strong>Créditos consumidos:</strong> {item.credits_charged || 0}</p>
+                        {item.source === "external" && (
+                          <p><strong>Saldo após a consulta:</strong> {item.credits_balance_after === null || item.credits_balance_after === undefined ? "Não registrado" : `${item.credits_balance_after} crédito(s)`}</p>
+                        )}
                         {item.source === "external" && <p><strong>Cache:</strong> {item.cache_hit ? "Sim" : "Não"}</p>}
                         <p><strong>Data:</strong> {formatDate(item.created_at)}</p>
                       </div>
@@ -4512,7 +4297,7 @@ function App() {
               <div className="adminFilters externalFilters">
                 <input
                   type="text"
-                  placeholder="Buscar por usuário, e-mail ou CPF final"
+                  placeholder="Buscar por usuário, e-mail ou CPF"
                   value={adminExternalSearch}
                   onChange={(e) => setAdminExternalSearch(e.target.value)}
                 />
@@ -4536,15 +4321,19 @@ function App() {
                 {adminExternalLogsFiltered.map((log) => (
                   <div className="adminRecord" key={log.id}>
                     <div className="adminRecordTop">
-                      <h3>{externalConsultationLabel(log.consultation_type)}</h3>
+                      <h3>Consulta Externa</h3>
                       <span className={`statusBadge ${log.status === "success" ? "aprovado" : "reprovado"}`}>
                         {log.status}
                       </span>
                     </div>
 
                     <p><strong>Usuário:</strong> {log.profiles?.nome || log.profiles?.email || log.user_id}</p>
-                    <p><strong>CPF final:</strong> {log.cpf4 || "----"}</p>
-                    <p><strong>Créditos:</strong> {log.credits_charged || 0}</p>
+                    <p>
+                      <strong>CPF consultado:</strong>{" "}
+                      {log.cpf_full ? formatCpfInput(log.cpf_full) : log.cpf4 ? `CPF final ${log.cpf4}` : "Não informado"}
+                    </p>
+                    <p><strong>Créditos consumidos:</strong> {log.credits_charged || 0}</p>
+                    <p><strong>Saldo após a consulta:</strong> {log.credits_balance_after === null || log.credits_balance_after === undefined ? "Não registrado" : `${log.credits_balance_after} crédito(s)`}</p>
                     <p><strong>Cache:</strong> {log.cache_hit ? "Sim" : "Não"}</p>
                     <p><strong>Dados consultados:</strong> {externalDatasetsText(log.datasets)}</p>
                     <p><strong>Data:</strong> {formatDate(log.created_at)}</p>
@@ -4819,11 +4608,6 @@ function App() {
                 Registrar
               </button>
 
-              <button type="button" onClick={abrirPainelIndicacoes}>
-                <span>↗</span>
-                Indicar
-              </button>
-
               <button type="button" onClick={abrirMeusDados}>
                 <span>◎</span>
                 Perfil
@@ -4831,79 +4615,6 @@ function App() {
             </>
           )}
         </nav>
-{showReferralPanel && (
-  <div className="modalOverlay">
-    <div className="recordModal referralModal">
-      <button
-        className="closeModal"
-        onClick={() => setShowReferralPanel(false)}
-      >
-        ×
-      </button>
-
-      <h2>Indique e ganhe créditos</h2>
-
-      <p>
-        Compartilhe seu link. Quando uma nova conta for criada por ele, você recebe
-        <strong> 2 créditos de bônus</strong> automaticamente.
-      </p>
-
-      <div className="referralLinkBox">
-        <small>Seu link de indicação</small>
-        <code>{buildReferralLink(profile?.referral_code) || "Gerando link..."}</code>
-      </div>
-
-      <div className="modalActionsRow">
-        <button className="btn primary" type="button" onClick={copiarLinkIndicacao}>
-          Copiar link
-        </button>
-
-        <button className="btn outline" type="button" onClick={compartilharLinkIndicacaoWhatsApp}>
-          Compartilhar no WhatsApp
-        </button>
-      </div>
-
-      <div className="referralRulesBox">
-        <strong>Como funciona</strong>
-        <p>1 cadastro válido pelo seu link = 2 créditos liberados para você.</p>
-        <p>Os créditos aparecem abaixo em movimentações e também ficam registrados no log administrativo.</p>
-      </div>
-
-      <div className="adminSubHeader">
-        <div>
-          <span>Movimentações</span>
-          <h3>Bônus recebidos por indicação</h3>
-        </div>
-        <button className="btn secondary" type="button" onClick={carregarMovimentacoesIndicacao}>
-          Atualizar
-        </button>
-      </div>
-
-      {referralMessage && <div className="authMessage">{referralMessage}</div>}
-
-      {referralMovements.length > 0 && (
-        <div className="resultsBox">
-          {referralMovements.map((item) => (
-            <div className="resultCard referralMovementCard" key={item.id}>
-              <div className="adminRecordTop">
-                <h3>+{item.amount} créditos</h3>
-                <span className="statusBadge aprovado">Bônus</span>
-              </div>
-              <p>{item.description || "Bônus recebido por indicação."}</p>
-              <p>
-                <strong>Data:</strong>{" "}
-                {item.created_at
-                  ? new Date(item.created_at).toLocaleString("pt-BR")
-                  : "Não informado"}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  </div>
-)}
-
 {showExternalConsultationHistory && (
   <div className="modalOverlay">
     <div className="recordModal externalHistoryModal">
@@ -5641,7 +5352,7 @@ function App() {
                     </div>
                     <span className="internalSourcePill">Nenhum registro</span>
                   </div>
-                  <p>Nenhuma ocorrência aprovada foi encontrada na base interna para o CPF consultado.</p>
+                  <p>{INTERNAL_NO_RECORDS_MESSAGE}</p>
                 </div>
               )}
 
