@@ -590,6 +590,78 @@ function hasValidPersonResult(summary) {
   return Boolean(summary?.name || summary?.cpf || summary?.birth_date || summary?.phones?.length || summary?.emails?.length);
 }
 
+async function resolveRelatedIdentity(person) {
+  if (person?.name && person?.tax_id) return person;
+
+  const phone = onlyDigits(person?.phones?.[0]?.number || '');
+  const email = normalizeEmailValue(person?.email || '');
+  const type = phone.length >= 10 ? 'phone' : email ? 'email' : '';
+  const value = type === 'phone' ? phone : email;
+  if (!type || !value) return person;
+
+  const identifierHash = hashIdentifier(type, value);
+  const now = new Date().toISOString();
+  const { data: cachedIdentity } = await supabaseAdmin
+    .from('related_identity_cache')
+    .select('result_summary')
+    .eq('identifier_hash', identifierHash)
+    .gt('expires_at', now)
+    .maybeSingle();
+
+  if (cachedIdentity?.result_summary) {
+    return { ...person, ...cachedIdentity.result_summary };
+  }
+
+  try {
+    const response = await fetch(`${BIGDATA_BASE_URL.replace(/\/$/, '')}/pessoas`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        AccessToken: BIGDATA_ACCESS_TOKEN,
+        TokenId: BIGDATA_TOKEN_ID,
+      },
+      body: JSON.stringify({
+        q: `${type}{${value}}`,
+        Datasets: 'basic_data',
+        Limit: 1,
+      }),
+    });
+    const raw = await response.json().catch(() => ({}));
+    if (!response.ok) return person;
+
+    const first = Array.isArray(raw?.Result) ? raw.Result[0] : raw?.Result;
+    const name = findDeep(first, ['Name', 'FullName', 'Nome', 'PersonName']);
+    const taxId = onlyDigits(findDeep(first, ['TaxIdNumber', 'TaxId', 'CPF', 'Document', 'DocumentNumber']) || '');
+    if (!name && taxId.length !== 11) return person;
+
+    const resultSummary = {
+      name: name ? String(name) : person?.name || null,
+      full_name: name ? String(name) : person?.full_name || null,
+      tax_id: taxId.length === 11 ? taxId : person?.tax_id || null,
+    };
+    await supabaseAdmin.from('related_identity_cache').upsert({
+      identifier_hash: identifierHash,
+      identifier_type: type,
+      result_summary: resultSummary,
+      expires_at: new Date(Date.now() + CACHE_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'identifier_hash' });
+
+    return { ...person, ...resultSummary };
+  } catch (error) {
+    console.error('Erro ao identificar pessoa relacionada:', error);
+    return person;
+  }
+}
+
+async function enrichRelatedPeople(people) {
+  if (!Array.isArray(people) || people.length === 0) return [];
+  const limited = people.slice(0, 5);
+  const resolved = await Promise.all(limited.map(resolveRelatedIdentity));
+  return [...resolved, ...people.slice(5)];
+}
+
 async function insertSafe(table, payload) {
   const { error } = await supabaseAdmin.from(table).insert(payload);
   if (error) console.error(`Erro ao inserir em ${table}:`, error);
@@ -923,6 +995,7 @@ export default async function handler(req, res) {
       }
 
       resultSummary = buildSummary(rawResponse, config.type, false, cpf, search);
+      resultSummary.related_people = await enrichRelatedPeople(resultSummary.related_people);
 
       if (!hasValidPersonResult(resultSummary)) {
         await insertExternalConsultationLog({
@@ -968,6 +1041,7 @@ export default async function handler(req, res) {
     } else {
       resultSummary = resultSummary || buildSummary(rawResponse, config.type, true, cpf, search);
       resultSummary = { ...resultSummary, cached: true, searched_type: search.type, searched_value: search.display };
+      resultSummary.related_people = await enrichRelatedPeople(resultSummary.related_people);
     }
 
     const { data: debit, error: updateError } = await supabaseAdmin.rpc('consume_user_credits_v46', {

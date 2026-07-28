@@ -1,4 +1,4 @@
-# LocaCheck V47
+# LocaCheck V48
 
 Versão com:
 
@@ -10,18 +10,20 @@ Versão com:
 - consulta completa de processo por 1 crédito;
 - pessoas relacionadas com nome, CPF, parentesco e consulta rápida;
 - contatos com DDD e separação visual;
-- correção do resultado completo do processo.
+- identificação de pessoas relacionadas pelo contato retornado;
+- recuperação do processo completo pelo dataset de pessoas;
+- bloqueio de cobrança quando vier apenas metadado ou erro `-109`.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V47-RELACIONADOS-CONTATOS-E-PROCESSOS.md
+AJUSTES-V48-PESSOAS-RELACIONADAS-E-PROCESSOS-COMPLETOS.md
 ```
 
 Migração obrigatória:
 
 ```text
-MIGRACAO-V46-CONSULTAS-CPF-TELEFONE-EMAIL-PROCESSOS.sql
+MIGRACAO-V48-CACHE-PESSOAS-RELACIONADAS.sql
 ```
 
 Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.

@@ -4,16 +4,10 @@ import { supabaseAdmin } from '../_utils/supabaseAdmin.js';
 const BIGDATA_BASE_URL = process.env.BIGDATA_BASE_URL || 'https://plataforma.bigdatacorp.com.br';
 const BIGDATA_TOKEN_ID = process.env.BIGDATA_TOKEN_ID;
 const BIGDATA_ACCESS_TOKEN = process.env.BIGDATA_ACCESS_TOKEN;
-const PROCESS_DATASETS = process.env.BIGDATA_PROCESS_DATASETS || 'processes';
 const PROCESS_CREDITS = 1;
 
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
-}
-
-function firstResult(payload) {
-  if (Array.isArray(payload?.Result)) return payload.Result[0] || null;
-  return payload?.Result || null;
 }
 
 function hasUsefulResult(value) {
@@ -31,8 +25,9 @@ function findMatchingProcess(value, processNumber, candidates = [], depth = 0) {
   if (typeof value !== 'object') return candidates;
 
   const normalizedTarget = onlyDigits(processNumber);
-  const serialized = JSON.stringify(value);
-  if (serialized && onlyDigits(serialized).includes(normalizedTarget)) {
+  const numberKeys = ['number', 'processnumber', 'lawsuitnumber', 'casenumber', 'cnjnumber', 'numeroprocesso'];
+  const ownNumber = Object.entries(value).find(([key]) => numberKeys.includes(String(key).toLowerCase()));
+  if (ownNumber && onlyDigits(ownNumber[1]) === normalizedTarget) {
     candidates.push(value);
   }
   Object.values(value).forEach((item) => findMatchingProcess(item, processNumber, candidates, depth + 1));
@@ -40,12 +35,16 @@ function findMatchingProcess(value, processNumber, candidates = [], depth = 0) {
 }
 
 function selectBestProcessResult(payload, processNumber) {
-  const direct = firstResult(payload);
   const candidates = findMatchingProcess(payload, processNumber);
   const best = candidates
     .filter(hasUsefulResult)
-    .sort((a, b) => JSON.stringify(a).length - JSON.stringify(b).length)[0];
-  return best || (hasUsefulResult(direct) ? direct : null);
+    .sort((a, b) => JSON.stringify(b).length - JSON.stringify(a).length)[0];
+  return best || null;
+}
+
+function hashPersonCpf(cpf) {
+  const salt = process.env.BIGDATA_CACHE_HASH_SALT || process.env.SUPABASE_SERVICE_ROLE_KEY || 'locacheck-cache';
+  return crypto.createHash('sha256').update(`${salt}:cpf:${cpf}`).digest('hex');
 }
 
 async function callBigData(path, body) {
@@ -118,23 +117,29 @@ export default async function handler(req, res) {
     }
 
     const subjectCpf = onlyDigits(req.body?.cpf || req.body?.subjectCpf || '');
-    let { response, raw } = await callBigData('/processos', {
-      q: `processnumber{${processNumber}}, all{true}`,
-      Datasets: PROCESS_DATASETS,
-      Limit: 1,
-    });
+    let response = { ok: true, status: 200 };
+    let raw = {};
+    let result = null;
 
-    let result = selectBestProcessResult(raw, processNumber);
+    if (subjectCpf.length === 11) {
+      const { data: cachedPerson } = await supabaseAdmin
+        .from('external_consultation_cache')
+        .select('raw_response')
+        .eq('cpf_hash', hashPersonCpf(subjectCpf))
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cachedPerson?.raw_response) {
+        raw = cachedPerson.raw_response;
+        result = selectBestProcessResult(raw, processNumber);
+      }
 
-    // Algumas contas retornam apenas MatchKeys na API de Processos.
-    // Nesse caso, reaproveita o dataset de processos da pessoa consultada.
-    if (!result && subjectCpf.length === 11) {
-      const fallback = await callBigData('/pessoas', {
-        q: `doc{${subjectCpf}}`,
-        Datasets: 'processes',
-        Limit: 1,
-      });
-      if (fallback.response.ok) {
+      if (!result) {
+        const fallback = await callBigData('/pessoas', {
+          q: `doc{${subjectCpf}}, returnupdates{true}, updateslimit{100}, partieslimit{100}`,
+          Datasets: 'processes',
+          Limit: 1,
+        });
         raw = fallback.raw;
         response = fallback.response;
         result = selectBestProcessResult(raw, processNumber);
@@ -153,7 +158,7 @@ export default async function handler(req, res) {
       return res.status(response.ok ? 404 : 502).json({
         success: false,
         message: response.ok
-          ? 'A fonte retornou somente o número do processo, sem os detalhes completos. Nenhum crédito foi descontado.'
+          ? 'Não foi possível recuperar os detalhes completos deste processo. Nenhum crédito foi descontado.'
           : 'A consulta do processo falhou. Nenhum crédito foi descontado.',
       });
     }

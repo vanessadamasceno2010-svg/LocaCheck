@@ -5413,11 +5413,11 @@ function App() {
                   required
                 />
 
-                <p className="documentPublicNotice">
-                  {consultationMode === "internal"
-                    ? "Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras."
-                    : "Consulta externa por CPF, telefone ou e-mail. Exibe somente 1 resultado e desconta 3 créditos apenas quando encontra um resultado válido."}
-                </p>
+                {consultationMode === "internal" && (
+                  <p className="documentPublicNotice">
+                    Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras.
+                  </p>
+                )}
 
                 <button className="btn primary full" disabled={loading}>
                   {loading ? "Consultando..." : "Buscar"}
