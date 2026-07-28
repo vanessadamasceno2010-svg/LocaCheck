@@ -7,7 +7,7 @@ const BIGDATA_ACCESS_TOKEN = process.env.BIGDATA_ACCESS_TOKEN;
 const CACHE_DAYS = Number(process.env.BIGDATA_CACHE_DAYS || 7);
 const BASIC_CREDITS = Number(process.env.EXTERNAL_BASIC_CREDITS || 2);
 const COMPLETE_CREDITS = Number(process.env.EXTERNAL_COMPLETE_CREDITS || 3);
-const ADVANCED_CREDITS = Number(process.env.EXTERNAL_ADVANCED_CREDITS || 3);
+const ADVANCED_CREDITS = 3;
 const COMPLETE_DATASETS = String(
   process.env.BIGDATA_COMPLETE_DATASETS || 'basic_data,registration_data,addresses_extended.limit(20),phones_extended.limit(20),emails_extended.limit(20)'
 )
@@ -44,9 +44,50 @@ function isValidCpf(value) {
   return secondDigit === Number(cpf[10]);
 }
 
-function hashCpf(cpf) {
+function hashIdentifier(type, value) {
   const salt = process.env.BIGDATA_CACHE_HASH_SALT || process.env.SUPABASE_SERVICE_ROLE_KEY || 'locacheck-cache';
-  return crypto.createHash('sha256').update(`${salt}:${cpf}`).digest('hex');
+  return crypto.createHash('sha256').update(`${salt}:${type}:${String(value || '').toLowerCase()}`).digest('hex');
+}
+
+function normalizeEmailValue(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizePhoneValue(value) {
+  const digits = onlyDigits(value);
+  if (digits.length === 10 || digits.length === 11) return digits;
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) return digits.slice(2);
+  return digits;
+}
+
+function resolveSearchInput(body = {}) {
+  const requestedType = String(body.searchType || body.search_type || '').toLowerCase();
+  const rawValue = String(body.searchValue || body.search_value || body.cpf || body.document || '').trim();
+  const inferredType = requestedType || (rawValue.includes('@') ? 'email' : onlyDigits(rawValue).length === 11 && isValidCpf(rawValue) ? 'cpf' : 'phone');
+  const value = inferredType === 'email'
+    ? normalizeEmailValue(rawValue)
+    : inferredType === 'cpf'
+      ? onlyDigits(rawValue)
+      : normalizePhoneValue(rawValue);
+
+  if (inferredType === 'cpf' && !isValidCpf(value)) {
+    return { error: 'Informe um CPF completo e válido.' };
+  }
+  if (inferredType === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
+    return { error: 'Informe um e-mail válido.' };
+  }
+  if (inferredType === 'phone' && (value.length < 10 || value.length > 11)) {
+    return { error: 'Informe um telefone com DDD válido.' };
+  }
+
+  const queryKey = inferredType === 'cpf' ? 'doc' : inferredType;
+  return {
+    type: inferredType,
+    value,
+    query: `${queryKey}{${value}}`,
+    display: value,
+    hash: hashIdentifier(inferredType, value),
+  };
 }
 
 function normalizeDatasetName(dataset) {
@@ -465,10 +506,11 @@ function collectExtraFields(obj, limit = 120) {
   return fields;
 }
 
-function buildSummary(rawResponse, consultationType, cached = false, cpf = '') {
+function buildSummary(rawResponse, consultationType, cached = false, cpf = '', search = null) {
   const firstResult = Array.isArray(rawResponse?.Result) ? rawResponse.Result[0] : rawResponse?.Result || rawResponse || {};
 
   const name = findDeep(firstResult, ['Name', 'FullName', 'Nome', 'nome']);
+  const foundCpf = onlyDigits(findDeep(firstResult, ['TaxIdNumber', 'TaxId', 'CPF', 'Cpf', 'Document', 'DocumentNumber']) || cpf);
   const documentStatus = findDeep(firstResult, ['TaxIdStatus', 'CPFStatus', 'Status', 'StatusCPF', 'RegistrationStatus']);
   const birthDate = findDeep(firstResult, ['BirthDate', 'Nascimento', 'DateOfBirth']);
   const motherName = findDeep(firstResult, ['MotherName', 'NomeMae', 'MothersName', 'Mother']);
@@ -479,7 +521,7 @@ function buildSummary(rawResponse, consultationType, cached = false, cpf = '') {
   const lawsuitsTotal = countFromAny(lawsuitsNode || firstResult);
   const queryId = rawResponse?.QueryId || rawResponse?.QueryID || findDeep(rawResponse, ['QueryId', 'QueryID']);
   const contacts = consultationType === 'external_advanced' || consultationType === 'external_complete' ? collectContacts(firstResult) : { phones: [], emails: [], addresses: [] };
-  const processes = consultationType === 'external_advanced' ? collectProcesses(firstResult, cpf) : [];
+  const processes = consultationType === 'external_advanced' ? collectProcesses(firstResult, foundCpf) : [];
   const related_people = consultationType === 'external_advanced' || consultationType === 'external_complete' ? collectRelatedPeople(firstResult) : [];
 
   return {
@@ -487,8 +529,10 @@ function buildSummary(rawResponse, consultationType, cached = false, cpf = '') {
     cached,
     consultation_type: consultationType,
     name: name || null,
-    cpf: cpf || null,
-    cpf_masked: cpf || null,
+    cpf: foundCpf || null,
+    cpf_masked: foundCpf || null,
+    searched_type: search?.type || 'cpf',
+    searched_value: search?.display || cpf || null,
     document_status: documentStatus || null,
     birth_date: birthDate || null,
     mother_name: motherName || null,
@@ -507,6 +551,10 @@ function buildSummary(rawResponse, consultationType, cached = false, cpf = '') {
     extra_fields: collectExtraFields(firstResult),
     message: 'Resultado externo tratado para apoio à análise. Use com responsabilidade e finalidade legítima.',
   };
+}
+
+function hasValidPersonResult(summary) {
+  return Boolean(summary?.name || summary?.cpf || summary?.birth_date || summary?.phones?.length || summary?.emails?.length);
 }
 
 async function insertSafe(table, payload) {
@@ -736,16 +784,17 @@ export default async function handler(req, res) {
       return res.status(401).json({ success: false, message: 'Usuário não autenticado.' });
     }
 
-    const cpf = onlyDigits(req.body?.cpf || req.body?.document || '');
+    const search = resolveSearchInput(req.body || {});
     const requestedType = String(req.body?.consultationType || req.body?.consultation_type || 'external_complete');
     const config = getConsultConfig(requestedType);
 
-    if (!isValidCpf(cpf)) {
-      return res.status(400).json({ success: false, message: 'Informe um CPF completo e válido para consulta externa.' });
+    if (search.error) {
+      return res.status(400).json({ success: false, message: search.error });
     }
 
-    const cpf4 = cpf.slice(-4);
-    const cpfHash = hashCpf(cpf);
+    const cpf = search.type === 'cpf' ? search.value : '';
+    const cpf4 = cpf ? cpf.slice(-4) : null;
+    const cpfHash = search.hash;
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
@@ -762,7 +811,7 @@ export default async function handler(req, res) {
       await insertSafe('activity_logs', {
         user_id: user.id,
         action: 'external_consultation_blocked_security',
-        details: { reason: securityBlockMessage, consultation_type: config.type, cpf4 },
+        details: { reason: securityBlockMessage, consultation_type: config.type, search_type: search.type },
       });
 
       return res.status(403).json({ success: false, message: securityBlockMessage });
@@ -801,7 +850,7 @@ export default async function handler(req, res) {
           TokenId: BIGDATA_TOKEN_ID,
         },
         body: JSON.stringify({
-          q: `doc{${cpf}}`,
+          q: search.query,
           Datasets: config.datasets.map(normalizeDatasetName).join(','),
           Limit: 1,
         }),
@@ -823,6 +872,9 @@ export default async function handler(req, res) {
           cpf_hash: cpfHash,
           cpf4,
           cpf_full: cpf,
+          search_type: search.type,
+          search_value: search.display,
+          search_hash: search.hash,
           provider: 'BigDataCorp',
           consultation_type: config.type,
           datasets: config.datasets,
@@ -837,7 +889,30 @@ export default async function handler(req, res) {
         return res.status(502).json({ success: false, message: 'A consulta externa falhou. Nenhum crédito foi descontado.' });
       }
 
-      resultSummary = buildSummary(rawResponse, config.type, false, cpf);
+      resultSummary = buildSummary(rawResponse, config.type, false, cpf, search);
+
+      if (!hasValidPersonResult(resultSummary)) {
+        await insertExternalConsultationLog({
+          user_id: user.id,
+          cpf_hash: cpfHash,
+          cpf4,
+          cpf_full: cpf || null,
+          search_type: search.type,
+          search_value: search.display,
+          search_hash: search.hash,
+          provider: 'BigDataCorp',
+          consultation_type: config.type,
+          datasets: config.datasets,
+          credits_charged: 0,
+          credits_balance_after: Number(profile.credits || 0),
+          cache_hit: false,
+          status: 'not_found',
+          result_summary: resultSummary,
+          raw_response: rawResponse,
+          error_message: 'Nenhum resultado válido encontrado.',
+        });
+        return res.status(404).json({ success: false, message: 'Nenhum resultado válido foi encontrado. Nenhum crédito foi descontado.' });
+      }
 
       const expiresAt = new Date(Date.now() + CACHE_DAYS * 24 * 60 * 60 * 1000).toISOString();
       const { error: cacheError } = await supabaseAdmin
@@ -845,6 +920,9 @@ export default async function handler(req, res) {
         .upsert({
           cpf_hash: cpfHash,
           cpf4,
+          search_type: search.type,
+          search_value: search.display,
+          search_hash: search.hash,
           consultation_type: config.type,
           datasets: config.datasets,
           result_summary: resultSummary,
@@ -855,29 +933,26 @@ export default async function handler(req, res) {
 
       if (cacheError) console.error('Erro ao salvar cache externo:', cacheError);
     } else {
-      resultSummary = resultSummary || buildSummary(rawResponse, config.type, true, cpf);
-      resultSummary = { ...resultSummary, cached: true, cpf, cpf_masked: cpf };
+      resultSummary = resultSummary || buildSummary(rawResponse, config.type, true, cpf, search);
+      resultSummary = { ...resultSummary, cached: true, searched_type: search.type, searched_value: search.display };
     }
 
-    const newCredits = Number(profile.credits || 0) - config.credits;
-    const { error: updateError } = await supabaseAdmin
-      .from('profiles')
-      .update({
-        credits: newCredits,
-        consultas: Number(profile.consultas || 0) + 1,
-      })
-      .eq('id', user.id);
+    const { data: debit, error: updateError } = await supabaseAdmin.rpc('consume_user_credits_v46', {
+      p_user_id: user.id,
+      p_amount: config.credits,
+    });
 
-    if (updateError) {
+    if (updateError || !debit?.success) {
       console.error('Erro ao descontar créditos:', updateError);
-      return res.status(500).json({ success: false, message: 'Não foi possível descontar os créditos da consulta externa.' });
+      return res.status(402).json({ success: false, message: debit?.message || 'Não foi possível descontar os créditos da consulta externa.' });
     }
+    const newCredits = Number(debit.balance_after);
 
     await insertSafe('credit_movements', {
       user_id: user.id,
       amount: -config.credits,
       movement_type: 'external_consult',
-      description: `${config.label} - CPF ${cpf}`,
+      description: `${config.label} - ${search.type.toUpperCase()} ${search.display}`,
     });
 
     const { data: logData, error: logError } = await insertExternalConsultationLog({
@@ -885,6 +960,9 @@ export default async function handler(req, res) {
       cpf_hash: cpfHash,
       cpf4,
       cpf_full: cpf,
+      search_type: search.type,
+      search_value: search.display,
+      search_hash: search.hash,
       provider: 'BigDataCorp',
       consultation_type: config.type,
       datasets: config.datasets,
@@ -907,6 +985,8 @@ export default async function handler(req, res) {
         credits_charged: config.credits,
         credits_balance_after: newCredits,
         cpf4,
+        search_type: search.type,
+        search_value: search.display,
         cache_hit: cacheHit,
         datasets: config.datasets,
         log_id: logData?.id || null,
@@ -916,7 +996,10 @@ export default async function handler(req, res) {
     let internalResults = [];
     let internalCheckSuccess = true;
     try {
-      internalResults = await loadInternalResultsForCpf(cpf, user.id, logData?.id || null);
+      const resultCpf = onlyDigits(resultSummary?.cpf || '');
+      if (isValidCpf(resultCpf)) {
+        internalResults = await loadInternalResultsForCpf(resultCpf, user.id, logData?.id || null);
+      }
     } catch (internalError) {
       internalCheckSuccess = false;
       console.error('Erro ao incluir verificação da base interna:', internalError);

@@ -4109,3 +4109,110 @@ body {
   border-color: rgba(245, 158, 11, .34);
   background: rgba(245, 158, 11, .08);
 }
+
+.externalSearchTypeV46 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.externalSearchTypeV46 button,
+.miniConsultButtonV46,
+.processResultHeaderV46 button {
+  border: 1px solid rgba(37, 99, 235, .3);
+  border-radius: 10px;
+  background: rgba(37, 99, 235, .08);
+  color: #2563eb;
+  font-weight: 800;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.externalSearchTypeV46 button.active {
+  color: #fff;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.simpleContactV46 {
+  margin: 6px 0 !important;
+  overflow-wrap: anywhere;
+}
+
+.relatedPersonHeaderV46,
+.processResultHeaderV46 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.miniConsultButtonV46 {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+}
+
+.miniConsultButtonV46:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+.relatedPhonesV46 {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.relatedPhonesV46 span {
+  display: block;
+}
+
+.processResultV46 {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(37, 99, 235, .25);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.processResultHeaderV46 span,
+.processDetailsV46 span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.processResultHeaderV46 strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.processDetailsV46 {
+  display: grid;
+  gap: 8px;
+  max-height: 60vh;
+  margin-top: 16px;
+  overflow: auto;
+}
+
+.processDetailsV46 > div {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.processDetailsV46 strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .relatedPersonHeaderV46,
+  .processResultHeaderV46 {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
