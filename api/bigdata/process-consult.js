@@ -81,6 +81,87 @@ function flattenProcess(value, path = [], output = [], depth = 0) {
   return output;
 }
 
+function findDeepValue(value, keys) {
+  if (!value || typeof value !== 'object') return null;
+  const wanted = keys.map((key) => key.toLowerCase());
+  const queue = [value];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== 'object') continue;
+    for (const [key, item] of Object.entries(current)) {
+      if (wanted.includes(String(key).toLowerCase()) && item !== null && item !== undefined && item !== '') return item;
+      if (item && typeof item === 'object') queue.push(item);
+    }
+  }
+  return null;
+}
+
+function findCollections(value, keys, output = [], depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 10) return output;
+  const wanted = keys.map((key) => key.toLowerCase());
+  for (const [key, item] of Object.entries(value)) {
+    if (wanted.includes(String(key).toLowerCase()) && Array.isArray(item)) output.push(item);
+    if (item && typeof item === 'object') findCollections(item, keys, output, depth + 1);
+  }
+  return output;
+}
+
+function translatePartyRole(value, polarity = '') {
+  const role = String(value || polarity || 'Participação não informada').trim();
+  const upper = role.toUpperCase();
+  if (upper.includes('DEFENDANT') || upper.includes('CLAIMED') || upper.includes('REU') || upper.includes('RÉU') || upper.includes('ACUS')) return 'Acusado/Réu';
+  if (upper.includes('AUTHOR') || upper.includes('CLAIMANT') || upper.includes('AUTOR') || upper.includes('REQUERENTE')) return 'Autor/Requerente';
+  if (upper.includes('LAWYER') || upper.includes('ATTORNEY') || upper.includes('ADVOG')) return 'Advogado';
+  if (upper.includes('WITNESS') || upper.includes('TESTEM')) return 'Testemunha';
+  if (upper.includes('VICTIM') || upper.includes('VITIMA') || upper.includes('VÍTIMA')) return 'Vítima';
+  if (upper.includes('JUDGE') || upper.includes('JUIZ')) return 'Juiz';
+  if (upper === 'ACTIVE') return 'Polo ativo';
+  if (upper === 'PASSIVE') return 'Polo passivo';
+  if (upper === 'NEUTRAL') return 'Parte neutra';
+  return role;
+}
+
+function buildProcessView(processData, processNumber) {
+  const partyArrays = findCollections(processData, ['Parties', 'Partes', 'RelatedParties']);
+  const parties = partyArrays
+    .flat()
+    .map((party) => {
+      const name = findDeepValue(party, ['Name', 'FullName', 'Nome', 'PartyName']);
+      const polarity = findDeepValue(party, ['Polarity', 'PartyPolarity', 'Polaridade']);
+      const type = findDeepValue(party, ['SpecificType', 'PartyType', 'Type', 'Role', 'TipoParte']);
+      if (!name) return null;
+      return {
+        name: String(name),
+        role: translatePartyRole(type, polarity),
+      };
+    })
+    .filter(Boolean)
+    .filter((party, index, list) => list.findIndex((item) => `${item.name}|${item.role}` === `${party.name}|${party.role}`) === index);
+
+  const updateArrays = findCollections(processData, ['Updates', 'Movements', 'Movimentacoes', 'Movimentações', 'Proceedings']);
+  const updates = updateArrays
+    .flat()
+    .map((update) => {
+      const content = findDeepValue(update, ['Content', 'Description', 'Text', 'Movement', 'Movimentacao', 'Movimentação']);
+      const date = findDeepValue(update, ['Date', 'UpdateDate', 'PublicationDate', 'PublishDate', 'CaptureDate', 'Data']);
+      if (!content) return null;
+      const parsedDate = date ? new Date(date) : null;
+      return {
+        content: String(content),
+        date: parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : null,
+        date_display: date ? String(date) : null,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
+  return {
+    number: processNumber,
+    parties,
+    updates,
+  };
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method !== 'POST') {
@@ -146,7 +227,8 @@ export default async function handler(req, res) {
       }
     }
 
-    if (!response.ok || !hasUsefulResult(result)) {
+    const processView = result ? buildProcessView(result, processNumber) : null;
+    if (!response.ok || !hasUsefulResult(result) || (!processView?.parties?.length && !processView?.updates?.length)) {
       await supabaseAdmin.from('process_consultation_logs').insert({
         user_id: user.id,
         process_number: processNumber,
@@ -185,7 +267,10 @@ export default async function handler(req, res) {
       credits_charged: PROCESS_CREDITS,
       credits_balance_after: Number(debit.balance_after),
       status: 'success',
-      result_summary: { fields_count: flattenProcess(result).length },
+      result_summary: {
+        parties_count: processView.parties.length,
+        updates_count: processView.updates.length,
+      },
       raw_response: raw,
     });
 
@@ -194,7 +279,7 @@ export default async function handler(req, res) {
       processNumber,
       creditsCharged: PROCESS_CREDITS,
       creditsBalanceAfter: Number(debit.balance_after),
-      details: flattenProcess(result),
+      process: processView,
     });
   } catch (error) {
     console.error('Erro na consulta completa de processo:', error);

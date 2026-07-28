@@ -5428,23 +5428,6 @@ function App() {
                 <div className="authMessage">{searchMessage}</div>
               )}
 
-              {combinedConsultationStatus && (
-                <div className="combinedConsultationSummary">
-                  <div>
-                    <span>Consulta combinada concluída</span>
-                    <strong>Fonte externa + base interna LocaCheck</strong>
-                  </div>
-                  <div className="combinedConsultationChecks">
-                    <span className="completed">✓ Externa concluída</span>
-                    <span className={combinedConsultationStatus.internalVerified ? "completed" : "warning"}>
-                      {combinedConsultationStatus.internalVerified ? "✓ Interna verificada" : "! Interna indisponível"}
-                    </span>
-                    <span>{combinedConsultationStatus.internalCount || 0} ocorrência(s) interna(s)</span>
-                    <span>{combinedConsultationStatus.creditsCharged || 3} créditos no total</span>
-                  </div>
-                </div>
-              )}
-
               {combinedConsultationStatus && combinedConsultationStatus.internalVerified && Number(combinedConsultationStatus.internalCount || 0) === 0 && (
                 <div className="resultCard internalEmptyResultCard">
                   <div className="internalResultSourceHeader">
@@ -5530,7 +5513,7 @@ function App() {
                                   {item.related_people.map((person, index) => (
                                     <div className="externalMiniBlockV32" key={`related-${index}`}>
                                       <div className="relatedPersonHeaderV46">
-                                        <strong>{person.full_name || person.name || relatedPersonLabel(person, index)}</strong>
+                                        <strong>{person.full_name || person.name || "Identidade não confirmada pela fonte"}</strong>
                                         {isValidCpf(onlyDigits(person.tax_id || "")) && (
                                           <button type="button" className="miniConsultButtonV46 relatedConsultButtonV47" disabled={loading} onClick={() => consultarPessoaRelacionada(person)}>
                                             {loading ? "Consultando..." : "Consultar"}
@@ -5663,13 +5646,32 @@ function App() {
                     </div>
                     <button type="button" onClick={() => { setProcessConsultation(null); setProcessConsultationMessage(""); }}>Fechar</button>
                   </div>
-                  <div className="processDetailsV46">
-                    {(processConsultation.details || []).map((detail, index) => (
-                      <div key={`process-detail-${index}`}>
-                        <span>{detail.label}</span>
-                        <strong>{detail.value}</strong>
+                  <div className="processSimplifiedV49">
+                    <section>
+                      <h3>Pessoas envolvidas</h3>
+                      {(processConsultation.process?.parties || []).length === 0 && <p>Nenhuma parte identificada.</p>}
+                      <div className="processPartiesV49">
+                        {(processConsultation.process?.parties || []).map((party, index) => (
+                          <div key={`party-${index}`}>
+                            <strong>{party.name}</strong>
+                            <span>{party.role}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    </section>
+
+                    <section>
+                      <h3>Últimas atualizações</h3>
+                      {(processConsultation.process?.updates || []).length === 0 && <p>Nenhuma atualização encontrada.</p>}
+                      <div className="processUpdatesV49">
+                        {(processConsultation.process?.updates || []).map((update, index) => (
+                          <article key={`update-${index}`}>
+                            <time>{update.date ? formatDate(update.date) : update.date_display || "Data não informada"}</time>
+                            <p>{update.content}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
                   </div>
                 </div>
               )}

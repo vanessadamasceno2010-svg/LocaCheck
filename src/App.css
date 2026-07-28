@@ -4241,6 +4241,72 @@ body {
   color: #0f172a !important;
 }
 
+.processSimplifiedV49 {
+  display: grid;
+  gap: 22px;
+  margin-top: 18px;
+}
+
+.processSimplifiedV49 section {
+  padding: 16px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.processSimplifiedV49 h3 {
+  margin: 0 0 12px;
+  color: #0f172a;
+}
+
+.processPartiesV49,
+.processUpdatesV49 {
+  display: grid;
+  gap: 9px;
+}
+
+.processPartiesV49 > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.processPartiesV49 span {
+  flex: 0 0 auto;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.processUpdatesV49 article {
+  padding: 13px;
+  border-left: 4px solid #2563eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.processUpdatesV49 time {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.processUpdatesV49 p {
+  margin: 7px 0 0;
+  color: #334155;
+  line-height: 1.55;
+}
+
+@media (max-width: 560px) {
+  .processPartiesV49 > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 @media (max-width: 560px) {
   .relatedPersonHeaderV46,
   .processResultHeaderV46 {

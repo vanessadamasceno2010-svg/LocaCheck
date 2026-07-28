@@ -1,4 +1,4 @@
-# LocaCheck V48
+# LocaCheck V49
 
 Versão com:
 
@@ -12,12 +12,14 @@ Versão com:
 - contatos com DDD e separação visual;
 - identificação de pessoas relacionadas pelo contato retornado;
 - recuperação do processo completo pelo dataset de pessoas;
-- bloqueio de cobrança quando vier apenas metadado ou erro `-109`.
+- processo simplificado com partes e atualizações ordenadas;
+- bloqueio de falso relacionamento com o próprio titular;
+- remoção do resumo de consulta combinada.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V48-PESSOAS-RELACIONADAS-E-PROCESSOS-COMPLETOS.md
+AJUSTES-V49-PARTES-ATUALIZACOES-E-RELACIONADOS.md
 ```
 
 Migração obrigatória:
