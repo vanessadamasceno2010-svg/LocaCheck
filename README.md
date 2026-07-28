@@ -1,4 +1,4 @@
-# LocaCheck V49
+# LocaCheck V50
 
 Versão com:
 
@@ -14,12 +14,16 @@ Versão com:
 - recuperação do processo completo pelo dataset de pessoas;
 - processo simplificado com partes e atualizações ordenadas;
 - bloqueio de falso relacionamento com o próprio titular;
+- CPF relacionado extraído do campo técnico retornado pela BigDataCorp;
+- nome da pessoa relacionada resolvido pelo CPF identificado;
+- agrupamento seguro de contatos repetidos da mesma pessoa;
+- nome e tipo de participação lidos do mesmo objeto do processo;
 - remoção do resumo de consulta combinada.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V49-PARTES-ATUALIZACOES-E-RELACIONADOS.md
+AJUSTES-V50-CPF-RELACIONADOS-E-PARTES-PROCESSO.md
 ```
 
 Migração obrigatória:

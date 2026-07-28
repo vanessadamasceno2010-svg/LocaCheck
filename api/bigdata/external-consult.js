@@ -427,6 +427,14 @@ function collectContacts(firstResult) {
 
 function normalizeRelatedPerson(item) {
   if (!item || typeof item !== 'object') return null;
+  const technicalType = String(item.Type || item.type || '');
+  const technicalTypeParts = technicalType.split('-').map((part) => part.trim());
+  const relatedCpfFromType = technicalTypeParts.find((part) => onlyDigits(part).length === 11);
+  const relationshipFromType = technicalTypeParts.find((part) => [
+    'COWORKER', 'NEIGHBOR', 'BROTHER', 'NEPHEW', 'MOTHER', 'SON', 'HOUSEHOLD',
+    'GRANDSON', 'SPOUSE', 'RELATIVE', 'GRANDPARENT', 'UNCLE', 'COUSIN',
+    'FATHER', 'PARTNER', 'RELATED',
+  ].includes(String(part).toUpperCase()));
   const name = findDeep(item, [
     'Name', 'FullName', 'Nome', 'PersonName', 'RelatedName', 'RelatedPersonName',
     'RelatedEntityName', 'RelativeName', 'NomeRelacionado', 'NomePessoaRelacionada',
@@ -435,8 +443,9 @@ function normalizeRelatedPerson(item) {
     'TaxIdNumber', 'TaxId', 'CPF', 'CNPJ', 'Document', 'DocumentNumber', 'FiscalNumber',
     'NumeroIdentificacaoFiscal', 'RelatedTaxIdNumber', 'RelatedPersonTaxIdNumber',
     'RelatedEntityTaxIdNumber', 'RelatedDocument', 'RelativeTaxIdNumber',
-  ]);
-  const relationship = findDeep(item, ['Kinship', 'KinshipDegree', 'Degree', 'RelationDegree', 'GrauParentesco', 'Relationship', 'RelationshipType', 'Type', 'TipoRelacionamento', 'EconomicRelationship', 'EconomicRelationshipType', 'SpecificType']);
+  ]) || relatedCpfFromType;
+  const relationship = findDeep(item, ['Kinship', 'KinshipDegree', 'Degree', 'RelationDegree', 'GrauParentesco', 'Relationship', 'RelationshipType', 'TipoRelacionamento', 'EconomicRelationship', 'EconomicRelationshipType', 'SpecificType'])
+    || relationshipFromType;
   const phonesRaw = findAllDeep(item, ['Phones', 'PhoneNumbers', 'Telefones', 'PhoneData', 'MobilePhones', 'Phone']);
   const phones = uniqueByText(phonesRaw.flatMap(asArray).map(normalizePhone).filter(Boolean), 10);
   if (!name && !taxId && !relationship && phones.length === 0) return null;
@@ -448,6 +457,54 @@ function normalizeRelatedPerson(item) {
     phones,
     email: findDeep(item, ['Email', 'EmailAddress', 'E-mail']) || null,
   };
+}
+
+function mergeRelatedPeople(items) {
+  const merged = new Map();
+  const peopleWithCpf = items.filter((person) => onlyDigits(person?.tax_id || '').length === 11);
+  const cpfKeysByRelationship = new Map();
+
+  for (const person of peopleWithCpf) {
+    const relationshipKey = String(person?.relationship || '').trim().toUpperCase();
+    if (!relationshipKey) continue;
+    const keys = cpfKeysByRelationship.get(relationshipKey) || new Set();
+    keys.add(`cpf:${onlyDigits(person.tax_id)}`);
+    cpfKeysByRelationship.set(relationshipKey, keys);
+  }
+
+  const orderedItems = [
+    ...peopleWithCpf,
+    ...items.filter((person) => onlyDigits(person?.tax_id || '').length !== 11),
+  ];
+
+  for (const person of orderedItems) {
+    const cpf = onlyDigits(person?.tax_id || '');
+    const relationshipKey = String(person?.relationship || '').trim().toUpperCase();
+    const compatibleCpfKeys = cpfKeysByRelationship.get(relationshipKey);
+    const safeRelatedCpfKey = cpf.length !== 11 && compatibleCpfKeys?.size === 1
+      ? Array.from(compatibleCpfKeys)[0]
+      : null;
+    const key = cpf.length === 11
+      ? `cpf:${cpf}`
+      : safeRelatedCpfKey
+        || `relation:${relationshipKey}:${String(person?.email || '')}`;
+    const current = merged.get(key);
+    if (!current) {
+      merged.set(key, person);
+      continue;
+    }
+    merged.set(key, {
+      ...current,
+      ...person,
+      name: current.name || person.name || null,
+      full_name: current.full_name || person.full_name || null,
+      tax_id: current.tax_id || person.tax_id || null,
+      relationship: current.relationship || person.relationship || null,
+      email: current.email || person.email || null,
+      phones: uniqueByText([...(current.phones || []), ...(person.phones || [])], 10),
+    });
+  }
+  return Array.from(merged.values()).slice(0, 50);
 }
 
 function collectRelatedPeople(firstResult) {
@@ -479,7 +536,7 @@ function collectRelatedPeople(firstResult) {
     }
   }
 
-  return uniqueByText(flattened.map(normalizeRelatedPerson).filter(Boolean), 50);
+  return mergeRelatedPeople(flattened.map(normalizeRelatedPerson).filter(Boolean));
 }
 
 function collectProcesses(firstResult, cpf = '') {
@@ -643,6 +700,9 @@ async function resolveRelatedIdentity(person, subjectCpf = '') {
   if (person?.name && person?.tax_id) return person;
 
   const candidates = [
+    ...(onlyDigits(person?.tax_id || '').length === 11
+      ? [{ type: 'doc', value: onlyDigits(person.tax_id) }]
+      : []),
     ...(person?.phones || []).map((phone) => ({ type: 'phone', value: onlyDigits(phone?.number || '') })),
     ...(person?.email ? [{ type: 'email', value: normalizeEmailValue(person.email) }] : []),
   ]
@@ -1054,7 +1114,9 @@ export default async function handler(req, res) {
 
       if (cacheError) console.error('Erro ao salvar cache externo:', cacheError);
     } else {
-      resultSummary = resultSummary || buildSummary(rawResponse, config.type, true, cpf, search);
+      // Reprocessa a resposta original com o normalizador atual. Isso evita que
+      // um resumo antigo do cache continue escondendo o CPF técnico relacionado.
+      resultSummary = buildSummary(rawResponse, config.type, true, cpf, search);
       resultSummary = { ...resultSummary, cached: true, searched_type: search.type, searched_value: search.display };
       resultSummary.related_people = await enrichRelatedPeople(resultSummary.related_people, resultSummary.cpf || cpf);
     }

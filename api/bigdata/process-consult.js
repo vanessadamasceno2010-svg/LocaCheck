@@ -96,6 +96,30 @@ function findDeepValue(value, keys) {
   return null;
 }
 
+function findOwnValue(value, keys) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  for (const wantedKey of keys) {
+    const entry = Object.entries(value).find(
+      ([key]) => String(key).toLowerCase() === String(wantedKey).toLowerCase(),
+    );
+    if (entry && entry[1] !== null && entry[1] !== undefined && entry[1] !== '') {
+      return entry[1];
+    }
+  }
+  return null;
+}
+
+function findPartyIdentityValue(party, keys) {
+  const direct = findOwnValue(party, keys);
+  if (direct) return direct;
+  for (const containerKey of ['Person', 'Entity', 'Party', 'Individual', 'Company']) {
+    const container = findOwnValue(party, [containerKey]);
+    const nested = findOwnValue(container, keys);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 function findCollections(value, keys, output = [], depth = 0) {
   if (!value || typeof value !== 'object' || depth > 10) return output;
   const wanted = keys.map((key) => key.toLowerCase());
@@ -126,9 +150,11 @@ function buildProcessView(processData, processNumber) {
   const parties = partyArrays
     .flat()
     .map((party) => {
-      const name = findDeepValue(party, ['Name', 'FullName', 'Nome', 'PartyName']);
-      const polarity = findDeepValue(party, ['Polarity', 'PartyPolarity', 'Polaridade']);
-      const type = findDeepValue(party, ['SpecificType', 'PartyType', 'Type', 'Role', 'TipoParte']);
+      // Nome e tipo precisam sair do mesmo objeto Party. A busca recursiva anterior
+      // podia encontrar o nome em uma pessoa e o tipo em um objeto interno diferente.
+      const name = findPartyIdentityValue(party, ['Name', 'FullName', 'Nome', 'PartyName']);
+      const polarity = findOwnValue(party, ['Polarity', 'PartyPolarity', 'Polaridade']);
+      const type = findOwnValue(party, ['PartyType', 'SpecificType', 'Role', 'TipoParte', 'Type']);
       if (!name) return null;
       return {
         name: String(name),
