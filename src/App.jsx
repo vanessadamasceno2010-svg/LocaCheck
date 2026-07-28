@@ -207,6 +207,12 @@ function formatWhatsappInput(value) {
     .replace(/(\d{5})(\d)/, "$1-$2");
 }
 
+function formatContactPhone(value) {
+  const digits = onlyDigits(value);
+  if (digits.length === 10 || digits.length === 11) return formatWhatsappInput(digits);
+  return String(value || "");
+}
+
 function isValidWhatsapp(value) {
   const digits = onlyDigits(value);
 
@@ -345,6 +351,21 @@ function formatDate(value) {
   }
 
   return date.toLocaleString("pt-BR");
+}
+
+function calculateCurrentAge(value) {
+  if (!value) return null;
+  const text = String(value);
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const birth = isoMatch
+    ? new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]))
+    : new Date(value);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDifference = today.getMonth() - birth.getMonth();
+  if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birth.getDate())) age -= 1;
+  return age >= 0 && age <= 130 ? age : null;
 }
 
 
@@ -818,6 +839,7 @@ function App() {
   const [recordImage, setRecordImage] = useState(null);
 
   const [searchText, setSearchText] = useState("");
+  const [externalSearchType, setExternalSearchType] = useState("cpf");
   const [searchResults, setSearchResults] = useState([]);
   const [searchMessage, setSearchMessage] = useState("");
   const [consultationMode, setConsultationMode] = useState("internal");
@@ -852,6 +874,9 @@ function App() {
   const [adminActivitySearch, setAdminActivitySearch] = useState("");
   const [loadingAdminActivity, setLoadingAdminActivity] = useState(false);
   const [combinedConsultationStatus, setCombinedConsultationStatus] = useState(null);
+  const [processConsultation, setProcessConsultation] = useState(null);
+  const [processConsultationMessage, setProcessConsultationMessage] = useState("");
+  const [loadingProcessNumber, setLoadingProcessNumber] = useState("");
   const [showExternalConsultationHistory, setShowExternalConsultationHistory] = useState(false);
   const [externalConsultationHistory, setExternalConsultationHistory] = useState([]);
   const [externalConsultationHistoryMessage, setExternalConsultationHistoryMessage] = useState("");
@@ -1711,15 +1736,25 @@ function App() {
     setLoading(false);
   }
 
-  async function consultarLocatarioExterno() {
+  async function consultarLocatarioExterno(directSearch = null) {
     if (loading) return;
 
-    const cpfDigits = onlyDigits(searchText);
+    const selectedType = directSearch?.type || externalSearchType;
+    const selectedValue = String(directSearch?.value || searchText).trim();
+    const cpfDigits = onlyDigits(selectedValue);
     const creditsNeeded = externalConsultationCredits(consultationMode);
     const consultationLabel = externalConsultationLabel(consultationMode);
 
-    if (!isValidCpf(cpfDigits)) {
-      setSearchMessage("Para consulta externa, informe um CPF completo e válido.");
+    if (selectedType === "cpf" && !isValidCpf(cpfDigits)) {
+      setSearchMessage("Informe um CPF completo e válido.");
+      return;
+    }
+    if (selectedType === "email" && !isValidEmail(selectedValue)) {
+      setSearchMessage("Informe um e-mail válido.");
+      return;
+    }
+    if (selectedType === "phone" && (onlyDigits(selectedValue).length < 10 || onlyDigits(selectedValue).length > 13)) {
+      setSearchMessage("Informe um telefone com DDD válido.");
       return;
     }
 
@@ -1727,12 +1762,6 @@ function App() {
       setSearchMessage(`${consultationLabel} consome ${creditsNeeded} créditos. Recarregue sua conta para continuar.`);
       return;
     }
-
-    const confirmed = window.confirm(
-      `${consultationLabel}\n\nEsta consulta consome ${creditsNeeded} créditos e também verifica a base interna sem cobrança adicional. O resultado externo deve ser usado apenas como apoio à análise. Deseja continuar?`
-    );
-
-    if (!confirmed) return;
 
     setLoading(true);
     setSearchMessage("");
@@ -1756,7 +1785,8 @@ function App() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          cpf: cpfDigits,
+          searchType: selectedType,
+          searchValue: selectedType === "cpf" ? cpfDigits : selectedValue,
           consultationType: consultationMode,
         }),
       });
@@ -1807,6 +1837,54 @@ function App() {
     }
 
     setLoading(false);
+  }
+
+  async function consultarPessoaRelacionada(person) {
+    const relatedCpf = onlyDigits(person?.tax_id || "");
+    if (!isValidCpf(relatedCpf)) {
+      setSearchMessage("Esta pessoa relacionada não possui um CPF válido disponível para consulta.");
+      return;
+    }
+    setExternalSearchType("cpf");
+    setSearchText(formatCpfInput(relatedCpf));
+    await consultarLocatarioExterno({ type: "cpf", value: relatedCpf });
+  }
+
+  async function consultarProcessoCompleto(processNumber, subjectCpf = "") {
+    if (loadingProcessNumber) return;
+    const normalized = onlyDigits(processNumber);
+    if (normalized.length !== 20) {
+      setProcessConsultationMessage("O número deste processo está incompleto e não pode ser consultado.");
+      return;
+    }
+    if (Number(profile?.credits || 0) < 1) {
+      setProcessConsultationMessage("Créditos insuficientes. A consulta completa do processo consome 1 crédito.");
+      return;
+    }
+
+    setLoadingProcessNumber(normalized);
+    setProcessConsultationMessage("");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      const response = await fetch("/api/bigdata/process-consult", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ processNumber: normalized, cpf: onlyDigits(subjectCpf) }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        setProcessConsultationMessage(data?.message || "Não foi possível consultar o processo.");
+      } else {
+        setProcessConsultation(data);
+        setProcessConsultationMessage("Consulta completa do processo concluída.");
+        await loadProfile(session.user.id);
+      }
+    } catch (error) {
+      console.log("Erro ao consultar processo:", error);
+      setProcessConsultationMessage("Erro inesperado ao consultar o processo.");
+    }
+    setLoadingProcessNumber("");
   }
 
   async function carregarAtividadeAdmin(days = adminActivityPeriod) {
@@ -2981,8 +3059,8 @@ function App() {
       (adminExternalFilterCache === "nao" && !Boolean(log.cache_hit));
     const search = String(adminExternalSearch || "").trim().toLowerCase();
     const userText = `${log.profiles?.nome || ""} ${log.profiles?.email || ""} ${log.user_id || ""}`.toLowerCase();
-    const cpfText = `${log.cpf_full || ""} ${log.cpf4 || ""}`.toLowerCase();
-    const textOk = !search || userText.includes(search) || cpfText.includes(search);
+    const searchedText = `${log.search_type || ""} ${log.search_value || ""} ${log.cpf_full || ""} ${log.cpf4 || ""}`.toLowerCase();
+    const textOk = !search || userText.includes(search) || searchedText.includes(search);
     return typeOk && cacheOk && textOk;
   });
 
@@ -4297,7 +4375,7 @@ function App() {
               <div className="adminFilters externalFilters">
                 <input
                   type="text"
-                  placeholder="Buscar por usuário, e-mail ou CPF"
+                  placeholder="Buscar por usuário, CPF, telefone ou e-mail"
                   value={adminExternalSearch}
                   onChange={(e) => setAdminExternalSearch(e.target.value)}
                 />
@@ -4328,9 +4406,12 @@ function App() {
                     </div>
 
                     <p><strong>Usuário:</strong> {log.profiles?.nome || log.profiles?.email || log.user_id}</p>
+                    <p><strong>Tipo pesquisado:</strong> {log.search_type === "phone" ? "Telefone" : log.search_type === "email" ? "E-mail" : "CPF"}</p>
                     <p>
-                      <strong>CPF consultado:</strong>{" "}
-                      {log.cpf_full ? formatCpfInput(log.cpf_full) : log.cpf4 ? `CPF final ${log.cpf4}` : "Não informado"}
+                      <strong>Valor pesquisado:</strong>{" "}
+                      {log.search_type === "cpf" && log.search_value
+                        ? formatCpfInput(log.search_value)
+                        : log.search_value || (log.cpf_full ? formatCpfInput(log.cpf_full) : log.cpf4 ? `CPF final ${log.cpf4}` : "Não informado")}
                     </p>
                     <p><strong>Créditos consumidos:</strong> {log.credits_charged || 0}</p>
                     <p><strong>Saldo após a consulta:</strong> {log.credits_balance_after === null || log.credits_balance_after === undefined ? "Não registrado" : `${log.credits_balance_after} crédito(s)`}</p>
@@ -5261,7 +5342,7 @@ function App() {
                 ×
               </button>
 
-              <h2>Consultar CPF</h2>
+              <h2>Realizar consulta</h2>
 
               <p>
                 Escolha entre buscar registros em outras locadoras ou realizar uma consulta externa completa.
@@ -5300,22 +5381,43 @@ function App() {
               </div>
 
               <form onSubmit={consultarLocatario} className="recordForm">
+                {consultationMode !== "internal" && (
+                  <div className="externalSearchTypeV46">
+                    <button type="button" className={externalSearchType === "cpf" ? "active" : ""} onClick={() => { setExternalSearchType("cpf"); setSearchText(""); }}>CPF</button>
+                    <button type="button" className={externalSearchType === "phone" ? "active" : ""} onClick={() => { setExternalSearchType("phone"); setSearchText(""); }}>Telefone</button>
+                    <button type="button" className={externalSearchType === "email" ? "active" : ""} onClick={() => { setExternalSearchType("email"); setSearchText(""); }}>E-mail</button>
+                  </div>
+                )}
                 <input
-                  type="text"
-                  placeholder={consultationMode === "internal" ? "Nome ou CPF" : "CPF completo"}
+                  type={consultationMode !== "internal" && externalSearchType === "email" ? "email" : "text"}
+                  placeholder={
+                    consultationMode === "internal"
+                      ? "Nome ou CPF"
+                      : externalSearchType === "cpf"
+                        ? "CPF completo"
+                        : externalSearchType === "phone"
+                          ? "Telefone com DDD"
+                          : "E-mail completo"
+                  }
                   value={searchText}
                   onChange={(e) => {
-                    const value = consultationMode === "internal" ? e.target.value : formatCpfInput(e.target.value);
+                    const value = consultationMode === "internal"
+                      ? e.target.value
+                      : externalSearchType === "cpf"
+                        ? formatCpfInput(e.target.value)
+                        : externalSearchType === "phone"
+                          ? formatWhatsappInput(e.target.value)
+                          : e.target.value;
                     setSearchText(value);
                   }}
                   required
                 />
 
-                <p className="documentPublicNotice">
-                  {consultationMode === "internal"
-                    ? "Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras."
-                    : "Consulta externa completa: consulta a fonte externa e também verifica a base interna. Total: 3 créditos."}
-                </p>
+                {consultationMode === "internal" && (
+                  <p className="documentPublicNotice">
+                    Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras.
+                  </p>
+                )}
 
                 <button className="btn primary full" disabled={loading}>
                   {loading ? "Consultando..." : "Buscar"}
@@ -5324,23 +5426,6 @@ function App() {
 
               {searchMessage && (
                 <div className="authMessage">{searchMessage}</div>
-              )}
-
-              {combinedConsultationStatus && (
-                <div className="combinedConsultationSummary">
-                  <div>
-                    <span>Consulta combinada concluída</span>
-                    <strong>Fonte externa + base interna LocaCheck</strong>
-                  </div>
-                  <div className="combinedConsultationChecks">
-                    <span className="completed">✓ Externa concluída</span>
-                    <span className={combinedConsultationStatus.internalVerified ? "completed" : "warning"}>
-                      {combinedConsultationStatus.internalVerified ? "✓ Interna verificada" : "! Interna indisponível"}
-                    </span>
-                    <span>{combinedConsultationStatus.internalCount || 0} ocorrência(s) interna(s)</span>
-                    <span>{combinedConsultationStatus.creditsCharged || 3} créditos no total</span>
-                  </div>
-                </div>
               )}
 
               {combinedConsultationStatus && combinedConsultationStatus.internalVerified && Number(combinedConsultationStatus.internalCount || 0) === 0 && (
@@ -5381,6 +5466,7 @@ function App() {
                                 <p><strong>CPF consultado:</strong> {item.cpf || item.cpf_masked || "Não informado"}</p>
                                 <p><strong>Situação cadastral:</strong> {item.document_status || "Não informado"}</p>
                                 {item.birth_date && <p><strong>Nascimento:</strong> {formatSimpleDate(item.birth_date)}</p>}
+                                {calculateCurrentAge(item.birth_date) !== null && <p><strong>Idade atual:</strong> {calculateCurrentAge(item.birth_date)} anos</p>}
                                 {item.mother_name && <p><strong>Nome da mãe:</strong> {item.mother_name}</p>}
                                 {item.father_name && <p><strong>Nome do pai:</strong> {item.father_name}</p>}
                                 {item.social_number && <p><strong>Número social:</strong> {item.social_number}</p>}
@@ -5391,12 +5477,22 @@ function App() {
                                 <section className="externalInfoCardV31">
                                   <span>Contatos encontrados</span>
                                   <h4>{(item.phones?.length || 0) + (item.emails?.length || 0)} contato(s)</h4>
-                                  {item.phones?.map((phone, index) => (
-                                    <p key={`phone-${index}`}><strong>Telefone {index + 1}:</strong> {[phone.number, phone.type, phone.status ? `status ${phone.status}` : null, phone.is_main === true ? 'principal' : null, phone.is_recent === true ? 'recente' : null, phone.relationship ? `relação ${phone.relationship}` : null, phone.ranking ? `prioridade ${phone.ranking}` : null].filter(Boolean).join(" • ")}</p>
-                                  ))}
-                                  {item.emails?.map((email, index) => (
-                                    <p key={`email-${index}`}><strong>E-mail {index + 1}:</strong> {[email.email, email.type, email.status ? `status ${email.status}` : null, email.is_main === true ? 'principal' : null, email.is_recent === true ? 'recente' : null, email.relationship ? `relação ${email.relationship}` : null, email.ranking ? `prioridade ${email.ranking}` : null].filter(Boolean).join(" • ")}</p>
-                                  ))}
+                                  {Array.isArray(item.phones) && item.phones.length > 0 && (
+                                    <div className="contactGroupV47">
+                                      <strong>Telefones</strong>
+                                      {item.phones.map((phone, index) => (
+                                        <p key={`phone-${index}`} className="simpleContactV46">{formatContactPhone(phone.number)}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {Array.isArray(item.emails) && item.emails.length > 0 && (
+                                    <div className="contactGroupV47 emailGroupV47">
+                                      <strong>E-mails</strong>
+                                      {item.emails.map((email, index) => (
+                                        <p key={`email-${index}`} className="simpleContactV46">{email.email}</p>
+                                      ))}
+                                    </div>
+                                  )}
                                 </section>
                               ) : null}
 
@@ -5412,17 +5508,23 @@ function App() {
 
                               {Array.isArray(item.related_people) && item.related_people.length > 0 ? (
                                 <section className="externalInfoCardV31 wide relatedPeopleV34">
-                                  <span>Pessoas relacionadas</span>
+                                  <span>Relacionamentos Econômicos e Pessoas Relacionadas</span>
                                   <h4>{item.related_people.length} pessoa(s) ou relacionamento(s)</h4>
                                   {item.related_people.map((person, index) => (
                                     <div className="externalMiniBlockV32" key={`related-${index}`}>
-                                      <strong>{person.name || relatedPersonLabel(person, index)}</strong>
+                                      <div className="relatedPersonHeaderV46">
+                                        <strong>{person.full_name || person.name || "Identidade não confirmada pela fonte"}</strong>
+                                        {isValidCpf(onlyDigits(person.tax_id || "")) && (
+                                          <button type="button" className="miniConsultButtonV46 relatedConsultButtonV47" disabled={loading} onClick={() => consultarPessoaRelacionada(person)}>
+                                            {loading ? "Consultando..." : "Consultar"}
+                                          </button>
+                                        )}
+                                      </div>
                                       {person.full_name && person.full_name !== person.name && <p><strong>Nome completo:</strong> {person.full_name}</p>}
-                                      {person.tax_id && <p><strong>CPF/CNPJ:</strong> {person.tax_id}</p>}
-                                      {person.relationship && <p><strong>Grau de parentesco/relacionamento:</strong> {person.relationship}</p>}
-                                      {person.email && <p><strong>E-mail:</strong> {person.email}</p>}
+                                      {person.tax_id && <p><strong>CPF:</strong> {person.tax_id}</p>}
+                                      {person.relationship && <p><strong>Grau de parentesco:</strong> {person.relationship}</p>}
                                       {Array.isArray(person.phones) && person.phones.length > 0 && (
-                                        <p><strong>Telefones:</strong> {person.phones.map((phone) => [phone.number, phone.type, phone.status].filter(Boolean).join(' • ')).filter(Boolean).join(" | ")}</p>
+                                        <div className="relatedPhonesV46"><strong>Telefones:</strong>{person.phones.map((phone, phoneIndex) => <span key={`related-phone-${phoneIndex}`}>{formatContactPhone(phone.number)}</span>)}</div>
                                       )}
                                     </div>
                                   ))}
@@ -5448,6 +5550,11 @@ function App() {
                                       {process.distribution_date && <p><strong>Data:</strong> {formatSimpleDate(process.distribution_date)}</p>}
                                       {process.subject && <p><strong>Assunto:</strong> {process.subject}</p>}
                                       {process.value && <p><strong>Valor informado:</strong> {process.value}</p>}
+                                      {process.number && (
+                                        <button type="button" className="miniConsultButtonV46 processConsultButtonV47" disabled={Boolean(loadingProcessNumber)} onClick={() => consultarProcessoCompleto(process.number, item.cpf)}>
+                                          {loadingProcessNumber === onlyDigits(process.number) ? "Consultando..." : "Consultar processo"}
+                                        </button>
+                                      )}
                                     </div>
                                   ))}
                                 </section>
@@ -5526,6 +5633,46 @@ function App() {
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+
+              {processConsultationMessage && <div className="authMessage">{processConsultationMessage}</div>}
+              {processConsultation && (
+                <div className="processResultV46">
+                  <div className="processResultHeaderV46">
+                    <div>
+                      <span>Processo completo</span>
+                      <strong>{processConsultation.processNumber}</strong>
+                    </div>
+                    <button type="button" onClick={() => { setProcessConsultation(null); setProcessConsultationMessage(""); }}>Fechar</button>
+                  </div>
+                  <div className="processSimplifiedV49">
+                    <section>
+                      <h3>Pessoas envolvidas</h3>
+                      {(processConsultation.process?.parties || []).length === 0 && <p>Nenhuma parte identificada.</p>}
+                      <div className="processPartiesV49">
+                        {(processConsultation.process?.parties || []).map((party, index) => (
+                          <div key={`party-${index}`}>
+                            <strong>{party.name}</strong>
+                            <span>{party.role}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h3>Últimas atualizações</h3>
+                      {(processConsultation.process?.updates || []).length === 0 && <p>Nenhuma atualização encontrada.</p>}
+                      <div className="processUpdatesV49">
+                        {(processConsultation.process?.updates || []).map((update, index) => (
+                          <article key={`update-${index}`}>
+                            <time>{update.date ? formatDate(update.date) : update.date_display || "Data não informada"}</time>
+                            <p>{update.content}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
                 </div>
               )}
             </div>

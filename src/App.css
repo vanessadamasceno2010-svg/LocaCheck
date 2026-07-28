@@ -4109,3 +4109,208 @@ body {
   border-color: rgba(245, 158, 11, .34);
   background: rgba(245, 158, 11, .08);
 }
+
+.externalSearchTypeV46 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.externalSearchTypeV46 button,
+.miniConsultButtonV46,
+.processResultHeaderV46 button {
+  border: 1px solid rgba(37, 99, 235, .3);
+  border-radius: 10px;
+  background: rgba(37, 99, 235, .08);
+  color: #2563eb;
+  font-weight: 800;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.externalSearchTypeV46 button.active {
+  color: #fff;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.simpleContactV46 {
+  margin: 8px 0 !important;
+  overflow-wrap: anywhere;
+}
+
+.contactGroupV47 {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, .2);
+}
+
+.emailGroupV47 {
+  margin-top: 18px;
+}
+
+.relatedPersonHeaderV46,
+.processResultHeaderV46 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.miniConsultButtonV46 {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+}
+
+.miniConsultButtonV46:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+.relatedConsultButtonV47 {
+  color: #052e16 !important;
+  background: #4ade80 !important;
+  border-color: #22c55e !important;
+  box-shadow: 0 8px 20px rgba(34, 197, 94, .24);
+}
+
+.processConsultButtonV47 {
+  color: #1e1b4b !important;
+  background: #facc15 !important;
+  border-color: #eab308 !important;
+}
+
+.relatedPhonesV46 {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.relatedPhonesV46 span {
+  display: block;
+}
+
+.processResultV46 {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(37, 99, 235, .25);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.processResultHeaderV46 span,
+.processDetailsV46 span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.processResultHeaderV46 strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.processDetailsV46 {
+  display: grid;
+  gap: 8px;
+  max-height: 60vh;
+  margin-top: 16px;
+  overflow: auto;
+}
+
+.processDetailsV46 > div {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.processDetailsV46 strong {
+  display: block;
+  margin-top: 4px;
+  color: #0f172a !important;
+  overflow-wrap: anywhere;
+}
+
+.processResultV46,
+.processResultV46 strong {
+  color: #0f172a !important;
+}
+
+.processSimplifiedV49 {
+  display: grid;
+  gap: 22px;
+  margin-top: 18px;
+}
+
+.processSimplifiedV49 section {
+  padding: 16px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.processSimplifiedV49 h3 {
+  margin: 0 0 12px;
+  color: #0f172a;
+}
+
+.processPartiesV49,
+.processUpdatesV49 {
+  display: grid;
+  gap: 9px;
+}
+
+.processPartiesV49 > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.processPartiesV49 span {
+  flex: 0 0 auto;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.processUpdatesV49 article {
+  padding: 13px;
+  border-left: 4px solid #2563eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.processUpdatesV49 time {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.processUpdatesV49 p {
+  margin: 7px 0 0;
+  color: #334155;
+  line-height: 1.55;
+}
+
+@media (max-width: 560px) {
+  .processPartiesV49 > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .relatedPersonHeaderV46,
+  .processResultHeaderV46 {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
