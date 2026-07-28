@@ -250,6 +250,25 @@ function normalizeRoleText(value) {
   const text = titleCasePt(value);
   if (!text) return null;
   const upper = String(value || '').toUpperCase();
+  const relationshipTranslations = {
+    MOTHER: 'Mãe',
+    FATHER: 'Pai',
+    SON: 'Filho(a)',
+    BROTHER: 'Irmão(ã)',
+    SPOUSE: 'Cônjuge',
+    PARTNER: 'Companheiro(a)',
+    COUSIN: 'Primo(a)',
+    UNCLE: 'Tio(a)',
+    NEPHEW: 'Sobrinho(a)',
+    GRANDSON: 'Neto(a)',
+    GRANDPARENT: 'Avô/Avó',
+    RELATIVE: 'Parente',
+    HOUSEHOLD: 'Pessoa do mesmo domicílio',
+    COWORKER: 'Colega de trabalho',
+    NEIGHBOR: 'Vizinho(a)',
+    RELATED: 'Pessoa relacionada',
+  };
+  if (relationshipTranslations[upper]) return relationshipTranslations[upper];
   if (upper.includes('VITIMA')) return text.replace('Vitima', 'Vítima');
   if (upper === 'LEAO') return 'Leão';
   return text;
@@ -261,9 +280,16 @@ function normalizePhone(item) {
     const digits = onlyDigits(item);
     return digits.length >= 8 ? { number: String(item) } : null;
   }
-  const number =
-    findDeep(item, ['Number', 'PhoneNumber', 'Telefone', 'Phone', 'FormattedNumber', 'FullNumber']) ||
-    [findDeep(item, ['AreaCode', 'DDD']), findDeep(item, ['Number', 'Numero'])].filter(Boolean).join(' ');
+  const rawNumber = findDeep(item, ['Number', 'PhoneNumber', 'Telefone', 'Phone', 'FormattedNumber', 'FullNumber', 'Numero']);
+  const areaCode = onlyDigits(findDeep(item, ['AreaCode', 'DDD', 'PhoneAreaCode']) || '');
+  let numberDigits = onlyDigits(rawNumber || '');
+  if ((numberDigits.length === 8 || numberDigits.length === 9) && areaCode.length === 2) {
+    numberDigits = `${areaCode}${numberDigits}`;
+  }
+  if ((numberDigits.length === 12 || numberDigits.length === 13) && numberDigits.startsWith('55')) {
+    numberDigits = numberDigits.slice(2);
+  }
+  const number = numberDigits || rawNumber;
   if (!number) return null;
   return {
     number: String(number),
@@ -401,8 +427,15 @@ function collectContacts(firstResult) {
 
 function normalizeRelatedPerson(item) {
   if (!item || typeof item !== 'object') return null;
-  const name = findDeep(item, ['Name', 'FullName', 'Nome', 'PersonName', 'RelatedName']);
-  const taxId = findDeep(item, ['TaxIdNumber', 'TaxId', 'CPF', 'CNPJ', 'Document', 'DocumentNumber', 'FiscalNumber', 'NumeroIdentificacaoFiscal']);
+  const name = findDeep(item, [
+    'Name', 'FullName', 'Nome', 'PersonName', 'RelatedName', 'RelatedPersonName',
+    'RelatedEntityName', 'RelativeName', 'NomeRelacionado', 'NomePessoaRelacionada',
+  ]);
+  const taxId = findDeep(item, [
+    'TaxIdNumber', 'TaxId', 'CPF', 'CNPJ', 'Document', 'DocumentNumber', 'FiscalNumber',
+    'NumeroIdentificacaoFiscal', 'RelatedTaxIdNumber', 'RelatedPersonTaxIdNumber',
+    'RelatedEntityTaxIdNumber', 'RelatedDocument', 'RelativeTaxIdNumber',
+  ]);
   const relationship = findDeep(item, ['Kinship', 'KinshipDegree', 'Degree', 'RelationDegree', 'GrauParentesco', 'Relationship', 'RelationshipType', 'Type', 'TipoRelacionamento', 'EconomicRelationship', 'EconomicRelationshipType', 'SpecificType']);
   const phonesRaw = findAllDeep(item, ['Phones', 'PhoneNumbers', 'Telefones', 'PhoneData', 'MobilePhones', 'Phone']);
   const phones = uniqueByText(phonesRaw.flatMap(asArray).map(normalizePhone).filter(Boolean), 10);

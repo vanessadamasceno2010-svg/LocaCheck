@@ -207,6 +207,12 @@ function formatWhatsappInput(value) {
     .replace(/(\d{5})(\d)/, "$1-$2");
 }
 
+function formatContactPhone(value) {
+  const digits = onlyDigits(value);
+  if (digits.length === 10 || digits.length === 11) return formatWhatsappInput(digits);
+  return String(value || "");
+}
+
 function isValidWhatsapp(value) {
   const digits = onlyDigits(value);
 
@@ -1844,15 +1850,15 @@ function App() {
     await consultarLocatarioExterno({ type: "cpf", value: relatedCpf });
   }
 
-  async function consultarProcessoCompleto(processNumber) {
+  async function consultarProcessoCompleto(processNumber, subjectCpf = "") {
     if (loadingProcessNumber) return;
     const normalized = onlyDigits(processNumber);
     if (normalized.length !== 20) {
       setProcessConsultationMessage("O número deste processo está incompleto e não pode ser consultado.");
       return;
     }
-    if (Number(profile?.credits || 0) < 2) {
-      setProcessConsultationMessage("Créditos insuficientes. A consulta completa do processo consome 2 créditos.");
+    if (Number(profile?.credits || 0) < 1) {
+      setProcessConsultationMessage("Créditos insuficientes. A consulta completa do processo consome 1 crédito.");
       return;
     }
 
@@ -1864,7 +1870,7 @@ function App() {
       const response = await fetch("/api/bigdata/process-consult", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ processNumber: normalized }),
+        body: JSON.stringify({ processNumber: normalized, cpf: onlyDigits(subjectCpf) }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.success) {
@@ -5488,12 +5494,22 @@ function App() {
                                 <section className="externalInfoCardV31">
                                   <span>Contatos encontrados</span>
                                   <h4>{(item.phones?.length || 0) + (item.emails?.length || 0)} contato(s)</h4>
-                                  {item.phones?.map((phone, index) => (
-                                    <p key={`phone-${index}`} className="simpleContactV46">{phone.number}</p>
-                                  ))}
-                                  {item.emails?.map((email, index) => (
-                                    <p key={`email-${index}`} className="simpleContactV46">{email.email}</p>
-                                  ))}
+                                  {Array.isArray(item.phones) && item.phones.length > 0 && (
+                                    <div className="contactGroupV47">
+                                      <strong>Telefones</strong>
+                                      {item.phones.map((phone, index) => (
+                                        <p key={`phone-${index}`} className="simpleContactV46">{formatContactPhone(phone.number)}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {Array.isArray(item.emails) && item.emails.length > 0 && (
+                                    <div className="contactGroupV47 emailGroupV47">
+                                      <strong>E-mails</strong>
+                                      {item.emails.map((email, index) => (
+                                        <p key={`email-${index}`} className="simpleContactV46">{email.email}</p>
+                                      ))}
+                                    </div>
+                                  )}
                                 </section>
                               ) : null}
 
@@ -5516,16 +5532,16 @@ function App() {
                                       <div className="relatedPersonHeaderV46">
                                         <strong>{person.full_name || person.name || relatedPersonLabel(person, index)}</strong>
                                         {isValidCpf(onlyDigits(person.tax_id || "")) && (
-                                          <button type="button" className="miniConsultButtonV46" disabled={loading} onClick={() => consultarPessoaRelacionada(person)}>
+                                          <button type="button" className="miniConsultButtonV46 relatedConsultButtonV47" disabled={loading} onClick={() => consultarPessoaRelacionada(person)}>
                                             {loading ? "Consultando..." : "Consultar"}
                                           </button>
                                         )}
                                       </div>
                                       {person.full_name && person.full_name !== person.name && <p><strong>Nome completo:</strong> {person.full_name}</p>}
                                       {person.tax_id && <p><strong>CPF:</strong> {person.tax_id}</p>}
-                                      {person.relationship && <p><strong>Tipo do relacionamento:</strong> {person.relationship}</p>}
+                                      {person.relationship && <p><strong>Grau de parentesco:</strong> {person.relationship}</p>}
                                       {Array.isArray(person.phones) && person.phones.length > 0 && (
-                                        <div className="relatedPhonesV46"><strong>Telefones:</strong>{person.phones.map((phone, phoneIndex) => <span key={`related-phone-${phoneIndex}`}>{phone.number}</span>)}</div>
+                                        <div className="relatedPhonesV46"><strong>Telefones:</strong>{person.phones.map((phone, phoneIndex) => <span key={`related-phone-${phoneIndex}`}>{formatContactPhone(phone.number)}</span>)}</div>
                                       )}
                                     </div>
                                   ))}
@@ -5552,7 +5568,7 @@ function App() {
                                       {process.subject && <p><strong>Assunto:</strong> {process.subject}</p>}
                                       {process.value && <p><strong>Valor informado:</strong> {process.value}</p>}
                                       {process.number && (
-                                        <button type="button" className="miniConsultButtonV46" disabled={Boolean(loadingProcessNumber)} onClick={() => consultarProcessoCompleto(process.number)}>
+                                        <button type="button" className="miniConsultButtonV46 processConsultButtonV47" disabled={Boolean(loadingProcessNumber)} onClick={() => consultarProcessoCompleto(process.number, item.cpf)}>
                                           {loadingProcessNumber === onlyDigits(process.number) ? "Consultando..." : "Consultar processo"}
                                         </button>
                                       )}

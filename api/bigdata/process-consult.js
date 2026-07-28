@@ -5,7 +5,7 @@ const BIGDATA_BASE_URL = process.env.BIGDATA_BASE_URL || 'https://plataforma.big
 const BIGDATA_TOKEN_ID = process.env.BIGDATA_TOKEN_ID;
 const BIGDATA_ACCESS_TOKEN = process.env.BIGDATA_ACCESS_TOKEN;
 const PROCESS_DATASETS = process.env.BIGDATA_PROCESS_DATASETS || 'processes';
-const PROCESS_CREDITS = 2;
+const PROCESS_CREDITS = 1;
 
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -18,7 +18,49 @@ function firstResult(payload) {
 
 function hasUsefulResult(value) {
   if (!value || typeof value !== 'object') return false;
-  return Object.keys(value).length > 0;
+  const keys = Object.keys(value).map((key) => key.toLowerCase());
+  return keys.some((key) => !['matchkeys', 'queryid', 'querydate', 'status'].includes(key));
+}
+
+function findMatchingProcess(value, processNumber, candidates = [], depth = 0) {
+  if (!value || depth > 12) return candidates;
+  if (Array.isArray(value)) {
+    value.forEach((item) => findMatchingProcess(item, processNumber, candidates, depth + 1));
+    return candidates;
+  }
+  if (typeof value !== 'object') return candidates;
+
+  const normalizedTarget = onlyDigits(processNumber);
+  const serialized = JSON.stringify(value);
+  if (serialized && onlyDigits(serialized).includes(normalizedTarget)) {
+    candidates.push(value);
+  }
+  Object.values(value).forEach((item) => findMatchingProcess(item, processNumber, candidates, depth + 1));
+  return candidates;
+}
+
+function selectBestProcessResult(payload, processNumber) {
+  const direct = firstResult(payload);
+  const candidates = findMatchingProcess(payload, processNumber);
+  const best = candidates
+    .filter(hasUsefulResult)
+    .sort((a, b) => JSON.stringify(a).length - JSON.stringify(b).length)[0];
+  return best || (hasUsefulResult(direct) ? direct : null);
+}
+
+async function callBigData(path, body) {
+  const response = await fetch(`${BIGDATA_BASE_URL.replace(/\/$/, '')}${path}`, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      AccessToken: BIGDATA_ACCESS_TOKEN,
+      TokenId: BIGDATA_TOKEN_ID,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await response.json().catch(() => ({}));
+  return { response, raw };
 }
 
 function flattenProcess(value, path = [], output = [], depth = 0) {
@@ -72,26 +114,33 @@ export default async function handler(req, res) {
       return res.status(403).json({ success: false, message: profile.blocked_reason || 'Conta bloqueada.' });
     }
     if (Number(profile.credits || 0) < PROCESS_CREDITS) {
-      return res.status(402).json({ success: false, message: 'Créditos insuficientes. A consulta completa do processo consome 2 créditos.' });
+      return res.status(402).json({ success: false, message: 'Créditos insuficientes. A consulta completa do processo consome 1 crédito.' });
     }
 
-    const response = await fetch(`${BIGDATA_BASE_URL.replace(/\/$/, '')}/processos`, {
-      method: 'POST',
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
-        AccessToken: BIGDATA_ACCESS_TOKEN,
-        TokenId: BIGDATA_TOKEN_ID,
-      },
-      body: JSON.stringify({
-        q: `processnumber{${processNumber}}, all{true}`,
-        Datasets: PROCESS_DATASETS,
-        Limit: 1,
-      }),
+    const subjectCpf = onlyDigits(req.body?.cpf || req.body?.subjectCpf || '');
+    let { response, raw } = await callBigData('/processos', {
+      q: `processnumber{${processNumber}}, all{true}`,
+      Datasets: PROCESS_DATASETS,
+      Limit: 1,
     });
 
-    const raw = await response.json().catch(() => ({}));
-    const result = firstResult(raw);
+    let result = selectBestProcessResult(raw, processNumber);
+
+    // Algumas contas retornam apenas MatchKeys na API de Processos.
+    // Nesse caso, reaproveita o dataset de processos da pessoa consultada.
+    if (!result && subjectCpf.length === 11) {
+      const fallback = await callBigData('/pessoas', {
+        q: `doc{${subjectCpf}}`,
+        Datasets: 'processes',
+        Limit: 1,
+      });
+      if (fallback.response.ok) {
+        raw = fallback.raw;
+        response = fallback.response;
+        result = selectBestProcessResult(raw, processNumber);
+      }
+    }
+
     if (!response.ok || !hasUsefulResult(result)) {
       await supabaseAdmin.from('process_consultation_logs').insert({
         user_id: user.id,
@@ -104,7 +153,7 @@ export default async function handler(req, res) {
       return res.status(response.ok ? 404 : 502).json({
         success: false,
         message: response.ok
-          ? 'Processo não encontrado. Nenhum crédito foi descontado.'
+          ? 'A fonte retornou somente o número do processo, sem os detalhes completos. Nenhum crédito foi descontado.'
           : 'A consulta do processo falhou. Nenhum crédito foi descontado.',
       });
     }

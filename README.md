@@ -1,4 +1,4 @@
-# LocaCheck V46
+# LocaCheck V47
 
 Versão com:
 
@@ -7,12 +7,15 @@ Versão com:
 - cobrança somente após resultado válido;
 - consulta de pessoa relacionada;
 - idade atual, contatos simplificados e relacionamentos;
-- consulta completa de processo.
+- consulta completa de processo por 1 crédito;
+- pessoas relacionadas com nome, CPF, parentesco e consulta rápida;
+- contatos com DDD e separação visual;
+- correção do resultado completo do processo.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V46-CONSULTAS-CPF-TELEFONE-EMAIL-PROCESSOS.md
+AJUSTES-V47-RELACIONADOS-CONTATOS-E-PROCESSOS.md
 ```
 
 Migração obrigatória:
