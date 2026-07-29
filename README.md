@@ -1,4 +1,4 @@
-# LocaCheck V50
+# LocaCheck V51
 
 Versão com:
 
@@ -18,18 +18,27 @@ Versão com:
 - nome da pessoa relacionada resolvido pelo CPF identificado;
 - agrupamento seguro de contatos repetidos da mesma pessoa;
 - nome e tipo de participação lidos do mesmo objeto do processo;
+- Dashboard administrativo diário como primeira área do painel;
+- visitas, consultas, compras, faturamento e cadastros do dia;
+- menu administrativo expansível com ícones e categorias organizadas;
 - remoção do resumo de consulta combinada.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V50-CPF-RELACIONADOS-E-PARTES-PROCESSO.md
+AJUSTES-V51-DASHBOARD-ADMIN-E-MENU-CASCATA.md
 ```
 
 Migração obrigatória:
 
 ```text
 MIGRACAO-V48-CACHE-PESSOAS-RELACIONADAS.sql
+```
+
+Migração nova da V51:
+
+```text
+MIGRACAO-V51-RESUMO-DIARIO-ADMIN.sql
 ```
 
 Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.
