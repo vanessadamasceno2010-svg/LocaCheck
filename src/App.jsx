@@ -1,4 +1,25 @@
 import { useEffect, useState } from "react";
+import {
+  Activity,
+  BadgeDollarSign,
+  BarChart3,
+  ChevronDown,
+  CircleDollarSign,
+  ClipboardCheck,
+  FileBarChart,
+  Headphones,
+  LayoutDashboard,
+  ListChecks,
+  RefreshCw,
+  Search,
+  Settings2,
+  ShieldCheck,
+  ShoppingCart,
+  UserPlus,
+  Users,
+  WalletCards,
+  X,
+} from "lucide-react";
 import { supabase } from "./supabaseClient";
 import BuyCreditsModal from "./BuyCreditsModal";
 import SupportModal from "./SupportModal";
@@ -802,6 +823,10 @@ function App() {
   const [notificationReadIds, setNotificationReadIds] = useState([]);
   const [showAllRecentPayments, setShowAllRecentPayments] = useState(false);
   const [adminActiveSection, setAdminActiveSection] = useState("resumo");
+  const [adminOpenMenu, setAdminOpenMenu] = useState(null);
+  const [adminDailyData, setAdminDailyData] = useState(null);
+  const [adminDailyMessage, setAdminDailyMessage] = useState("");
+  const [loadingAdminDaily, setLoadingAdminDaily] = useState(false);
   const [adminPlans, setAdminPlans] = useState([]);
   const [adminPlansMessage, setAdminPlansMessage] = useState("");
   const [loadingAdminPlans, setLoadingAdminPlans] = useState(false);
@@ -852,6 +877,7 @@ function App() {
 
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminUsersMessage, setAdminUsersMessage] = useState("");
+  const [adminUserSearch, setAdminUserSearch] = useState("");
 
   const [adminFinancialData, setAdminFinancialData] = useState(null);
   const [adminFinancialMessage, setAdminFinancialMessage] = useState("");
@@ -1051,8 +1077,16 @@ function App() {
       carregarLogsSistema();
       carregarConsultasExternasAdmin();
       carregarAtividadeAdmin();
+      carregarResumoDiarioAdmin();
     }
   }, [session, profile]);
+
+  useEffect(() => {
+    if (session?.user?.id && profile?.role === "admin") {
+      setAdminActiveSection("resumo");
+      setAdminOpenMenu(null);
+    }
+  }, [session?.user?.id, profile?.role]);
 
   useEffect(() => {
     registrarVisitaSite(session);
@@ -1911,6 +1945,39 @@ function App() {
     setAdminActivityData(data || null);
     setAdminActivityMessage("");
     setLoadingAdminActivity(false);
+  }
+
+  async function carregarResumoDiarioAdmin() {
+    if (profile?.role !== "admin") return;
+
+    setLoadingAdminDaily(true);
+    setAdminDailyMessage("");
+
+    const { data, error } = await supabase.rpc("get_admin_daily_summary");
+
+    if (error) {
+      console.log("Erro ao carregar resumo diário administrativo:", error);
+      setAdminDailyData(null);
+      setAdminDailyMessage(
+        "Não foi possível carregar compras e novos usuários de hoje. Rode a migração V51 no Supabase."
+      );
+      setLoadingAdminDaily(false);
+      return;
+    }
+
+    setAdminDailyData(data || null);
+    setAdminDailyMessage("");
+    setLoadingAdminDaily(false);
+  }
+
+  async function atualizarResumoAdmin() {
+    await Promise.all([
+      carregarAtividadeAdmin(),
+      carregarResumoDiarioAdmin(),
+      carregarDashboardFinanceiro(),
+      carregarUsuariosAdmin(),
+      carregarOcorrenciasAdmin(),
+    ]);
   }
 
   async function carregarConsultasExternasAdmin() {
@@ -3065,6 +3132,7 @@ function App() {
   });
 
   const adminActivitySummary = adminActivityData?.summary || {};
+  const adminDailySummary = adminDailyData?.summary || {};
   const adminDailyVisits = Array.isArray(adminActivityData?.daily_visits) ? adminActivityData.daily_visits : [];
   const adminActivityConsultations = (Array.isArray(adminActivityData?.consultations)
     ? adminActivityData.consultations
@@ -3118,6 +3186,36 @@ function App() {
       creditos: adminUsers.reduce((total, user) => total + Number(user.credits || 0), 0),
       consultas: adminUsers.reduce((total, user) => total + Number(user.consultas || 0), 0),
     };
+    const normalizedAdminUserSearch = String(adminUserSearch || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+    const adminUsersFiltered = adminUsers.filter((user) => {
+      if (!normalizedAdminUserSearch) return true;
+
+      const searchableText = [
+        user.nome,
+        user.email,
+        user.whatsapp,
+        user.id,
+        user.role,
+        getUserAccountStatus(user),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      const searchedDigits = normalizedAdminUserSearch.replace(/\D/g, "");
+      const userDigits = String(user.whatsapp || "").replace(/\D/g, "");
+
+      return (
+        searchableText.includes(normalizedAdminUserSearch) ||
+        Boolean(searchedDigits && userDigits.includes(searchedDigits))
+      );
+    });
     const adminPlanStats = {
       total: adminPlans.length,
       ativos: adminPlans.filter((plan) => plan.active === true).length,
@@ -3243,26 +3341,149 @@ function App() {
             )}
           </section>
 
+          {profile.role === "admin" && adminActiveSection === "resumo" && (
+            <section className="adminPanel adminArea adminOverviewArea adminDailyOverview" id="admin-resumo">
+              <div className="adminHeader">
+                <div>
+                  <span>Dashboard de hoje</span>
+                  <h2>Principais informações do dia</h2>
+                  <p>
+                    Acompanhe visitas, consultas, compras e novos cadastros em um único lugar.
+                  </p>
+                </div>
+
+                <button
+                  className="btn secondary adminRefreshButton"
+                  onClick={atualizarResumoAdmin}
+                  disabled={loadingAdminActivity || loadingAdminDaily || loadingFinancialDashboard}
+                >
+                  <RefreshCw size={18} />
+                  {loadingAdminActivity || loadingAdminDaily || loadingFinancialDashboard
+                    ? "Atualizando..."
+                    : "Atualizar Dashboard"}
+                </button>
+              </div>
+
+              {(adminActivityMessage || adminDailyMessage) && (
+                <div className="authMessage">{adminActivityMessage || adminDailyMessage}</div>
+              )}
+
+              <div className="adminTodayLabel">
+                <LayoutDashboard size={18} />
+                <span>
+                  Dados de {new Intl.DateTimeFormat("pt-BR", {
+                    weekday: "long",
+                    day: "2-digit",
+                    month: "long",
+                  }).format(new Date())}
+                </span>
+              </div>
+
+              <section className="adminMiniDashboard overviewMiniDashboard dailyDashboardGrid">
+                <button type="button" className="adminStatCard featured clickable" onClick={() => setAdminActiveSection("atividade")}>
+                  <span className="adminStatIcon"><Activity size={21} /></span>
+                  <small>Visitas hoje</small>
+                  <strong>{adminActivitySummary.visits_today || 0}</strong>
+                  <span>Acessos contabilizados no dia</span>
+                </button>
+
+                <button type="button" className="adminStatCard success clickable" onClick={() => setAdminActiveSection("atividade")}>
+                  <span className="adminStatIcon"><ListChecks size={21} /></span>
+                  <small>Consultas hoje</small>
+                  <strong>{adminActivitySummary.consultations_today || 0}</strong>
+                  <span>Consultas internas e externas</span>
+                </button>
+
+                <button type="button" className="adminStatCard purchaseCard clickable" onClick={() => setAdminActiveSection("financeiro")}>
+                  <span className="adminStatIcon"><ShoppingCart size={21} /></span>
+                  <small>Compras pagas hoje</small>
+                  <strong>{adminDailySummary.paid_purchases_today || 0}</strong>
+                  <span>Pagamentos confirmados no dia</span>
+                </button>
+
+                <button type="button" className="adminStatCard revenueCard clickable" onClick={() => setAdminActiveSection("financeiro")}>
+                  <span className="adminStatIcon"><CircleDollarSign size={21} /></span>
+                  <small>Faturamento hoje</small>
+                  <strong>{formatMoneyCents(adminDailySummary.revenue_today_cents || 0)}</strong>
+                  <span>Somente pagamentos confirmados</span>
+                </button>
+
+                <button type="button" className="adminStatCard newUsersCard clickable" onClick={() => setAdminActiveSection("usuarios")}>
+                  <span className="adminStatIcon"><UserPlus size={21} /></span>
+                  <small>Novos usuários hoje</small>
+                  <strong>{adminDailySummary.users_today || 0}</strong>
+                  <span>Cadastros realizados no dia</span>
+                </button>
+
+                <button type="button" className="adminStatCard clickable" onClick={() => setAdminActiveSection("usuarios")}>
+                  <span className="adminStatIcon"><Users size={21} /></span>
+                  <small>Usuários cadastrados</small>
+                  <strong>{adminUserStats.total}</strong>
+                  <span>Total de contas na plataforma</span>
+                </button>
+
+                <button type="button" className="adminStatCard warning clickable" onClick={() => setAdminActiveSection("ocorrencias")}>
+                  <span className="adminStatIcon"><ClipboardCheck size={21} /></span>
+                  <small>Ocorrências pendentes</small>
+                  <strong>{adminRecordStats.pendentes}</strong>
+                  <span>Aguardando análise administrativa</span>
+                </button>
+              </section>
+
+              <div className="adminQuickActions adminQuickActionsV51">
+                <button className="btn primary" type="button" onClick={() => setAdminActiveSection("ocorrencias")}>
+                  <ClipboardCheck size={18} /> Analisar ocorrências
+                </button>
+                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("atividade")}>
+                  <Activity size={18} /> Ver atividade
+                </button>
+                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("usuarios")}>
+                  <Users size={18} /> Gerenciar usuários
+                </button>
+                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("financeiro")}>
+                  <BadgeDollarSign size={18} /> Abrir financeiro
+                </button>
+              </div>
+            </section>
+          )}
+
           {profile.role === "admin" && (
             <section className="adminNavigationPanel" aria-label="Navegação do painel administrativo">
               <div className="adminNavigationIntro">
                 <div>
-                  <span>Administração</span>
-                  <h2>Escolha o que deseja acompanhar</h2>
-                  <p>Os itens estão separados por atividade para facilitar o uso no celular e no computador.</p>
+                  <span>Menu administrativo</span>
+                  <h2>Ferramentas organizadas por função</h2>
+                  <p>Toque em uma categoria para abrir as opções. O Dashboard permanece como página principal.</p>
                 </div>
               </div>
 
-              <div className="adminMenuGroup">
-                <strong className="adminMenuGroupTitle">Acompanhamento</strong>
-                <div className="adminCategoryMenu">
+              <div className={`adminMenuGroup ${adminOpenMenu === "acompanhamento" ? "open" : ""}`}>
+                <button
+                  type="button"
+                  className="adminMenuGroupToggle"
+                  aria-expanded={adminOpenMenu === "acompanhamento"}
+                  onClick={() => setAdminOpenMenu(adminOpenMenu === "acompanhamento" ? null : "acompanhamento")}
+                >
+                  <span className="adminMenuGroupIcon"><BarChart3 size={21} /></span>
+                  <span>
+                    <strong>Acompanhamento</strong>
+                    <small>Dashboard, visitas e consultas</small>
+                  </span>
+                  <ChevronDown className="adminMenuChevron" size={21} />
+                </button>
+
+                {adminOpenMenu === "acompanhamento" && (
+                  <div className="adminCategoryMenu adminCascadeMenu">
                   <button
                     type="button"
                     className={adminActiveSection === "resumo" ? "active overviewShortcut" : "overviewShortcut"}
-                    onClick={() => setAdminActiveSection("resumo")}
+                    onClick={() => {
+                      setAdminActiveSection("resumo");
+                      setAdminOpenMenu(null);
+                    }}
                   >
-                    <span>Visão geral</span>
-                    <strong>Resumo do que precisa de atenção</strong>
+                    <LayoutDashboard size={22} />
+                    <span><strong>Dashboard</strong><small>Resumo diário principal</small></span>
                   </button>
 
                   <button
@@ -3270,144 +3491,139 @@ function App() {
                     className={adminActiveSection === "atividade" ? "active activityShortcut" : "activityShortcut"}
                     onClick={() => {
                       setAdminActiveSection("atividade");
+                      setAdminOpenMenu(null);
                       carregarAtividadeAdmin();
                     }}
                   >
-                    <span>Visitas e consultas</span>
-                    <strong>Dia, semana, usuários e buscas</strong>
+                    <Activity size={22} />
+                    <span><strong>Visitas e consultas</strong><small>Dia, semana, usuários e buscas</small></span>
                   </button>
-                </div>
+                  </div>
+                )}
               </div>
 
-              <div className="adminMenuGroup">
-                <strong className="adminMenuGroupTitle">Operação</strong>
-                <div className="adminCategoryMenu">
+              <div className={`adminMenuGroup ${adminOpenMenu === "operacao" ? "open" : ""}`}>
+                <button
+                  type="button"
+                  className="adminMenuGroupToggle"
+                  aria-expanded={adminOpenMenu === "operacao"}
+                  onClick={() => setAdminOpenMenu(adminOpenMenu === "operacao" ? null : "operacao")}
+                >
+                  <span className="adminMenuGroupIcon"><Settings2 size={21} /></span>
+                  <span>
+                    <strong>Operação</strong>
+                    <small>Ocorrências, usuários e suporte</small>
+                  </span>
+                  <ChevronDown className="adminMenuChevron" size={21} />
+                </button>
+
+                {adminOpenMenu === "operacao" && (
+                  <div className="adminCategoryMenu adminCascadeMenu">
                   <button
                     type="button"
                     className={adminActiveSection === "ocorrencias" ? "active recordsShortcut" : "recordsShortcut"}
-                    onClick={() => setAdminActiveSection("ocorrencias")}
+                    onClick={() => {
+                      setAdminActiveSection("ocorrencias");
+                      setAdminOpenMenu(null);
+                    }}
                   >
-                    <span>Ocorrências</span>
-                    <strong>Aprovar, editar e revisar registros</strong>
+                    <ClipboardCheck size={22} />
+                    <span><strong>Ocorrências</strong><small>Aprovar, editar e revisar</small></span>
                   </button>
 
                   <button
                     type="button"
                     className={adminActiveSection === "usuarios" ? "active usersShortcut" : "usersShortcut"}
-                    onClick={() => setAdminActiveSection("usuarios")}
+                    onClick={() => {
+                      setAdminActiveSection("usuarios");
+                      setAdminOpenMenu(null);
+                    }}
                   >
-                    <span>Usuários</span>
-                    <strong>Contas, créditos e permissões</strong>
+                    <Users size={22} />
+                    <span><strong>Usuários</strong><small>Contas, créditos e permissões</small></span>
                   </button>
 
                   <button
                     type="button"
                     className={adminActiveSection === "suporte" ? "active supportShortcut" : "supportShortcut"}
-                    onClick={() => setAdminActiveSection("suporte")}
+                    onClick={() => {
+                      setAdminActiveSection("suporte");
+                      setAdminOpenMenu(null);
+                    }}
                   >
-                    <span>Suporte</span>
-                    <strong>Mensagens e solicitações recebidas</strong>
+                    <Headphones size={22} />
+                    <span><strong>Suporte</strong><small>Mensagens e solicitações</small></span>
                   </button>
-                </div>
+                  </div>
+                )}
               </div>
 
-              <div className="adminMenuGroup">
-                <strong className="adminMenuGroupTitle">Financeiro e controle</strong>
-                <div className="adminCategoryMenu">
+              <div className={`adminMenuGroup ${adminOpenMenu === "controle" ? "open" : ""}`}>
+                <button
+                  type="button"
+                  className="adminMenuGroupToggle"
+                  aria-expanded={adminOpenMenu === "controle"}
+                  onClick={() => setAdminOpenMenu(adminOpenMenu === "controle" ? null : "controle")}
+                >
+                  <span className="adminMenuGroupIcon"><ShieldCheck size={21} /></span>
+                  <span>
+                    <strong>Financeiro e controle</strong>
+                    <small>Pagamentos, planos, relatórios e auditoria</small>
+                  </span>
+                  <ChevronDown className="adminMenuChevron" size={21} />
+                </button>
+
+                {adminOpenMenu === "controle" && (
+                  <div className="adminCategoryMenu adminCascadeMenu">
                   <button
                     type="button"
                     className={adminActiveSection === "financeiro" ? "active financeShortcut" : "financeShortcut"}
-                    onClick={() => setAdminActiveSection("financeiro")}
+                    onClick={() => {
+                      setAdminActiveSection("financeiro");
+                      setAdminOpenMenu(null);
+                    }}
                   >
-                    <span>Financeiro</span>
-                    <strong>Receita, PIX e pagamentos</strong>
+                    <BadgeDollarSign size={22} />
+                    <span><strong>Financeiro</strong><small>Receita, PIX e pagamentos</small></span>
                   </button>
 
                   <button
                     type="button"
                     className={adminActiveSection === "planos" ? "active plansShortcut" : "plansShortcut"}
-                    onClick={() => setAdminActiveSection("planos")}
+                    onClick={() => {
+                      setAdminActiveSection("planos");
+                      setAdminOpenMenu(null);
+                    }}
                   >
-                    <span>Planos</span>
-                    <strong>Preços, créditos e ativação</strong>
+                    <WalletCards size={22} />
+                    <span><strong>Planos</strong><small>Preços, créditos e ativação</small></span>
                   </button>
 
                   <button
                     type="button"
                     className={adminActiveSection === "relatorios" ? "active reportsShortcut" : "reportsShortcut"}
-                    onClick={() => setAdminActiveSection("relatorios")}
+                    onClick={() => {
+                      setAdminActiveSection("relatorios");
+                      setAdminOpenMenu(null);
+                    }}
                   >
-                    <span>Relatórios</span>
-                    <strong>Exportações para conferência</strong>
+                    <FileBarChart size={22} />
+                    <span><strong>Relatórios</strong><small>Exportações para conferência</small></span>
                   </button>
 
                   <button
                     type="button"
                     className={adminActiveSection === "auditoria" ? "active auditShortcut" : "auditShortcut"}
-                    onClick={() => setAdminActiveSection("auditoria")}
+                    onClick={() => {
+                      setAdminActiveSection("auditoria");
+                      setAdminOpenMenu(null);
+                    }}
                   >
-                    <span>Auditoria</span>
-                    <strong>Logs e ações administrativas</strong>
+                    <ListChecks size={22} />
+                    <span><strong>Auditoria</strong><small>Logs e ações administrativas</small></span>
                   </button>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {profile.role === "admin" && adminActiveSection === "resumo" && (
-            <section className="adminPanel adminArea adminOverviewArea" id="admin-resumo">
-              <div className="adminHeader">
-                <div>
-                  <span>Visão geral</span>
-                  <h2>Resumo do painel administrativo</h2>
-                  <p>Veja rapidamente o movimento do site e os pontos que precisam de atenção.</p>
-                </div>
-
-                <button className="btn secondary" onClick={() => carregarAtividadeAdmin()} disabled={loadingAdminActivity}>
-                  {loadingAdminActivity ? "Atualizando..." : "Atualizar resumo"}
-                </button>
-              </div>
-
-              {adminActivityMessage && <div className="authMessage">{adminActivityMessage}</div>}
-
-              <section className="adminMiniDashboard overviewMiniDashboard">
-                <button type="button" className="adminStatCard featured clickable" onClick={() => setAdminActiveSection("atividade")}>
-                  <small>Visitas hoje</small>
-                  <strong>{adminActivitySummary.visits_today || 0}</strong>
-                  <span>Acessos contabilizados no dia</span>
-                </button>
-                <button type="button" className="adminStatCard clickable" onClick={() => setAdminActiveSection("atividade")}>
-                  <small>Visitas em 7 dias</small>
-                  <strong>{adminActivitySummary.visits_7_days || 0}</strong>
-                  <span>Movimento da última semana</span>
-                </button>
-                <button type="button" className="adminStatCard success clickable" onClick={() => setAdminActiveSection("atividade")}>
-                  <small>Consultas hoje</small>
-                  <strong>{adminActivitySummary.consultations_today || 0}</strong>
-                  <span>Internas e externas</span>
-                </button>
-                <button type="button" className="adminStatCard clickable" onClick={() => setAdminActiveSection("atividade")}>
-                  <small>Consultas em 7 dias</small>
-                  <strong>{adminActivitySummary.consultations_7_days || 0}</strong>
-                  <span>Atividade da semana</span>
-                </button>
-                <button type="button" className="adminStatCard warning clickable" onClick={() => setAdminActiveSection("ocorrencias")}>
-                  <small>Ocorrências pendentes</small>
-                  <strong>{adminRecordStats.pendentes}</strong>
-                  <span>Aguardando sua análise</span>
-                </button>
-                <button type="button" className="adminStatCard clickable" onClick={() => setAdminActiveSection("usuarios")}>
-                  <small>Usuários cadastrados</small>
-                  <strong>{adminUserStats.total}</strong>
-                  <span>Contas na plataforma</span>
-                </button>
-              </section>
-
-              <div className="adminQuickActions">
-                <button className="btn primary" type="button" onClick={() => setAdminActiveSection("ocorrencias")}>Analisar ocorrências</button>
-                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("atividade")}>Ver visitas e consultas</button>
-                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("suporte")}>Abrir suporte</button>
-                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("financeiro")}>Abrir financeiro</button>
+                  </div>
+                )}
               </div>
             </section>
           )}
@@ -4012,16 +4228,45 @@ function App() {
                 </div>
               </div>
 
+              <div className="adminUserSearchBar" role="search">
+                <Search size={21} aria-hidden="true" />
+                <input
+                  type="search"
+                  value={adminUserSearch}
+                  onChange={(event) => setAdminUserSearch(event.target.value)}
+                  placeholder="Buscar por nome, e-mail ou WhatsApp"
+                  aria-label="Buscar usuário por nome, e-mail ou WhatsApp"
+                />
+                {adminUserSearch && (
+                  <button
+                    type="button"
+                    className="adminUserSearchClear"
+                    onClick={() => setAdminUserSearch("")}
+                    aria-label="Limpar busca de usuário"
+                    title="Limpar busca"
+                  >
+                    <X size={18} />
+                  </button>
+                )}
+                <span className="adminUserSearchCount">
+                  {adminUsersFiltered.length} de {adminUsers.length}
+                </span>
+              </div>
+
               {adminUsersMessage && (
                 <div className="authMessage">{adminUsersMessage}</div>
               )}
 
               <div className="adminList">
-                {adminUsers.length === 0 && (
-                  <div className="adminEmpty">Nenhum usuário encontrado.</div>
+                {adminUsersFiltered.length === 0 && (
+                  <div className="adminEmpty">
+                    {adminUserSearch
+                      ? "Nenhum usuário corresponde à busca informada."
+                      : "Nenhum usuário encontrado."}
+                  </div>
                 )}
 
-                {adminUsers.map((user) => {
+                {adminUsersFiltered.map((user) => {
                   const userUnlimitedActive =
                     user.unlimited_until &&
                     new Date(user.unlimited_until) > new Date();
@@ -4619,7 +4864,7 @@ function App() {
                 className={adminActiveSection === "resumo" ? "active" : ""}
                 onClick={() => setAdminActiveSection("resumo")}
               >
-                <span>⌂</span>
+                <LayoutDashboard size={20} />
                 Resumo
               </button>
 
@@ -4631,7 +4876,7 @@ function App() {
                   carregarAtividadeAdmin();
                 }}
               >
-                <span>▥</span>
+                <Activity size={20} />
                 Atividade
               </button>
 
@@ -4640,7 +4885,7 @@ function App() {
                 className={adminActiveSection === "ocorrencias" ? "active" : ""}
                 onClick={() => setAdminActiveSection("ocorrencias")}
               >
-                <span>!</span>
+                <ClipboardCheck size={20} />
                 Ocorrências
               </button>
 
@@ -4649,7 +4894,7 @@ function App() {
                 className={adminActiveSection === "usuarios" ? "active" : ""}
                 onClick={() => setAdminActiveSection("usuarios")}
               >
-                <span>◎</span>
+                <Users size={20} />
                 Usuários
               </button>
 
@@ -4658,7 +4903,7 @@ function App() {
                 className={adminActiveSection === "financeiro" ? "active" : ""}
                 onClick={() => setAdminActiveSection("financeiro")}
               >
-                <span>R$</span>
+                <BadgeDollarSign size={20} />
                 Financeiro
               </button>
             </>
