@@ -11,12 +11,14 @@ import {
   LayoutDashboard,
   ListChecks,
   RefreshCw,
+  Search,
   Settings2,
   ShieldCheck,
   ShoppingCart,
   UserPlus,
   Users,
   WalletCards,
+  X,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import BuyCreditsModal from "./BuyCreditsModal";
@@ -875,6 +877,7 @@ function App() {
 
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminUsersMessage, setAdminUsersMessage] = useState("");
+  const [adminUserSearch, setAdminUserSearch] = useState("");
 
   const [adminFinancialData, setAdminFinancialData] = useState(null);
   const [adminFinancialMessage, setAdminFinancialMessage] = useState("");
@@ -3183,6 +3186,36 @@ function App() {
       creditos: adminUsers.reduce((total, user) => total + Number(user.credits || 0), 0),
       consultas: adminUsers.reduce((total, user) => total + Number(user.consultas || 0), 0),
     };
+    const normalizedAdminUserSearch = String(adminUserSearch || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+    const adminUsersFiltered = adminUsers.filter((user) => {
+      if (!normalizedAdminUserSearch) return true;
+
+      const searchableText = [
+        user.nome,
+        user.email,
+        user.whatsapp,
+        user.id,
+        user.role,
+        getUserAccountStatus(user),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      const searchedDigits = normalizedAdminUserSearch.replace(/\D/g, "");
+      const userDigits = String(user.whatsapp || "").replace(/\D/g, "");
+
+      return (
+        searchableText.includes(normalizedAdminUserSearch) ||
+        Boolean(searchedDigits && userDigits.includes(searchedDigits))
+      );
+    });
     const adminPlanStats = {
       total: adminPlans.length,
       ativos: adminPlans.filter((plan) => plan.active === true).length,
@@ -4195,16 +4228,45 @@ function App() {
                 </div>
               </div>
 
+              <div className="adminUserSearchBar" role="search">
+                <Search size={21} aria-hidden="true" />
+                <input
+                  type="search"
+                  value={adminUserSearch}
+                  onChange={(event) => setAdminUserSearch(event.target.value)}
+                  placeholder="Buscar por nome, e-mail ou WhatsApp"
+                  aria-label="Buscar usuário por nome, e-mail ou WhatsApp"
+                />
+                {adminUserSearch && (
+                  <button
+                    type="button"
+                    className="adminUserSearchClear"
+                    onClick={() => setAdminUserSearch("")}
+                    aria-label="Limpar busca de usuário"
+                    title="Limpar busca"
+                  >
+                    <X size={18} />
+                  </button>
+                )}
+                <span className="adminUserSearchCount">
+                  {adminUsersFiltered.length} de {adminUsers.length}
+                </span>
+              </div>
+
               {adminUsersMessage && (
                 <div className="authMessage">{adminUsersMessage}</div>
               )}
 
               <div className="adminList">
-                {adminUsers.length === 0 && (
-                  <div className="adminEmpty">Nenhum usuário encontrado.</div>
+                {adminUsersFiltered.length === 0 && (
+                  <div className="adminEmpty">
+                    {adminUserSearch
+                      ? "Nenhum usuário corresponde à busca informada."
+                      : "Nenhum usuário encontrado."}
+                  </div>
                 )}
 
-                {adminUsers.map((user) => {
+                {adminUsersFiltered.map((user) => {
                   const userUnlimitedActive =
                     user.unlimited_until &&
                     new Date(user.unlimited_until) > new Date();

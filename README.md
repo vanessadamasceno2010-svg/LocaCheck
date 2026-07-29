@@ -1,4 +1,4 @@
-# LocaCheck V51
+# LocaCheck V52
 
 Versão com:
 
@@ -21,12 +21,13 @@ Versão com:
 - Dashboard administrativo diário como primeira área do painel;
 - visitas, consultas, compras, faturamento e cadastros do dia;
 - menu administrativo expansível com ícones e categorias organizadas;
+- busca rápida de usuários por nome, e-mail ou WhatsApp no painel admin;
 - remoção do resumo de consulta combinada.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V51-DASHBOARD-ADMIN-E-MENU-CASCATA.md
+AJUSTES-V52-BUSCA-DE-USUARIOS-ADMIN.md
 ```
 
 Migração obrigatória:
