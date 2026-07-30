@@ -4307,6 +4307,176 @@ body {
   }
 }
 
+ novo-layout-mobile
+/* =========================================================
+   V54 — Cliente mobile, consulta em tela cheia e login do APK
+   ========================================================= */
+html,
+body,
+#root,
+.page {
+  width: 100%;
+  max-width: 100%;
+}
+
+body,
+.page {
+  overflow-x: hidden;
+}
+
+.mobileConsultationFooterV54 {
+  display: none;
+}
+
+.androidAppModeV54 {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(37, 99, 235, .22), transparent 42%),
+    #020617;
+}
+
+.androidLoginOverlayV54 {
+  position: fixed;
+  min-height: 100dvh;
+  padding:
+    max(18px, env(safe-area-inset-top))
+    14px
+    max(18px, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 50% 0%, rgba(37, 99, 235, .24), transparent 45%),
+    #020617;
+}
+
+.androidLoginModalV54 {
+  width: min(100%, 460px);
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
+}
+
+@media (max-width: 760px) {
+  .dashboard {
+    width: 100%;
+    max-width: 100%;
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+    overflow-x: hidden;
+  }
+
+  .dashboardHero,
+  .userTopStripV33,
+  .dashboardActionsV33,
+  .adminPanel,
+  .resultsBox,
+  .resultCard {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .userTopStripV33,
+  .dashboardActionsV33 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboardActionsV33 .btn,
+  .userTopStripV33 button {
+    width: 100%;
+    min-width: 0;
+    min-height: 58px;
+    white-space: normal;
+  }
+
+  .consultationOverlayV54 {
+    align-items: stretch;
+    padding: 0;
+    height: 100dvh;
+  }
+
+  .consultationModalV54 {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    padding:
+      max(58px, calc(46px + env(safe-area-inset-top)))
+      14px
+      calc(88px + env(safe-area-inset-bottom));
+    border-radius: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .consultationModalV54 > .closeModal {
+    position: fixed;
+    top: max(10px, env(safe-area-inset-top));
+    right: 12px;
+    z-index: 10004;
+    width: 42px;
+    height: 42px;
+  }
+
+  .consultationModalV54 .consultTypeGrid,
+  .consultationModalV54 .externalResultCardsV31 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .consultationModalV54 .externalResultV31,
+  .consultationModalV54 .externalResultCardsV31,
+  .consultationModalV54 .externalInfoCardV31,
+  .consultationModalV54 .externalMiniBlockV32,
+  .consultationModalV54 .processResultV46,
+  .consultationModalV54 .processSimplifiedV49,
+  .consultationModalV54 .processPartiesV49,
+  .consultationModalV54 .processUpdatesV49 {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .consultationModalV54 .externalResultActions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .consultationModalV54 .externalResultActions .btn {
+    width: 100%;
+  }
+
+  .consultationModalV54 .processPartiesV49 > div {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    align-items: start;
+  }
+
+  .consultationModalV54 .processPartiesV49 span {
+    justify-self: start;
+  }
+
+  .mobileConsultationFooterV54 {
+    position: sticky;
+    bottom: calc(-1 * (88px + env(safe-area-inset-bottom)));
+    z-index: 20;
+    display: block;
+    margin: 22px -14px calc(-1 * (88px + env(safe-area-inset-bottom)));
+    padding: 12px 14px calc(14px + env(safe-area-inset-bottom));
+    background: rgba(2, 6, 23, .96);
+    border-top: 1px solid rgba(96, 165, 250, .25);
+    backdrop-filter: blur(14px);
+  }
+
+  .androidLoginModalV54 {
+    padding: 22px 16px;
+  }
+}
+
+
+ main
 @media (max-width: 560px) {
   .relatedPersonHeaderV46,
   .processResultHeaderV46 {

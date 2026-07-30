@@ -1,0 +1,60 @@
+name: Gerar APK de teste LocaCheck
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - novo-layout-mobile
+      - main
+    paths:
+      - "android/**"
+      - "resources/**"
+      - "capacitor.config.json"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/build-android-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  apk-teste:
+    name: APK Android de teste
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Baixar o projeto
+        uses: actions/checkout@v4
+
+      - name: Preparar Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Sincronizar o aplicativo Android
+        run: npm run android:sync
+
+      - name: Gerar APK de teste
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Guardar APK para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocaCheck-V58-APK-FINAL
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
