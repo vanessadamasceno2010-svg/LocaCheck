@@ -1,0 +1,13 @@
+{
+	"appId": "br.com.locacheck.app",
+	"appName": "LocaCheck",
+	"webDir": "dist",
+	"server": {
+		"url": "https://loca-check.vercel.app",
+		"cleartext": false
+	},
+	"android": {
+		"allowMixedContent": false,
+		"backgroundColor": "#020617"
+	}
+}
