@@ -1,4 +1,4 @@
-# LocaCheck V54
+# LocaCheck V55
 
 Versão com:
 
@@ -31,12 +31,13 @@ Versão com:
 - tela de consulta em tamanho completo no celular;
 - resultados e botões reorganizados para telas pequenas;
 - botão de fechamento acessível no início e no final da consulta;
+- correção da permissão do método Android `onDestroy()` para o APK compilar;
 - remoção do resumo de consulta combinada.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V54-APK-EXPORTACAO-E-MOBILE.md
+AJUSTES-V55-CORRECAO-COMPILACAO-APK.md
 ```
 
 Migração obrigatória:
@@ -51,6 +52,6 @@ Migração nova da V51:
 MIGRACAO-V51-RESUMO-DIARIO-ADMIN.sql
 ```
 
-Não existe SQL novo na V54.
+Não existe SQL novo na V55.
 
 Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.
