@@ -3,7 +3,7 @@
 	"appName": "LocaCheck",
 	"webDir": "dist",
 	"server": {
-		"url": "https://loca-check-oacqbobs1-vanessadamasceno2010-3678s-projects.vercel.app/?app=android",
+		"url": "https://loca-check-git-novo-e02769-vanessadamasceno2010-3678s-projects.vercel.app/?app=android",
 		"cleartext": false
 	},
 	"android": {
