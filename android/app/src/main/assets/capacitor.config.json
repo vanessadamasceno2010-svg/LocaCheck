@@ -3,7 +3,7 @@
 	"appName": "LocaCheck",
 	"webDir": "dist",
 	"server": {
-		"url": "https://loca-check.vercel.app",
+		"url": "https://loca-check.vercel.app/?app=android",
 		"cleartext": false
 	},
 	"android": {
