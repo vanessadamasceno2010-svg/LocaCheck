@@ -53,7 +53,7 @@ jobs:
       - name: Guardar APK para download
         uses: actions/upload-artifact@v4
         with:
-          name: LocaCheck-V53-APK-TESTE
+          name: LocaCheck-V54-APK-TESTE
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
