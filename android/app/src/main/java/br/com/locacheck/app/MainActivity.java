@@ -41,8 +41,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         String host = Uri.parse(currentUrl).getHost();
-        return "loca-check.vercel.app".equalsIgnoreCase(host)
-                || "loca-check-git-novo-e02769-vanessadamasceno2010-3678s-projects.vercel.app".equalsIgnoreCase(host);
+        return "loca-check.vercel.app".equalsIgnoreCase(host);
     }
 
     private final class LocaCheckAndroidBridge {
