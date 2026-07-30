@@ -40,7 +40,9 @@ jobs:
           cache: npm
 
       - name: Instalar dependências
-        run: npm ci
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('package-lock.json', 'utf8'))"
+          npm ci
 
       - name: Sincronizar o aplicativo Android
         run: npm run android:sync
@@ -54,7 +56,7 @@ jobs:
       - name: Guardar APK para download
         uses: actions/upload-artifact@v4
         with:
-          name: LocaCheck-V58-APK-FINAL
+          name: LocaCheck-V59-APK-FINAL
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

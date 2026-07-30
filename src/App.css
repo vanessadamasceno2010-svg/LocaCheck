@@ -4307,7 +4307,6 @@ body {
   }
 }
 
- novo-layout-mobile
 /* =========================================================
    V54 — Cliente mobile, consulta em tela cheia e login do APK
    ========================================================= */
@@ -4475,8 +4474,6 @@ body,
   }
 }
 
-
- main
 @media (max-width: 560px) {
   .relatedPersonHeaderV46,
   .processResultHeaderV46 {
