@@ -1,4 +1,4 @@
-# LocaCheck V55
+# LocaCheck V56 — Teste do Preview
 
 Versão com:
 
@@ -32,12 +32,13 @@ Versão com:
 - resultados e botões reorganizados para telas pequenas;
 - botão de fechamento acessível no início e no final da consulta;
 - correção da permissão do método Android `onDestroy()` para o APK compilar;
+- APK de teste apontando somente para o Preview da branch `novo-layout-mobile`;
 - remoção do resumo de consulta combinada.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V55-CORRECAO-COMPILACAO-APK.md
+AJUSTES-V56-APK-PREVIEW-DE-TESTE.md
 ```
 
 Migração obrigatória:
@@ -52,6 +53,6 @@ Migração nova da V51:
 MIGRACAO-V51-RESUMO-DIARIO-ADMIN.sql
 ```
 
-Não existe SQL novo na V55.
+Não existe SQL novo na V56.
 
 Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.
