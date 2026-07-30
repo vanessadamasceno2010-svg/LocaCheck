@@ -5971,6 +5971,7 @@ function App() {
                   </div>
                 </div>
               )}
+ novo-layout-mobile
 
               {(searchResults.length > 0 || processConsultation) && (
                 <div className="mobileConsultationFooterV54">
@@ -5987,6 +5988,8 @@ function App() {
                   </button>
                 </div>
               )}
+=======
+ main
             </div>
           </div>
         )}

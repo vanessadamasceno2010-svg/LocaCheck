@@ -1,4 +1,8 @@
+ novo-layout-mobile
 # LocaCheck V58 — Aplicativo final
+
+# LocaCheck V52
+ main
 
 Versão com:
 
@@ -22,6 +26,7 @@ Versão com:
 - visitas, consultas, compras, faturamento e cadastros do dia;
 - menu administrativo expansível com ícones e categorias organizadas;
 - busca rápida de usuários por nome, e-mail ou WhatsApp no painel admin;
+ novo-layout-mobile
 - aplicativo Android de teste com a mesma interface do site;
 - ícone e tela de abertura próprios do LocaCheck;
 - conexão Android somente por HTTPS;
@@ -34,12 +39,18 @@ Versão com:
 - correção da permissão do método Android `onDestroy()` para o APK compilar;
 - APK final apontando somente para o domínio oficial do LocaCheck;
 - geração automática do APK após o merge em `main`;
+
+ main
 - remoção do resumo de consulta combinada.
 
 Leia primeiro:
 
 ```text
+ novo-layout-mobile
 AJUSTES-V58-APK-FINAL-PUBLICACAO.md
+
+AJUSTES-V52-BUSCA-DE-USUARIOS-ADMIN.md
+ main
 ```
 
 Migração obrigatória:
@@ -54,6 +65,9 @@ Migração nova da V51:
 MIGRACAO-V51-RESUMO-DIARIO-ADMIN.sql
 ```
 
+ novo-layout-mobile
 Não existe SQL novo na V58.
 
+
+ main
 Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.
