@@ -1,16 +1,51 @@
-LocaCheck - V22
+# LocaCheck V53
 
-Ajuste: novos usuários recebem 10 créditos iniciais.
+Versão com:
 
-# LocaCheck
+- consulta por CPF, telefone ou e-mail;
+- limite de 1 resultado;
+- cobrança somente após resultado válido;
+- consulta de pessoa relacionada;
+- idade atual, contatos simplificados e relacionamentos;
+- consulta completa de processo por 1 crédito;
+- pessoas relacionadas com nome, CPF, parentesco e consulta rápida;
+- contatos com DDD e separação visual;
+- identificação de pessoas relacionadas pelo contato retornado;
+- recuperação do processo completo pelo dataset de pessoas;
+- processo simplificado com partes e atualizações ordenadas;
+- bloqueio de falso relacionamento com o próprio titular;
+- CPF relacionado extraído do campo técnico retornado pela BigDataCorp;
+- nome da pessoa relacionada resolvido pelo CPF identificado;
+- agrupamento seguro de contatos repetidos da mesma pessoa;
+- nome e tipo de participação lidos do mesmo objeto do processo;
+- Dashboard administrativo diário como primeira área do painel;
+- visitas, consultas, compras, faturamento e cadastros do dia;
+- menu administrativo expansível com ícones e categorias organizadas;
+- busca rápida de usuários por nome, e-mail ou WhatsApp no painel admin;
+- aplicativo Android de teste com a mesma interface do site;
+- ícone e tela de abertura próprios do LocaCheck;
+- conexão Android somente por HTTPS;
+- geração automática do APK pela branch de teste;
+- remoção do resumo de consulta combinada.
 
-Projeto LocaCheck com layout Premium Mobile-First.
+Leia primeiro:
 
-Este pacote foi ajustado para manter as integrações existentes com Supabase, PushinPay, GitHub e Vercel, alterando primeiro a parte visual do projeto.
+```text
+AJUSTES-V53-APLICATIVO-ANDROID.md
+```
 
-Leia o arquivo `LEIA-ANTES-DE-SUBIR.md` antes de publicar.
+Migração obrigatória:
 
+```text
+MIGRACAO-V48-CACHE-PESSOAS-RELACIONADAS.sql
+```
 
-## V25
+Migração nova da V51:
 
-Adicionado botão Entrar com Google. Não precisa rodar SQL. Configure o provider Google no Supabase antes de usar em produção.
+```text
+MIGRACAO-V51-RESUMO-DIARIO-ADMIN.sql
+```
+
+Não existe SQL novo na V53.
+
+Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.

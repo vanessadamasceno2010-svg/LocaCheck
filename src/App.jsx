@@ -1,4 +1,25 @@
 import { useEffect, useState } from "react";
+import {
+  Activity,
+  BadgeDollarSign,
+  BarChart3,
+  ChevronDown,
+  CircleDollarSign,
+  ClipboardCheck,
+  FileBarChart,
+  Headphones,
+  LayoutDashboard,
+  ListChecks,
+  RefreshCw,
+  Search,
+  Settings2,
+  ShieldCheck,
+  ShoppingCart,
+  UserPlus,
+  Users,
+  WalletCards,
+  X,
+} from "lucide-react";
 import { supabase } from "./supabaseClient";
 import BuyCreditsModal from "./BuyCreditsModal";
 import SupportModal from "./SupportModal";
@@ -92,36 +113,8 @@ function sortPlansByPrice(a, b) {
   return String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR");
 }
 
-function getStoredReferralCode() {
-  try {
-    return localStorage.getItem("locacheck-referral-code") || "";
-  } catch {
-    return "";
-  }
-}
-
-function getReferralCodeFromUrl() {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return String(params.get("ref") || "").trim();
-  } catch {
-    return "";
-  }
-}
-
-function buildReferralLink(code) {
-  if (!code) return "";
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/?ref=${encodeURIComponent(code)}`;
-}
-
-function removeStoredReferralCode() {
-  try {
-    localStorage.removeItem("locacheck-referral-code");
-  } catch {
-    // Ignora bloqueio de localStorage em navegador restrito.
-  }
-}
+const INTERNAL_NO_RECORDS_MESSAGE =
+  "A pessoa consultada não possui ocorrência registrada por outras locadoras em nosso banco de dados.";
 
 
 function getUserAccountStatus(profile) {
@@ -235,6 +228,12 @@ function formatWhatsappInput(value) {
     .replace(/(\d{5})(\d)/, "$1-$2");
 }
 
+function formatContactPhone(value) {
+  const digits = onlyDigits(value);
+  if (digits.length === 10 || digits.length === 11) return formatWhatsappInput(digits);
+  return String(value || "");
+}
+
 function isValidWhatsapp(value) {
   const digits = onlyDigits(value);
 
@@ -262,61 +261,6 @@ function looksLikeCpfSearch(value) {
   if (digits.length === 0) return false;
   if (/^\d+$/.test(text)) return true;
   return digits.length !== text.length || digits.length >= 8;
-}
-
-async function solicitarBonusIndicacao(referralCode, newUserId) {
-  const code = String(referralCode || "").trim();
-
-  if (!code || !newUserId) {
-    return { success: false, message: "Indicação incompleta." };
-  }
-
-  let apiPayload = null;
-
-  try {
-    const response = await fetch("/api/referrals/claim", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        referralCode: code,
-        newUserId,
-      }),
-    });
-
-    apiPayload = await response.json().catch(() => ({}));
-
-    if (response.ok && (apiPayload?.success || apiPayload?.already_applied)) {
-      return apiPayload;
-    }
-
-    console.log("Indicação não aplicada pela rota segura. Tentando fallback RPC:", apiPayload);
-  } catch (error) {
-    console.log("Rota segura de indicação indisponível. Tentando fallback RPC:", error);
-  }
-
-  try {
-    const { data, error } = await supabase.rpc("claim_referral_bonus", {
-      p_referral_code: code,
-    });
-
-    if (error) {
-      console.log("Fallback RPC de indicação não aplicado:", error);
-      return {
-        success: false,
-        message: apiPayload?.message || error.message || "Não foi possível aplicar a indicação.",
-      };
-    }
-
-    return data || { success: false, message: "Indicação não aplicada." };
-  } catch (error) {
-    console.log("Erro inesperado no fallback de indicação:", error);
-    return {
-      success: false,
-      message: apiPayload?.message || "Falha ao aplicar indicação.",
-    };
-  }
 }
 
 function getPaymentCredits(payment) {
@@ -430,6 +374,21 @@ function formatDate(value) {
   return date.toLocaleString("pt-BR");
 }
 
+function calculateCurrentAge(value) {
+  if (!value) return null;
+  const text = String(value);
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const birth = isoMatch
+    ? new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]))
+    : new Date(value);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDifference = today.getMonth() - birth.getMonth();
+  if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birth.getDate())) age -= 1;
+  return age >= 0 && age <= 130 ? age : null;
+}
+
 
 function externalConsultationLabel(type) {
   if (type === "external_advanced" || type === "external_complete") return "Consulta Externa Completa";
@@ -439,6 +398,40 @@ function externalConsultationLabel(type) {
 function externalConsultationCredits(type) {
   if (type === "external_advanced" || type === "external_complete") return 3;
   return 1;
+}
+
+function adminConsultationLabel(type, source) {
+  if (type === "internal_included") return "Base interna incluída";
+  if (source === "internal" || type === "internal") return "Consulta interna";
+  return "Consulta Externa";
+}
+
+function getAnalyticsSessionKey() {
+  const storageKey = "locacheck-analytics-session";
+  const maxIdleMs = 30 * 60 * 1000;
+  const now = Date.now();
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+    if (saved?.key && Number(saved?.lastSeen || 0) > now - maxIdleMs) {
+      localStorage.setItem(storageKey, JSON.stringify({ key: saved.key, lastSeen: now }));
+      return saved.key;
+    }
+  } catch {
+    // Cria uma nova sessão quando o navegador bloqueia ou invalida o armazenamento.
+  }
+
+  const key = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `visit_${now}_${Math.random().toString(36).slice(2, 18)}`;
+
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({ key, lastSeen: now }));
+  } catch {
+    // A visita continua funcionando mesmo sem localStorage.
+  }
+
+  return key;
 }
 
 function externalDatasetLabel(dataset) {
@@ -829,16 +822,17 @@ function App() {
   const [toast, setToast] = useState(null);
   const [notificationReadIds, setNotificationReadIds] = useState([]);
   const [showAllRecentPayments, setShowAllRecentPayments] = useState(false);
-  const [adminActiveSection, setAdminActiveSection] = useState("financeiro");
+  const [adminActiveSection, setAdminActiveSection] = useState("resumo");
+  const [adminOpenMenu, setAdminOpenMenu] = useState(null);
+  const [adminDailyData, setAdminDailyData] = useState(null);
+  const [adminDailyMessage, setAdminDailyMessage] = useState("");
+  const [loadingAdminDaily, setLoadingAdminDaily] = useState(false);
   const [adminPlans, setAdminPlans] = useState([]);
   const [adminPlansMessage, setAdminPlansMessage] = useState("");
   const [loadingAdminPlans, setLoadingAdminPlans] = useState(false);
   const [savingAdminPlanId, setSavingAdminPlanId] = useState("");
   const [publicPlans, setPublicPlans] = useState([]);
   const [landingMessage, setLandingMessage] = useState("");
-  const [showReferralPanel, setShowReferralPanel] = useState(false);
-  const [referralMovements, setReferralMovements] = useState([]);
-  const [referralMessage, setReferralMessage] = useState("");
 
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [consultationHistoryMessage, setConsultationHistoryMessage] = useState("");
@@ -870,6 +864,7 @@ function App() {
   const [recordImage, setRecordImage] = useState(null);
 
   const [searchText, setSearchText] = useState("");
+  const [externalSearchType, setExternalSearchType] = useState("cpf");
   const [searchResults, setSearchResults] = useState([]);
   const [searchMessage, setSearchMessage] = useState("");
   const [consultationMode, setConsultationMode] = useState("internal");
@@ -882,6 +877,7 @@ function App() {
 
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminUsersMessage, setAdminUsersMessage] = useState("");
+  const [adminUserSearch, setAdminUserSearch] = useState("");
 
   const [adminFinancialData, setAdminFinancialData] = useState(null);
   const [adminFinancialMessage, setAdminFinancialMessage] = useState("");
@@ -897,6 +893,16 @@ function App() {
   const [adminExternalFilterType, setAdminExternalFilterType] = useState("todos");
   const [adminExternalFilterCache, setAdminExternalFilterCache] = useState("todos");
   const [adminExternalSearch, setAdminExternalSearch] = useState("");
+  const [adminActivityData, setAdminActivityData] = useState(null);
+  const [adminActivityMessage, setAdminActivityMessage] = useState("");
+  const [adminActivityPeriod, setAdminActivityPeriod] = useState("7");
+  const [adminActivityType, setAdminActivityType] = useState("todos");
+  const [adminActivitySearch, setAdminActivitySearch] = useState("");
+  const [loadingAdminActivity, setLoadingAdminActivity] = useState(false);
+  const [combinedConsultationStatus, setCombinedConsultationStatus] = useState(null);
+  const [processConsultation, setProcessConsultation] = useState(null);
+  const [processConsultationMessage, setProcessConsultationMessage] = useState("");
+  const [loadingProcessNumber, setLoadingProcessNumber] = useState("");
   const [showExternalConsultationHistory, setShowExternalConsultationHistory] = useState(false);
   const [externalConsultationHistory, setExternalConsultationHistory] = useState([]);
   const [externalConsultationHistoryMessage, setExternalConsultationHistoryMessage] = useState("");
@@ -956,42 +962,6 @@ function App() {
       userEmail ||
       "Usuário";
 
-    const referralCode =
-      user?.user_metadata?.referral_code ||
-      user?.user_metadata?.ref ||
-      getStoredReferralCode();
-
-    async function aplicarIndicacaoPendente(profileData) {
-      if (!profileData) return profileData;
-
-      if (profileData.referred_by) {
-        removeStoredReferralCode();
-        return profileData;
-      }
-
-      if (!referralCode) return profileData;
-
-      try {
-        const claimData = await solicitarBonusIndicacao(referralCode, userId);
-
-        if (claimData?.success || claimData?.already_applied) {
-          removeStoredReferralCode();
-
-          const { data: refreshedProfile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", userId)
-            .maybeSingle();
-
-          return refreshedProfile || profileData;
-        }
-      } catch (error) {
-        console.log("Erro inesperado ao aplicar indicação:", error);
-      }
-
-      return profileData;
-    }
-
     const { data } = await supabase
       .from("profiles")
       .select("*")
@@ -1021,8 +991,7 @@ function App() {
         }
       }
 
-      const updatedProfile = await aplicarIndicacaoPendente(profileData);
-      setProfile(updatedProfile);
+      setProfile(profileData);
       return;
     }
 
@@ -1034,21 +1003,41 @@ function App() {
         email: userEmail || null,
         whatsapp: user?.user_metadata?.whatsapp || "",
         role: "user",
-        credits: 0,
+        credits: 5,
         consultas: 0,
         account_status: "ativo",
         is_blocked: false,
         blocked_reason: null,
-        referred_by_code: referralCode || null,
       })
       .select()
       .single();
 
     if (!error) {
-      const updatedProfile = await aplicarIndicacaoPendente(newProfile);
-      setProfile(updatedProfile);
+      setProfile(newProfile);
     } else {
       console.log("Erro ao criar perfil:", error);
+    }
+  }
+
+  async function registrarVisitaSite(currentSession) {
+    try {
+      const sessionKey = getAnalyticsSessionKey();
+      const headers = { "Content-Type": "application/json" };
+
+      if (currentSession?.access_token) {
+        headers.Authorization = `Bearer ${currentSession.access_token}`;
+      }
+
+      await fetch("/api/analytics/visit", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          sessionKey,
+          path: window.location.pathname.slice(0, 250),
+        }),
+      });
+    } catch (error) {
+      console.log("Registro de visita indisponível:", error);
     }
   }
 
@@ -1087,8 +1076,21 @@ function App() {
       carregarMensagensSuporteAdmin();
       carregarLogsSistema();
       carregarConsultasExternasAdmin();
+      carregarAtividadeAdmin();
+      carregarResumoDiarioAdmin();
     }
   }, [session, profile]);
+
+  useEffect(() => {
+    if (session?.user?.id && profile?.role === "admin") {
+      setAdminActiveSection("resumo");
+      setAdminOpenMenu(null);
+    }
+  }, [session?.user?.id, profile?.role]);
+
+  useEffect(() => {
+    registrarVisitaSite(session);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (profile) {
@@ -1121,15 +1123,6 @@ function App() {
   }, [session?.user?.id, profile?.credits, profile?.unlimited_until]);
 
   useEffect(() => {
-    const code = getReferralCodeFromUrl();
-    if (code) {
-      try {
-        localStorage.setItem("locacheck-referral-code", code);
-      } catch {
-        // Navegadores em modo restrito podem bloquear o localStorage.
-      }
-    }
-
     carregarDadosPublicosLanding();
   }, []);
 
@@ -1357,62 +1350,6 @@ function App() {
     setShowProfileData(true);
   }
 
-  async function carregarMovimentacoesIndicacao() {
-    if (!session?.user?.id) return;
-
-    setReferralMessage("");
-
-    const { data, error } = await supabase
-      .from("credit_movements")
-      .select("id, amount, movement_type, description, related_user_id, created_at")
-      .eq("user_id", session.user.id)
-      .eq("movement_type", "referral_bonus")
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) {
-      console.log("Erro ao carregar indicações:", error);
-      setReferralMovements([]);
-      setReferralMessage(
-        error.message || "Não foi possível carregar os bônus de indicação."
-      );
-      return;
-    }
-
-    setReferralMovements(data || []);
-
-    if (!data || data.length === 0) {
-      setReferralMessage("Nenhum bônus de indicação recebido ainda.");
-    }
-  }
-
-  function abrirPainelIndicacoes() {
-    setShowReferralPanel(true);
-    carregarMovimentacoesIndicacao();
-  }
-
-  async function copiarLinkIndicacao() {
-    const link = buildReferralLink(profile?.referral_code);
-
-    if (!link) {
-      showToast("warning", "Link indisponível", "Atualize a página ou entre novamente para gerar seu link.");
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(link);
-      showToast("success", "Link copiado", "Agora é só compartilhar com outra locadora.");
-    } catch {
-      showToast("warning", "Copie manualmente", "Seu navegador bloqueou a cópia automática.");
-    }
-  }
-
-  function compartilharLinkIndicacaoWhatsApp() {
-    const link = buildReferralLink(profile?.referral_code);
-    const texto = `Conheça a LocaCheck. Consulte ocorrências antes de alugar e proteja sua frota: ${link}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
-  }
-
   async function salvarMeusDados(e) {
     e.preventDefault();
 
@@ -1538,9 +1475,7 @@ function App() {
       return;
     }
 
-    const referralCode = getStoredReferralCode();
-
-    const { data: signUpData, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email: cadastroEmailNormalized,
       password: senha,
       options: {
@@ -1548,7 +1483,6 @@ function App() {
           nome: nome.trim(),
           email: cadastroEmailNormalized,
           whatsapp: cadastroWhatsappDigits,
-          referral_code: referralCode || null,
           terms_accepted: true,
           terms_version: "2026-06-14",
           terms_accepted_at: new Date().toISOString(),
@@ -1559,16 +1493,8 @@ function App() {
     if (error) {
       setMessage(error.message);
     } else {
-      if (referralCode && signUpData?.user?.id) {
-        const referralResult = await solicitarBonusIndicacao(referralCode, signUpData.user.id);
-
-        if (referralResult?.success || referralResult?.already_applied) {
-          removeStoredReferralCode();
-        }
-      }
-
-      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail para realizar consultas.");
-      showToast("success", "Cadastro realizado", "Confirme seu e-mail para realizar consultas.");
+      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail. Sua conta terá 5 créditos iniciais.");
+      showToast("success", "Cadastro realizado", "Confirme seu e-mail. Sua conta terá 5 créditos iniciais.");
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -1617,8 +1543,6 @@ function App() {
     setMessage("");
 
     try {
-      const referralCode = getStoredReferralCode();
-
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -1638,13 +1562,6 @@ function App() {
         return;
       }
 
-      if (referralCode) {
-        try {
-          localStorage.setItem("locacheck-referral-code", referralCode);
-        } catch {
-          // Mantém o fluxo mesmo se o navegador bloquear localStorage.
-        }
-      }
     } catch (error) {
       console.log("Erro ao iniciar login com Google:", error);
       setMessage("Não foi possível iniciar o login com Google. Tente novamente.");
@@ -1800,6 +1717,7 @@ function App() {
     setLoading(true);
     setSearchMessage("");
     setSearchResults([]);
+    setCombinedConsultationStatus(null);
 
     try {
       const { data: limitData, error: limitError } = await supabase.rpc("can_start_consultation", {
@@ -1841,9 +1759,7 @@ function App() {
     setSearchResults(results);
 
     if (results.length === 0) {
-      setSearchMessage(
-        "Consulta interna realizada. Nenhum registro aprovado foi encontrado para os dados informados."
-      );
+      setSearchMessage(INTERNAL_NO_RECORDS_MESSAGE);
     } else {
       setSearchMessage(
         `Consulta interna realizada. ${results.length} registro(s) encontrado(s).`
@@ -1854,15 +1770,25 @@ function App() {
     setLoading(false);
   }
 
-  async function consultarLocatarioExterno() {
+  async function consultarLocatarioExterno(directSearch = null) {
     if (loading) return;
 
-    const cpfDigits = onlyDigits(searchText);
+    const selectedType = directSearch?.type || externalSearchType;
+    const selectedValue = String(directSearch?.value || searchText).trim();
+    const cpfDigits = onlyDigits(selectedValue);
     const creditsNeeded = externalConsultationCredits(consultationMode);
     const consultationLabel = externalConsultationLabel(consultationMode);
 
-    if (!isValidCpf(cpfDigits)) {
-      setSearchMessage("Para consulta externa, informe um CPF completo e válido.");
+    if (selectedType === "cpf" && !isValidCpf(cpfDigits)) {
+      setSearchMessage("Informe um CPF completo e válido.");
+      return;
+    }
+    if (selectedType === "email" && !isValidEmail(selectedValue)) {
+      setSearchMessage("Informe um e-mail válido.");
+      return;
+    }
+    if (selectedType === "phone" && (onlyDigits(selectedValue).length < 10 || onlyDigits(selectedValue).length > 13)) {
+      setSearchMessage("Informe um telefone com DDD válido.");
       return;
     }
 
@@ -1871,15 +1797,10 @@ function App() {
       return;
     }
 
-    const confirmed = window.confirm(
-      `${consultationLabel}\n\nEsta consulta consome ${creditsNeeded} créditos. O resultado vem de fonte externa integrada e deve ser usado apenas como apoio à análise. Deseja continuar?`
-    );
-
-    if (!confirmed) return;
-
     setLoading(true);
     setSearchMessage("");
     setSearchResults([]);
+    setCombinedConsultationStatus(null);
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1898,7 +1819,8 @@ function App() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          cpf: cpfDigits,
+          searchType: selectedType,
+          searchValue: selectedType === "cpf" ? cpfDigits : selectedValue,
           consultationType: consultationMode,
         }),
       });
@@ -1912,18 +1834,34 @@ function App() {
         return;
       }
 
-      const results = (data.results || []).map((item, index) => ({
+      const externalResults = (data.results || []).map((item, index) => ({
         ...item,
-        id: `${data.consultationType || consultationMode}-${Date.now()}-${index}`,
+        id: `${data.consultationType || consultationMode}-${Date.now()}-external-${index}`,
         result_origin: "external",
         consultation_label: data.consultationLabel || consultationLabel,
         credits_charged: data.creditsCharged || creditsNeeded,
+        credits_balance_after: data.creditsBalanceAfter,
         cache_hit: data.cacheHit || item.cached || false,
       }));
 
-      setSearchResults(results);
+      const internalResults = (data.internalResults || []).map((item, index) => ({
+        ...item,
+        id: item.id || `internal-included-${Date.now()}-${index}`,
+        result_origin: "internal",
+        included_with_external: true,
+      }));
+
+      setSearchResults([...externalResults, ...internalResults]);
+      setCombinedConsultationStatus({
+        externalCompleted: externalResults.length > 0,
+        internalVerified: data.internalCheckSuccess !== false,
+        internalCount: internalResults.length,
+        creditsCharged: data.creditsCharged || creditsNeeded,
+      });
       setSearchMessage(
-        `${data.consultationLabel || consultationLabel} realizada com sucesso. Resultado obtido em fonte externa.`
+        data.internalCheckSuccess === false
+          ? `${data.consultationLabel || consultationLabel} concluída, mas a base interna ficou temporariamente indisponível. Nenhum crédito adicional foi cobrado.`
+          : `${data.consultationLabel || consultationLabel} concluída. A base interna também foi verificada sem cobrança adicional.`
       );
 
       await loadProfile(session.user.id);
@@ -1933,6 +1871,113 @@ function App() {
     }
 
     setLoading(false);
+  }
+
+  async function consultarPessoaRelacionada(person) {
+    const relatedCpf = onlyDigits(person?.tax_id || "");
+    if (!isValidCpf(relatedCpf)) {
+      setSearchMessage("Esta pessoa relacionada não possui um CPF válido disponível para consulta.");
+      return;
+    }
+    setExternalSearchType("cpf");
+    setSearchText(formatCpfInput(relatedCpf));
+    await consultarLocatarioExterno({ type: "cpf", value: relatedCpf });
+  }
+
+  async function consultarProcessoCompleto(processNumber, subjectCpf = "") {
+    if (loadingProcessNumber) return;
+    const normalized = onlyDigits(processNumber);
+    if (normalized.length !== 20) {
+      setProcessConsultationMessage("O número deste processo está incompleto e não pode ser consultado.");
+      return;
+    }
+    if (Number(profile?.credits || 0) < 1) {
+      setProcessConsultationMessage("Créditos insuficientes. A consulta completa do processo consome 1 crédito.");
+      return;
+    }
+
+    setLoadingProcessNumber(normalized);
+    setProcessConsultationMessage("");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      const response = await fetch("/api/bigdata/process-consult", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ processNumber: normalized, cpf: onlyDigits(subjectCpf) }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        setProcessConsultationMessage(data?.message || "Não foi possível consultar o processo.");
+      } else {
+        setProcessConsultation(data);
+        setProcessConsultationMessage("Consulta completa do processo concluída.");
+        await loadProfile(session.user.id);
+      }
+    } catch (error) {
+      console.log("Erro ao consultar processo:", error);
+      setProcessConsultationMessage("Erro inesperado ao consultar o processo.");
+    }
+    setLoadingProcessNumber("");
+  }
+
+  async function carregarAtividadeAdmin(days = adminActivityPeriod) {
+    if (profile?.role !== "admin") return;
+
+    setLoadingAdminActivity(true);
+    setAdminActivityMessage("Carregando visitas e consultas...");
+
+    const selectedDays = Math.max(1, Math.min(Number(days || 7), 90));
+    const { data, error } = await supabase.rpc("get_admin_activity_overview", {
+      p_days: selectedDays,
+    });
+
+    if (error) {
+      console.log("Erro ao carregar atividade administrativa:", error);
+      setAdminActivityData(null);
+      setAdminActivityMessage(
+        "Não foi possível carregar visitas e consultas. Rode a migração V43 no Supabase."
+      );
+      setLoadingAdminActivity(false);
+      return;
+    }
+
+    setAdminActivityData(data || null);
+    setAdminActivityMessage("");
+    setLoadingAdminActivity(false);
+  }
+
+  async function carregarResumoDiarioAdmin() {
+    if (profile?.role !== "admin") return;
+
+    setLoadingAdminDaily(true);
+    setAdminDailyMessage("");
+
+    const { data, error } = await supabase.rpc("get_admin_daily_summary");
+
+    if (error) {
+      console.log("Erro ao carregar resumo diário administrativo:", error);
+      setAdminDailyData(null);
+      setAdminDailyMessage(
+        "Não foi possível carregar compras e novos usuários de hoje. Rode a migração V51 no Supabase."
+      );
+      setLoadingAdminDaily(false);
+      return;
+    }
+
+    setAdminDailyData(data || null);
+    setAdminDailyMessage("");
+    setLoadingAdminDaily(false);
+  }
+
+  async function atualizarResumoAdmin() {
+    await Promise.all([
+      carregarAtividadeAdmin(),
+      carregarResumoDiarioAdmin(),
+      carregarDashboardFinanceiro(),
+      carregarUsuariosAdmin(),
+      carregarOcorrenciasAdmin(),
+    ]);
   }
 
   async function carregarConsultasExternasAdmin() {
@@ -3081,9 +3126,28 @@ function App() {
       (adminExternalFilterCache === "nao" && !Boolean(log.cache_hit));
     const search = String(adminExternalSearch || "").trim().toLowerCase();
     const userText = `${log.profiles?.nome || ""} ${log.profiles?.email || ""} ${log.user_id || ""}`.toLowerCase();
-    const textOk = !search || userText.includes(search) || String(log.cpf4 || "").includes(search);
+    const searchedText = `${log.search_type || ""} ${log.search_value || ""} ${log.cpf_full || ""} ${log.cpf4 || ""}`.toLowerCase();
+    const textOk = !search || userText.includes(search) || searchedText.includes(search);
     return typeOk && cacheOk && textOk;
   });
+
+  const adminActivitySummary = adminActivityData?.summary || {};
+  const adminDailySummary = adminDailyData?.summary || {};
+  const adminDailyVisits = Array.isArray(adminActivityData?.daily_visits) ? adminActivityData.daily_visits : [];
+  const adminActivityConsultations = (Array.isArray(adminActivityData?.consultations)
+    ? adminActivityData.consultations
+    : []
+  ).filter((item) => {
+    const typeOk =
+      adminActivityType === "todos" ||
+      (adminActivityType === "internal" && item.source === "internal" && item.consultation_type !== "internal_included") ||
+      (adminActivityType === "internal_included" && item.consultation_type === "internal_included") ||
+      (adminActivityType === "external" && item.source === "external");
+    const search = String(adminActivitySearch || "").trim().toLowerCase();
+    const searchable = `${item.user_name || ""} ${item.user_email || ""} ${item.searched_display || ""}`.toLowerCase();
+    return typeOk && (!search || searchable.includes(search));
+  });
+  const maxDailyVisits = Math.max(1, ...adminDailyVisits.map((item) => Number(item.visits || 0)));
 
   if (session && !profile) {
     return (
@@ -3122,6 +3186,36 @@ function App() {
       creditos: adminUsers.reduce((total, user) => total + Number(user.credits || 0), 0),
       consultas: adminUsers.reduce((total, user) => total + Number(user.consultas || 0), 0),
     };
+    const normalizedAdminUserSearch = String(adminUserSearch || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+    const adminUsersFiltered = adminUsers.filter((user) => {
+      if (!normalizedAdminUserSearch) return true;
+
+      const searchableText = [
+        user.nome,
+        user.email,
+        user.whatsapp,
+        user.id,
+        user.role,
+        getUserAccountStatus(user),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      const searchedDigits = normalizedAdminUserSearch.replace(/\D/g, "");
+      const userDigits = String(user.whatsapp || "").replace(/\D/g, "");
+
+      return (
+        searchableText.includes(normalizedAdminUserSearch) ||
+        Boolean(searchedDigits && userDigits.includes(searchedDigits))
+      );
+    });
     const adminPlanStats = {
       total: adminPlans.length,
       ativos: adminPlans.filter((plan) => plan.active === true).length,
@@ -3206,6 +3300,7 @@ function App() {
                 setSearchResults([]);
                 setSearchText("");
                 setConsultationMode("internal");
+                setCombinedConsultationStatus(null);
                 setShowSearchForm(true);
               }}
             >
@@ -3221,13 +3316,6 @@ function App() {
               }}
             >
               Registrar Ocorrência
-            </button>
-
-            <button
-              className="btn outline large actionReferral"
-              onClick={abrirPainelIndicacoes}
-            >
-              Indique e ganhe créditos
             </button>
 
             <button
@@ -3253,82 +3341,427 @@ function App() {
             )}
           </section>
 
+          {profile.role === "admin" && adminActiveSection === "resumo" && (
+            <section className="adminPanel adminArea adminOverviewArea adminDailyOverview" id="admin-resumo">
+              <div className="adminHeader">
+                <div>
+                  <span>Dashboard de hoje</span>
+                  <h2>Principais informações do dia</h2>
+                  <p>
+                    Acompanhe visitas, consultas, compras e novos cadastros em um único lugar.
+                  </p>
+                </div>
+
+                <button
+                  className="btn secondary adminRefreshButton"
+                  onClick={atualizarResumoAdmin}
+                  disabled={loadingAdminActivity || loadingAdminDaily || loadingFinancialDashboard}
+                >
+                  <RefreshCw size={18} />
+                  {loadingAdminActivity || loadingAdminDaily || loadingFinancialDashboard
+                    ? "Atualizando..."
+                    : "Atualizar Dashboard"}
+                </button>
+              </div>
+
+              {(adminActivityMessage || adminDailyMessage) && (
+                <div className="authMessage">{adminActivityMessage || adminDailyMessage}</div>
+              )}
+
+              <div className="adminTodayLabel">
+                <LayoutDashboard size={18} />
+                <span>
+                  Dados de {new Intl.DateTimeFormat("pt-BR", {
+                    weekday: "long",
+                    day: "2-digit",
+                    month: "long",
+                  }).format(new Date())}
+                </span>
+              </div>
+
+              <section className="adminMiniDashboard overviewMiniDashboard dailyDashboardGrid">
+                <button type="button" className="adminStatCard featured clickable" onClick={() => setAdminActiveSection("atividade")}>
+                  <span className="adminStatIcon"><Activity size={21} /></span>
+                  <small>Visitas hoje</small>
+                  <strong>{adminActivitySummary.visits_today || 0}</strong>
+                  <span>Acessos contabilizados no dia</span>
+                </button>
+
+                <button type="button" className="adminStatCard success clickable" onClick={() => setAdminActiveSection("atividade")}>
+                  <span className="adminStatIcon"><ListChecks size={21} /></span>
+                  <small>Consultas hoje</small>
+                  <strong>{adminActivitySummary.consultations_today || 0}</strong>
+                  <span>Consultas internas e externas</span>
+                </button>
+
+                <button type="button" className="adminStatCard purchaseCard clickable" onClick={() => setAdminActiveSection("financeiro")}>
+                  <span className="adminStatIcon"><ShoppingCart size={21} /></span>
+                  <small>Compras pagas hoje</small>
+                  <strong>{adminDailySummary.paid_purchases_today || 0}</strong>
+                  <span>Pagamentos confirmados no dia</span>
+                </button>
+
+                <button type="button" className="adminStatCard revenueCard clickable" onClick={() => setAdminActiveSection("financeiro")}>
+                  <span className="adminStatIcon"><CircleDollarSign size={21} /></span>
+                  <small>Faturamento hoje</small>
+                  <strong>{formatMoneyCents(adminDailySummary.revenue_today_cents || 0)}</strong>
+                  <span>Somente pagamentos confirmados</span>
+                </button>
+
+                <button type="button" className="adminStatCard newUsersCard clickable" onClick={() => setAdminActiveSection("usuarios")}>
+                  <span className="adminStatIcon"><UserPlus size={21} /></span>
+                  <small>Novos usuários hoje</small>
+                  <strong>{adminDailySummary.users_today || 0}</strong>
+                  <span>Cadastros realizados no dia</span>
+                </button>
+
+                <button type="button" className="adminStatCard clickable" onClick={() => setAdminActiveSection("usuarios")}>
+                  <span className="adminStatIcon"><Users size={21} /></span>
+                  <small>Usuários cadastrados</small>
+                  <strong>{adminUserStats.total}</strong>
+                  <span>Total de contas na plataforma</span>
+                </button>
+
+                <button type="button" className="adminStatCard warning clickable" onClick={() => setAdminActiveSection("ocorrencias")}>
+                  <span className="adminStatIcon"><ClipboardCheck size={21} /></span>
+                  <small>Ocorrências pendentes</small>
+                  <strong>{adminRecordStats.pendentes}</strong>
+                  <span>Aguardando análise administrativa</span>
+                </button>
+              </section>
+
+              <div className="adminQuickActions adminQuickActionsV51">
+                <button className="btn primary" type="button" onClick={() => setAdminActiveSection("ocorrencias")}>
+                  <ClipboardCheck size={18} /> Analisar ocorrências
+                </button>
+                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("atividade")}>
+                  <Activity size={18} /> Ver atividade
+                </button>
+                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("usuarios")}>
+                  <Users size={18} /> Gerenciar usuários
+                </button>
+                <button className="btn outline" type="button" onClick={() => setAdminActiveSection("financeiro")}>
+                  <BadgeDollarSign size={18} /> Abrir financeiro
+                </button>
+              </div>
+            </section>
+          )}
+
           {profile.role === "admin" && (
-            <section className="adminCategoryMenu" aria-label="Menus separados do painel administrativo">
-              <button
-                type="button"
-                className={adminActiveSection === "financeiro" ? "active financeShortcut" : "financeShortcut"}
-                onClick={() => setAdminActiveSection("financeiro")}
-              >
-                <span>Financeiro</span>
-                <strong>Receita, PIX e pagamentos</strong>
-              </button>
+            <section className="adminNavigationPanel" aria-label="Navegação do painel administrativo">
+              <div className="adminNavigationIntro">
+                <div>
+                  <span>Menu administrativo</span>
+                  <h2>Ferramentas organizadas por função</h2>
+                  <p>Toque em uma categoria para abrir as opções. O Dashboard permanece como página principal.</p>
+                </div>
+              </div>
 
-              <button
-                type="button"
-                className={adminActiveSection === "planos" ? "active plansShortcut" : "plansShortcut"}
-                onClick={() => setAdminActiveSection("planos")}
-              >
-                <span>Planos</span>
-                <strong>Preços, créditos e ativação</strong>
-              </button>
+              <div className={`adminMenuGroup ${adminOpenMenu === "acompanhamento" ? "open" : ""}`}>
+                <button
+                  type="button"
+                  className="adminMenuGroupToggle"
+                  aria-expanded={adminOpenMenu === "acompanhamento"}
+                  onClick={() => setAdminOpenMenu(adminOpenMenu === "acompanhamento" ? null : "acompanhamento")}
+                >
+                  <span className="adminMenuGroupIcon"><BarChart3 size={21} /></span>
+                  <span>
+                    <strong>Acompanhamento</strong>
+                    <small>Dashboard, visitas e consultas</small>
+                  </span>
+                  <ChevronDown className="adminMenuChevron" size={21} />
+                </button>
 
-              <button
-                type="button"
-                className={adminActiveSection === "usuarios" ? "active usersShortcut" : "usersShortcut"}
-                onClick={() => setAdminActiveSection("usuarios")}
-              >
-                <span>Usuários</span>
-                <strong>Créditos, planos e contas</strong>
-              </button>
+                {adminOpenMenu === "acompanhamento" && (
+                  <div className="adminCategoryMenu adminCascadeMenu">
+                  <button
+                    type="button"
+                    className={adminActiveSection === "resumo" ? "active overviewShortcut" : "overviewShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("resumo");
+                      setAdminOpenMenu(null);
+                    }}
+                  >
+                    <LayoutDashboard size={22} />
+                    <span><strong>Dashboard</strong><small>Resumo diário principal</small></span>
+                  </button>
 
-              <button
-                type="button"
-                className={adminActiveSection === "ocorrencias" ? "active recordsShortcut" : "recordsShortcut"}
-                onClick={() => setAdminActiveSection("ocorrencias")}
-              >
-                <span>Ocorrências</span>
-                <strong>Aprovação, análise e registros</strong>
-              </button>
+                  <button
+                    type="button"
+                    className={adminActiveSection === "atividade" ? "active activityShortcut" : "activityShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("atividade");
+                      setAdminOpenMenu(null);
+                      carregarAtividadeAdmin();
+                    }}
+                  >
+                    <Activity size={22} />
+                    <span><strong>Visitas e consultas</strong><small>Dia, semana, usuários e buscas</small></span>
+                  </button>
+                  </div>
+                )}
+              </div>
 
-              <button
-                type="button"
-                className={adminActiveSection === "consulta_externa" ? "active externalShortcut" : "externalShortcut"}
-                onClick={() => {
-                  setAdminActiveSection("consulta_externa");
-                  carregarConsultasExternasAdmin();
-                }}
-              >
-                <span>Consulta Externa</span>
-                <strong>BigDataCorp, cache e créditos</strong>
-              </button>
+              <div className={`adminMenuGroup ${adminOpenMenu === "operacao" ? "open" : ""}`}>
+                <button
+                  type="button"
+                  className="adminMenuGroupToggle"
+                  aria-expanded={adminOpenMenu === "operacao"}
+                  onClick={() => setAdminOpenMenu(adminOpenMenu === "operacao" ? null : "operacao")}
+                >
+                  <span className="adminMenuGroupIcon"><Settings2 size={21} /></span>
+                  <span>
+                    <strong>Operação</strong>
+                    <small>Ocorrências, usuários e suporte</small>
+                  </span>
+                  <ChevronDown className="adminMenuChevron" size={21} />
+                </button>
 
-              <button
-                type="button"
-                className={adminActiveSection === "relatorios" ? "active reportsShortcut" : "reportsShortcut"}
-                onClick={() => setAdminActiveSection("relatorios")}
-              >
-                <span>Relatórios</span>
-                <strong>Exportações em CSV</strong>
-              </button>
+                {adminOpenMenu === "operacao" && (
+                  <div className="adminCategoryMenu adminCascadeMenu">
+                  <button
+                    type="button"
+                    className={adminActiveSection === "ocorrencias" ? "active recordsShortcut" : "recordsShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("ocorrencias");
+                      setAdminOpenMenu(null);
+                    }}
+                  >
+                    <ClipboardCheck size={22} />
+                    <span><strong>Ocorrências</strong><small>Aprovar, editar e revisar</small></span>
+                  </button>
 
-              <button
-                type="button"
-                className={adminActiveSection === "suporte" ? "active supportShortcut" : "supportShortcut"}
-                onClick={() => setAdminActiveSection("suporte")}
-              >
-                <span>Suporte</span>
-                <strong>Mensagens recebidas</strong>
-              </button>
+                  <button
+                    type="button"
+                    className={adminActiveSection === "usuarios" ? "active usersShortcut" : "usersShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("usuarios");
+                      setAdminOpenMenu(null);
+                    }}
+                  >
+                    <Users size={22} />
+                    <span><strong>Usuários</strong><small>Contas, créditos e permissões</small></span>
+                  </button>
 
-              <button
-                type="button"
-                className={adminActiveSection === "auditoria" ? "active auditShortcut" : "auditShortcut"}
-                onClick={() => setAdminActiveSection("auditoria")}
-              >
-                <span>Auditoria</span>
-                <strong>Logs do sistema</strong>
-              </button>
+                  <button
+                    type="button"
+                    className={adminActiveSection === "suporte" ? "active supportShortcut" : "supportShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("suporte");
+                      setAdminOpenMenu(null);
+                    }}
+                  >
+                    <Headphones size={22} />
+                    <span><strong>Suporte</strong><small>Mensagens e solicitações</small></span>
+                  </button>
+                  </div>
+                )}
+              </div>
+
+              <div className={`adminMenuGroup ${adminOpenMenu === "controle" ? "open" : ""}`}>
+                <button
+                  type="button"
+                  className="adminMenuGroupToggle"
+                  aria-expanded={adminOpenMenu === "controle"}
+                  onClick={() => setAdminOpenMenu(adminOpenMenu === "controle" ? null : "controle")}
+                >
+                  <span className="adminMenuGroupIcon"><ShieldCheck size={21} /></span>
+                  <span>
+                    <strong>Financeiro e controle</strong>
+                    <small>Pagamentos, planos, relatórios e auditoria</small>
+                  </span>
+                  <ChevronDown className="adminMenuChevron" size={21} />
+                </button>
+
+                {adminOpenMenu === "controle" && (
+                  <div className="adminCategoryMenu adminCascadeMenu">
+                  <button
+                    type="button"
+                    className={adminActiveSection === "financeiro" ? "active financeShortcut" : "financeShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("financeiro");
+                      setAdminOpenMenu(null);
+                    }}
+                  >
+                    <BadgeDollarSign size={22} />
+                    <span><strong>Financeiro</strong><small>Receita, PIX e pagamentos</small></span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={adminActiveSection === "planos" ? "active plansShortcut" : "plansShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("planos");
+                      setAdminOpenMenu(null);
+                    }}
+                  >
+                    <WalletCards size={22} />
+                    <span><strong>Planos</strong><small>Preços, créditos e ativação</small></span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={adminActiveSection === "relatorios" ? "active reportsShortcut" : "reportsShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("relatorios");
+                      setAdminOpenMenu(null);
+                    }}
+                  >
+                    <FileBarChart size={22} />
+                    <span><strong>Relatórios</strong><small>Exportações para conferência</small></span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={adminActiveSection === "auditoria" ? "active auditShortcut" : "auditShortcut"}
+                    onClick={() => {
+                      setAdminActiveSection("auditoria");
+                      setAdminOpenMenu(null);
+                    }}
+                  >
+                    <ListChecks size={22} />
+                    <span><strong>Auditoria</strong><small>Logs e ações administrativas</small></span>
+                  </button>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {profile.role === "admin" && adminActiveSection === "atividade" && (
+            <section className="adminPanel adminArea activityArea" id="admin-atividade">
+              <div className="adminHeader">
+                <div>
+                  <span>Visitas e consultas</span>
+                  <h2>Atividade do site</h2>
+                  <p>Confira quantas visitas ocorreram e qual usuário realizou cada consulta.</p>
+                </div>
+
+                <button className="btn secondary" onClick={() => carregarAtividadeAdmin()} disabled={loadingAdminActivity}>
+                  {loadingAdminActivity ? "Atualizando..." : "Atualizar atividade"}
+                </button>
+              </div>
+
+              {adminActivityMessage && <div className="authMessage">{adminActivityMessage}</div>}
+
+              <div className="adminFilters activityFilters">
+                <select
+                  value={adminActivityPeriod}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setAdminActivityPeriod(value);
+                    carregarAtividadeAdmin(value);
+                  }}
+                >
+                  <option value="1">Hoje</option>
+                  <option value="7">Últimos 7 dias</option>
+                  <option value="30">Últimos 30 dias</option>
+                  <option value="90">Últimos 90 dias</option>
+                </select>
+                <select value={adminActivityType} onChange={(e) => setAdminActivityType(e.target.value)}>
+                  <option value="todos">Todas as consultas</option>
+                  <option value="internal">Somente internas</option>
+                  <option value="internal_included">Internas incluídas na externa</option>
+                  <option value="external">Somente externas</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Buscar usuário, e-mail ou CPF"
+                  value={adminActivitySearch}
+                  onChange={(e) => setAdminActivitySearch(e.target.value)}
+                />
+              </div>
+
+              <section className="adminMiniDashboard activityMiniDashboard">
+                <div className="adminStatCard featured">
+                  <small>Visitas hoje</small>
+                  <strong>{adminActivitySummary.visits_today || 0}</strong>
+                  <span>Uma sessão por dia</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Visitas em 7 dias</small>
+                  <strong>{adminActivitySummary.visits_7_days || 0}</strong>
+                  <span>Última semana</span>
+                </div>
+                <div className="adminStatCard success">
+                  <small>Consultas no período</small>
+                  <strong>{adminActivitySummary.consultations_period || 0}</strong>
+                  <span>Internas e externas</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Consultas internas</small>
+                  <strong>{adminActivitySummary.internal_period || 0}</strong>
+                  <span>Inclui buscas combinadas</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Consultas externas</small>
+                  <strong>{adminActivitySummary.external_period || 0}</strong>
+                  <span>Fonte externa integrada</span>
+                </div>
+                <div className="adminStatCard">
+                  <small>Usuários ativos</small>
+                  <strong>{adminActivitySummary.active_users_period || 0}</strong>
+                  <span>Realizaram consulta</span>
+                </div>
+              </section>
+
+              <div className="adminActivityLayout">
+                <section className="adminVisitsChart" aria-label="Visitas por dia">
+                  <div className="adminSubHeader">
+                    <div>
+                      <h3>Visitas por dia</h3>
+                      <p>Cada barra representa as sessões contabilizadas naquele dia.</p>
+                    </div>
+                  </div>
+                  <div className="visitBars">
+                    {adminDailyVisits.length === 0 && <div className="adminEmpty">Nenhuma visita contabilizada no período.</div>}
+                    {adminDailyVisits.map((day) => (
+                      <div className="visitBarRow" key={day.date}>
+                        <span>{new Date(`${day.date}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+                        <div className="visitBarTrack">
+                          <div className="visitBarFill" style={{ width: `${Math.max(4, (Number(day.visits || 0) / maxDailyVisits) * 100)}%` }} />
+                        </div>
+                        <strong>{day.visits || 0}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="adminConsultationsList">
+                  <div className="adminSubHeader">
+                    <div>
+                      <h3>Consultas realizadas</h3>
+                      <p>O CPF completo aparece somente nas consultas externas e apenas para administradores.</p>
+                    </div>
+                  </div>
+
+                  <div className="adminList compactList">
+                    {adminActivityConsultations.length === 0 && (
+                      <div className="adminEmpty">Nenhuma consulta encontrada para os filtros selecionados.</div>
+                    )}
+                    {adminActivityConsultations.map((item) => (
+                      <div className="adminRecord consultationAuditCard" key={`${item.source}-${item.id}`}>
+                        <div className="adminRecordTop">
+                          <h3>{adminConsultationLabel(item.consultation_type, item.source)}</h3>
+                          <span className={`statusBadge ${item.status === "error" ? "reprovado" : "aprovado"}`}>
+                            {item.status === "error" ? "Erro" : "Concluída"}
+                          </span>
+                        </div>
+                        <p><strong>Usuário:</strong> {item.user_name || "Usuário sem nome"}</p>
+                        <p><strong>E-mail:</strong> {item.user_email || "Não informado"}</p>
+                        <p><strong>CPF consultado:</strong> {item.searched_display || "Não informado"}</p>
+                        <p><strong>Resultados:</strong> {item.results_count || 0}</p>
+                        <p><strong>Créditos consumidos:</strong> {item.credits_charged || 0}</p>
+                        {item.source === "external" && (
+                          <p><strong>Saldo após a consulta:</strong> {item.credits_balance_after === null || item.credits_balance_after === undefined ? "Não registrado" : `${item.credits_balance_after} crédito(s)`}</p>
+                        )}
+                        {item.source === "external" && <p><strong>Cache:</strong> {item.cache_hit ? "Sim" : "Não"}</p>}
+                        <p><strong>Data:</strong> {formatDate(item.created_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
             </section>
           )}
 
@@ -3795,16 +4228,45 @@ function App() {
                 </div>
               </div>
 
+              <div className="adminUserSearchBar" role="search">
+                <Search size={21} aria-hidden="true" />
+                <input
+                  type="search"
+                  value={adminUserSearch}
+                  onChange={(event) => setAdminUserSearch(event.target.value)}
+                  placeholder="Buscar por nome, e-mail ou WhatsApp"
+                  aria-label="Buscar usuário por nome, e-mail ou WhatsApp"
+                />
+                {adminUserSearch && (
+                  <button
+                    type="button"
+                    className="adminUserSearchClear"
+                    onClick={() => setAdminUserSearch("")}
+                    aria-label="Limpar busca de usuário"
+                    title="Limpar busca"
+                  >
+                    <X size={18} />
+                  </button>
+                )}
+                <span className="adminUserSearchCount">
+                  {adminUsersFiltered.length} de {adminUsers.length}
+                </span>
+              </div>
+
               {adminUsersMessage && (
                 <div className="authMessage">{adminUsersMessage}</div>
               )}
 
               <div className="adminList">
-                {adminUsers.length === 0 && (
-                  <div className="adminEmpty">Nenhum usuário encontrado.</div>
+                {adminUsersFiltered.length === 0 && (
+                  <div className="adminEmpty">
+                    {adminUserSearch
+                      ? "Nenhum usuário corresponde à busca informada."
+                      : "Nenhum usuário encontrado."}
+                  </div>
                 )}
 
-                {adminUsers.map((user) => {
+                {adminUsersFiltered.map((user) => {
                   const userUnlimitedActive =
                     user.unlimited_until &&
                     new Date(user.unlimited_until) > new Date();
@@ -4158,7 +4620,7 @@ function App() {
               <div className="adminFilters externalFilters">
                 <input
                   type="text"
-                  placeholder="Buscar por usuário, e-mail ou CPF final"
+                  placeholder="Buscar por usuário, CPF, telefone ou e-mail"
                   value={adminExternalSearch}
                   onChange={(e) => setAdminExternalSearch(e.target.value)}
                 />
@@ -4182,15 +4644,22 @@ function App() {
                 {adminExternalLogsFiltered.map((log) => (
                   <div className="adminRecord" key={log.id}>
                     <div className="adminRecordTop">
-                      <h3>{externalConsultationLabel(log.consultation_type)}</h3>
+                      <h3>Consulta Externa</h3>
                       <span className={`statusBadge ${log.status === "success" ? "aprovado" : "reprovado"}`}>
                         {log.status}
                       </span>
                     </div>
 
                     <p><strong>Usuário:</strong> {log.profiles?.nome || log.profiles?.email || log.user_id}</p>
-                    <p><strong>CPF final:</strong> {log.cpf4 || "----"}</p>
-                    <p><strong>Créditos:</strong> {log.credits_charged || 0}</p>
+                    <p><strong>Tipo pesquisado:</strong> {log.search_type === "phone" ? "Telefone" : log.search_type === "email" ? "E-mail" : "CPF"}</p>
+                    <p>
+                      <strong>Valor pesquisado:</strong>{" "}
+                      {log.search_type === "cpf" && log.search_value
+                        ? formatCpfInput(log.search_value)
+                        : log.search_value || (log.cpf_full ? formatCpfInput(log.cpf_full) : log.cpf4 ? `CPF final ${log.cpf4}` : "Não informado")}
+                    </p>
+                    <p><strong>Créditos consumidos:</strong> {log.credits_charged || 0}</p>
+                    <p><strong>Saldo após a consulta:</strong> {log.credits_balance_after === null || log.credits_balance_after === undefined ? "Não registrado" : `${log.credits_balance_after} crédito(s)`}</p>
                     <p><strong>Cache:</strong> {log.cache_hit ? "Sim" : "Não"}</p>
                     <p><strong>Dados consultados:</strong> {externalDatasetsText(log.datasets)}</p>
                     <p><strong>Data:</strong> {formatDate(log.created_at)}</p>
@@ -4392,29 +4861,23 @@ function App() {
             <>
               <button
                 type="button"
-                className={adminActiveSection === "financeiro" ? "active" : ""}
-                onClick={() => setAdminActiveSection("financeiro")}
+                className={adminActiveSection === "resumo" ? "active" : ""}
+                onClick={() => setAdminActiveSection("resumo")}
               >
-                <span>▣</span>
-                Financeiro
+                <LayoutDashboard size={20} />
+                Resumo
               </button>
 
               <button
                 type="button"
-                className={adminActiveSection === "planos" ? "active" : ""}
-                onClick={() => setAdminActiveSection("planos")}
+                className={adminActiveSection === "atividade" ? "active" : ""}
+                onClick={() => {
+                  setAdminActiveSection("atividade");
+                  carregarAtividadeAdmin();
+                }}
               >
-                <span>R$</span>
-                Planos
-              </button>
-
-              <button
-                type="button"
-                className={adminActiveSection === "usuarios" ? "active" : ""}
-                onClick={() => setAdminActiveSection("usuarios")}
-              >
-                <span>◎</span>
-                Usuários
+                <Activity size={20} />
+                Atividade
               </button>
 
               <button
@@ -4422,17 +4885,26 @@ function App() {
                 className={adminActiveSection === "ocorrencias" ? "active" : ""}
                 onClick={() => setAdminActiveSection("ocorrencias")}
               >
-                <span>!</span>
+                <ClipboardCheck size={20} />
                 Ocorrências
               </button>
 
               <button
                 type="button"
-                className={adminActiveSection === "consulta_externa" || adminActiveSection === "relatorios" || adminActiveSection === "suporte" || adminActiveSection === "auditoria" ? "active" : ""}
-                onClick={() => setAdminActiveSection(adminActiveSection === "consulta_externa" ? "relatorios" : adminActiveSection === "relatorios" ? "suporte" : adminActiveSection === "suporte" ? "auditoria" : "consulta_externa")}
+                className={adminActiveSection === "usuarios" ? "active" : ""}
+                onClick={() => setAdminActiveSection("usuarios")}
               >
-                <span>☰</span>
-                Mais
+                <Users size={20} />
+                Usuários
+              </button>
+
+              <button
+                type="button"
+                className={adminActiveSection === "financeiro" ? "active" : ""}
+                onClick={() => setAdminActiveSection("financeiro")}
+              >
+                <BadgeDollarSign size={20} />
+                Financeiro
               </button>
             </>
           ) : (
@@ -4447,6 +4919,7 @@ function App() {
                 setSearchResults([]);
                 setSearchText("");
                 setConsultationMode("internal");
+                setCombinedConsultationStatus(null);
                 setShowSearchForm(true);
               }}>
                 <span>⌕</span>
@@ -4461,11 +4934,6 @@ function App() {
                 Registrar
               </button>
 
-              <button type="button" onClick={abrirPainelIndicacoes}>
-                <span>↗</span>
-                Indicar
-              </button>
-
               <button type="button" onClick={abrirMeusDados}>
                 <span>◎</span>
                 Perfil
@@ -4473,79 +4941,6 @@ function App() {
             </>
           )}
         </nav>
-{showReferralPanel && (
-  <div className="modalOverlay">
-    <div className="recordModal referralModal">
-      <button
-        className="closeModal"
-        onClick={() => setShowReferralPanel(false)}
-      >
-        ×
-      </button>
-
-      <h2>Indique e ganhe créditos</h2>
-
-      <p>
-        Compartilhe seu link. Quando uma nova conta for criada por ele, você recebe
-        <strong> 2 créditos de bônus</strong> automaticamente.
-      </p>
-
-      <div className="referralLinkBox">
-        <small>Seu link de indicação</small>
-        <code>{buildReferralLink(profile?.referral_code) || "Gerando link..."}</code>
-      </div>
-
-      <div className="modalActionsRow">
-        <button className="btn primary" type="button" onClick={copiarLinkIndicacao}>
-          Copiar link
-        </button>
-
-        <button className="btn outline" type="button" onClick={compartilharLinkIndicacaoWhatsApp}>
-          Compartilhar no WhatsApp
-        </button>
-      </div>
-
-      <div className="referralRulesBox">
-        <strong>Como funciona</strong>
-        <p>1 cadastro válido pelo seu link = 2 créditos liberados para você.</p>
-        <p>Os créditos aparecem abaixo em movimentações e também ficam registrados no log administrativo.</p>
-      </div>
-
-      <div className="adminSubHeader">
-        <div>
-          <span>Movimentações</span>
-          <h3>Bônus recebidos por indicação</h3>
-        </div>
-        <button className="btn secondary" type="button" onClick={carregarMovimentacoesIndicacao}>
-          Atualizar
-        </button>
-      </div>
-
-      {referralMessage && <div className="authMessage">{referralMessage}</div>}
-
-      {referralMovements.length > 0 && (
-        <div className="resultsBox">
-          {referralMovements.map((item) => (
-            <div className="resultCard referralMovementCard" key={item.id}>
-              <div className="adminRecordTop">
-                <h3>+{item.amount} créditos</h3>
-                <span className="statusBadge aprovado">Bônus</span>
-              </div>
-              <p>{item.description || "Bônus recebido por indicação."}</p>
-              <p>
-                <strong>Data:</strong>{" "}
-                {item.created_at
-                  ? new Date(item.created_at).toLocaleString("pt-BR")
-                  : "Não informado"}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  </div>
-)}
-
 {showExternalConsultationHistory && (
   <div className="modalOverlay">
     <div className="recordModal externalHistoryModal">
@@ -5192,7 +5587,7 @@ function App() {
                 ×
               </button>
 
-              <h2>Consultar CPF</h2>
+              <h2>Realizar consulta</h2>
 
               <p>
                 Escolha entre buscar registros em outras locadoras ou realizar uma consulta externa completa.
@@ -5202,7 +5597,12 @@ function App() {
                 <button
                   type="button"
                   className={consultationMode === "internal" ? "consultTypeCard active" : "consultTypeCard"}
-                  onClick={() => setConsultationMode("internal")}
+                  onClick={() => {
+                    setConsultationMode("internal");
+                    setSearchResults([]);
+                    setSearchMessage("");
+                    setCombinedConsultationStatus(null);
+                  }}
                 >
                   <strong>Consulta Interna</strong>
                   <span>1 crédito</span>
@@ -5212,31 +5612,57 @@ function App() {
                 <button
                   type="button"
                   className={consultationMode === "external_advanced" ? "consultTypeCard active featuredExternalCompleteV36" : "consultTypeCard featuredExternalCompleteV36"}
-                  onClick={() => setConsultationMode("external_advanced")}
+                  onClick={() => {
+                    setConsultationMode("external_advanced");
+                    setSearchResults([]);
+                    setSearchMessage("");
+                    setCombinedConsultationStatus(null);
+                  }}
                 >
                   <strong>Consulta Externa Completa</strong>
                   <span>3 créditos</span>
-                  <small>Dados pessoais, contatos, vínculos e processos judiciais nacionais.</small>
+                  <small>Fonte externa completa + verificação da base interna, sem crédito extra.</small>
                 </button>
               </div>
 
               <form onSubmit={consultarLocatario} className="recordForm">
+                {consultationMode !== "internal" && (
+                  <div className="externalSearchTypeV46">
+                    <button type="button" className={externalSearchType === "cpf" ? "active" : ""} onClick={() => { setExternalSearchType("cpf"); setSearchText(""); }}>CPF</button>
+                    <button type="button" className={externalSearchType === "phone" ? "active" : ""} onClick={() => { setExternalSearchType("phone"); setSearchText(""); }}>Telefone</button>
+                    <button type="button" className={externalSearchType === "email" ? "active" : ""} onClick={() => { setExternalSearchType("email"); setSearchText(""); }}>E-mail</button>
+                  </div>
+                )}
                 <input
-                  type="text"
-                  placeholder={consultationMode === "internal" ? "Nome ou CPF" : "CPF completo"}
+                  type={consultationMode !== "internal" && externalSearchType === "email" ? "email" : "text"}
+                  placeholder={
+                    consultationMode === "internal"
+                      ? "Nome ou CPF"
+                      : externalSearchType === "cpf"
+                        ? "CPF completo"
+                        : externalSearchType === "phone"
+                          ? "Telefone com DDD"
+                          : "E-mail completo"
+                  }
                   value={searchText}
                   onChange={(e) => {
-                    const value = consultationMode === "internal" ? e.target.value : formatCpfInput(e.target.value);
+                    const value = consultationMode === "internal"
+                      ? e.target.value
+                      : externalSearchType === "cpf"
+                        ? formatCpfInput(e.target.value)
+                        : externalSearchType === "phone"
+                          ? formatWhatsappInput(e.target.value)
+                          : e.target.value;
                     setSearchText(value);
                   }}
                   required
                 />
 
-                <p className="documentPublicNotice">
-                  {consultationMode === "internal"
-                    ? "Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras."
-                    : "Consulta externa completa: dados pessoais, contatos, vínculos e processos judiciais nacionais."}
-                </p>
+                {consultationMode === "internal" && (
+                  <p className="documentPublicNotice">
+                    Consulta interna: consome 1 crédito e busca registro do locador em outras locadoras.
+                  </p>
+                )}
 
                 <button className="btn primary full" disabled={loading}>
                   {loading ? "Consultando..." : "Buscar"}
@@ -5245,6 +5671,19 @@ function App() {
 
               {searchMessage && (
                 <div className="authMessage">{searchMessage}</div>
+              )}
+
+              {combinedConsultationStatus && combinedConsultationStatus.internalVerified && Number(combinedConsultationStatus.internalCount || 0) === 0 && (
+                <div className="resultCard internalEmptyResultCard">
+                  <div className="internalResultSourceHeader">
+                    <div>
+                      <span>Base interna LocaCheck</span>
+                      <strong>Verificação concluída</strong>
+                    </div>
+                    <span className="internalSourcePill">Nenhum registro</span>
+                  </div>
+                  <p>{INTERNAL_NO_RECORDS_MESSAGE}</p>
+                </div>
               )}
 
               {searchResults.length > 0 && (
@@ -5272,6 +5711,7 @@ function App() {
                                 <p><strong>CPF consultado:</strong> {item.cpf || item.cpf_masked || "Não informado"}</p>
                                 <p><strong>Situação cadastral:</strong> {item.document_status || "Não informado"}</p>
                                 {item.birth_date && <p><strong>Nascimento:</strong> {formatSimpleDate(item.birth_date)}</p>}
+                                {calculateCurrentAge(item.birth_date) !== null && <p><strong>Idade atual:</strong> {calculateCurrentAge(item.birth_date)} anos</p>}
                                 {item.mother_name && <p><strong>Nome da mãe:</strong> {item.mother_name}</p>}
                                 {item.father_name && <p><strong>Nome do pai:</strong> {item.father_name}</p>}
                                 {item.social_number && <p><strong>Número social:</strong> {item.social_number}</p>}
@@ -5282,12 +5722,22 @@ function App() {
                                 <section className="externalInfoCardV31">
                                   <span>Contatos encontrados</span>
                                   <h4>{(item.phones?.length || 0) + (item.emails?.length || 0)} contato(s)</h4>
-                                  {item.phones?.map((phone, index) => (
-                                    <p key={`phone-${index}`}><strong>Telefone {index + 1}:</strong> {[phone.number, phone.type, phone.status ? `status ${phone.status}` : null, phone.is_main === true ? 'principal' : null, phone.is_recent === true ? 'recente' : null, phone.relationship ? `relação ${phone.relationship}` : null, phone.ranking ? `prioridade ${phone.ranking}` : null].filter(Boolean).join(" • ")}</p>
-                                  ))}
-                                  {item.emails?.map((email, index) => (
-                                    <p key={`email-${index}`}><strong>E-mail {index + 1}:</strong> {[email.email, email.type, email.status ? `status ${email.status}` : null, email.is_main === true ? 'principal' : null, email.is_recent === true ? 'recente' : null, email.relationship ? `relação ${email.relationship}` : null, email.ranking ? `prioridade ${email.ranking}` : null].filter(Boolean).join(" • ")}</p>
-                                  ))}
+                                  {Array.isArray(item.phones) && item.phones.length > 0 && (
+                                    <div className="contactGroupV47">
+                                      <strong>Telefones</strong>
+                                      {item.phones.map((phone, index) => (
+                                        <p key={`phone-${index}`} className="simpleContactV46">{formatContactPhone(phone.number)}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {Array.isArray(item.emails) && item.emails.length > 0 && (
+                                    <div className="contactGroupV47 emailGroupV47">
+                                      <strong>E-mails</strong>
+                                      {item.emails.map((email, index) => (
+                                        <p key={`email-${index}`} className="simpleContactV46">{email.email}</p>
+                                      ))}
+                                    </div>
+                                  )}
                                 </section>
                               ) : null}
 
@@ -5303,17 +5753,23 @@ function App() {
 
                               {Array.isArray(item.related_people) && item.related_people.length > 0 ? (
                                 <section className="externalInfoCardV31 wide relatedPeopleV34">
-                                  <span>Pessoas relacionadas</span>
+                                  <span>Relacionamentos Econômicos e Pessoas Relacionadas</span>
                                   <h4>{item.related_people.length} pessoa(s) ou relacionamento(s)</h4>
                                   {item.related_people.map((person, index) => (
                                     <div className="externalMiniBlockV32" key={`related-${index}`}>
-                                      <strong>{person.name || relatedPersonLabel(person, index)}</strong>
+                                      <div className="relatedPersonHeaderV46">
+                                        <strong>{person.full_name || person.name || "Identidade não confirmada pela fonte"}</strong>
+                                        {isValidCpf(onlyDigits(person.tax_id || "")) && (
+                                          <button type="button" className="miniConsultButtonV46 relatedConsultButtonV47" disabled={loading} onClick={() => consultarPessoaRelacionada(person)}>
+                                            {loading ? "Consultando..." : "Consultar"}
+                                          </button>
+                                        )}
+                                      </div>
                                       {person.full_name && person.full_name !== person.name && <p><strong>Nome completo:</strong> {person.full_name}</p>}
-                                      {person.tax_id && <p><strong>CPF/CNPJ:</strong> {person.tax_id}</p>}
-                                      {person.relationship && <p><strong>Grau de parentesco/relacionamento:</strong> {person.relationship}</p>}
-                                      {person.email && <p><strong>E-mail:</strong> {person.email}</p>}
+                                      {person.tax_id && <p><strong>CPF:</strong> {person.tax_id}</p>}
+                                      {person.relationship && <p><strong>Grau de parentesco:</strong> {person.relationship}</p>}
                                       {Array.isArray(person.phones) && person.phones.length > 0 && (
-                                        <p><strong>Telefones:</strong> {person.phones.map((phone) => [phone.number, phone.type, phone.status].filter(Boolean).join(' • ')).filter(Boolean).join(" | ")}</p>
+                                        <div className="relatedPhonesV46"><strong>Telefones:</strong>{person.phones.map((phone, phoneIndex) => <span key={`related-phone-${phoneIndex}`}>{formatContactPhone(phone.number)}</span>)}</div>
                                       )}
                                     </div>
                                   ))}
@@ -5339,6 +5795,11 @@ function App() {
                                       {process.distribution_date && <p><strong>Data:</strong> {formatSimpleDate(process.distribution_date)}</p>}
                                       {process.subject && <p><strong>Assunto:</strong> {process.subject}</p>}
                                       {process.value && <p><strong>Valor informado:</strong> {process.value}</p>}
+                                      {process.number && (
+                                        <button type="button" className="miniConsultButtonV46 processConsultButtonV47" disabled={Boolean(loadingProcessNumber)} onClick={() => consultarProcessoCompleto(process.number, item.cpf)}>
+                                          {loadingProcessNumber === onlyDigits(process.number) ? "Consultando..." : "Consultar processo"}
+                                        </button>
+                                      )}
                                     </div>
                                   ))}
                                 </section>
@@ -5363,6 +5824,13 @@ function App() {
                         </>
                       ) : (
                         <>
+                          <div className="internalResultSourceHeader">
+                            <div>
+                              <span>Base interna LocaCheck</span>
+                              <strong>{item.included_with_external ? "Verificação incluída na consulta externa" : "Consulta interna"}</strong>
+                            </div>
+                            <span className="internalSourcePill">Registro interno</span>
+                          </div>
                           <h3>{item.nome}</h3>
 
                           <p>
@@ -5410,6 +5878,46 @@ function App() {
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+
+              {processConsultationMessage && <div className="authMessage">{processConsultationMessage}</div>}
+              {processConsultation && (
+                <div className="processResultV46">
+                  <div className="processResultHeaderV46">
+                    <div>
+                      <span>Processo completo</span>
+                      <strong>{processConsultation.processNumber}</strong>
+                    </div>
+                    <button type="button" onClick={() => { setProcessConsultation(null); setProcessConsultationMessage(""); }}>Fechar</button>
+                  </div>
+                  <div className="processSimplifiedV49">
+                    <section>
+                      <h3>Pessoas envolvidas</h3>
+                      {(processConsultation.process?.parties || []).length === 0 && <p>Nenhuma parte identificada.</p>}
+                      <div className="processPartiesV49">
+                        {(processConsultation.process?.parties || []).map((party, index) => (
+                          <div key={`party-${index}`}>
+                            <strong>{party.name}</strong>
+                            <span>{party.role}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h3>Últimas atualizações</h3>
+                      {(processConsultation.process?.updates || []).length === 0 && <p>Nenhuma atualização encontrada.</p>}
+                      <div className="processUpdatesV49">
+                        {(processConsultation.process?.updates || []).map((update, index) => (
+                          <article key={`update-${index}`}>
+                            <time>{update.date ? formatDate(update.date) : update.date_display || "Data não informada"}</time>
+                            <p>{update.content}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
                 </div>
               )}
             </div>
