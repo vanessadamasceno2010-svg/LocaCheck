@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - novo-layout-mobile
+      - main
     paths:
       - "android/**"
       - "resources/**"
@@ -53,7 +54,7 @@ jobs:
       - name: Guardar APK para download
         uses: actions/upload-artifact@v4
         with:
-          name: LocaCheck-V57-APK-BRANCH-TESTE
+          name: LocaCheck-V58-APK-FINAL
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
