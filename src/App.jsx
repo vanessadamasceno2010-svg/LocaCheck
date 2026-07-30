@@ -635,13 +635,45 @@ function buildReportShell({ title, subtitle, cpf, nome, sections }) {
     <div class="contentWrap">${sections}<div class="notice"><strong>Responsabilidade:</strong> Este relatório é uma ferramenta de apoio à decisão do locador. As informações devem ser analisadas com responsabilidade, finalidade legítima e conferência própria.</div></div>
     <div class="footer">Relatório gerado pela LocaCheck. Documento destinado ao apoio da análise de locação de veículos.</div>
   </main>
-  <div class="actions"><button class="secondary" onclick="window.close()">Fechar</button><button onclick="window.print()">Salvar/Imprimir PDF</button></div>
+  <div class="actions"><button class="secondary" onclick="if(window.opener){window.close()}else if(history.length>1){history.back()}">Fechar</button><button onclick="window.print()">Salvar/Imprimir PDF</button></div>
   <script>setTimeout(function(){ window.focus(); }, 300);</script>
 </body>
 </html>`;
 }
 
+function isAndroidAppRequest() {
+  try {
+    return (
+      new URLSearchParams(window.location.search).get("app") === "android" ||
+      Boolean(window.LocaCheckAndroid)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function encodeBase64Utf8(value) {
+  const bytes = new TextEncoder().encode(String(value || ""));
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return window.btoa(binary);
+}
+
 function abrirRelatorioConsulta(html, fallbackName = "locacheck-relatorio.html") {
+  if (window.LocaCheckAndroid?.printHtml) {
+    try {
+      window.LocaCheckAndroid.printHtml(
+        encodeBase64Utf8(html),
+        String(fallbackName || "locacheck-relatorio").replace(/\.html$/i, "")
+      );
+      return "android";
+    } catch (error) {
+      console.log("Erro ao abrir impressão no Android:", error);
+    }
+  }
+
   const janela = window.open("", "_blank", "width=1000,height=800");
   if (!janela) {
     baixarTexto(fallbackName, html);
@@ -803,9 +835,10 @@ function LegalTermsContent() {
 }
 
 function App() {
+  const androidAppMode = isAndroidAppRequest();
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [authMode, setAuthMode] = useState(null);
+  const [authMode, setAuthMode] = useState(() => (androidAppMode ? "login" : null));
 
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [showSearchForm, setShowSearchForm] = useState(false);
@@ -1573,6 +1606,7 @@ function App() {
     await supabase.auth.signOut();
     setSession(null);
     setProfile(null);
+    setAuthMode(androidAppMode ? "login" : null);
   }
 
   function toggleTipo(tipo) {
@@ -2065,7 +2099,13 @@ function App() {
       buildExternalReportHtml(item),
       `locacheck-relatorio-consulta-externa-${cpfFinal}-${data}.html`
     );
-    setSearchMessage(abriu ? "Relatório aberto. Use Salvar como PDF ou Imprimir." : "Relatório baixado em HTML. Abra o arquivo e salve como PDF.");
+    setSearchMessage(
+      abriu === "android"
+        ? "Escolha uma impressora ou a opção Salvar como PDF."
+        : abriu
+          ? "Relatório aberto. Use Salvar como PDF ou Imprimir."
+          : "Relatório baixado em HTML. Abra o arquivo e salve como PDF."
+    );
   }
 
   function exportarConsultaInterna(item) {
@@ -2075,7 +2115,13 @@ function App() {
       buildInternalReportHtml(item),
       `locacheck-relatorio-consulta-interna-${cpfFinal}-${data}.html`
     );
-    setSearchMessage(abriu ? "Relatório aberto. Use Salvar como PDF ou Imprimir." : "Relatório baixado em HTML. Abra o arquivo e salve como PDF.");
+    setSearchMessage(
+      abriu === "android"
+        ? "Escolha uma impressora ou a opção Salvar como PDF."
+        : abriu
+          ? "Relatório aberto. Use Salvar como PDF ou Imprimir."
+          : "Relatório baixado em HTML. Abra o arquivo e salve como PDF."
+    );
   }
 
   async function carregarOcorrenciasAdmin() {
@@ -5578,11 +5624,16 @@ function App() {
         )}
 
         {showSearchForm && (
-          <div className="modalOverlay">
-            <div className="recordModal">
+          <div className="modalOverlay consultationOverlayV54">
+            <div className="recordModal consultationModalV54">
               <button
                 className="closeModal"
-                onClick={() => setShowSearchForm(false)}
+                onClick={() => {
+                  setShowSearchForm(false);
+                  setProcessConsultation(null);
+                  setProcessConsultationMessage("");
+                }}
+                aria-label="Fechar consulta"
               >
                 ×
               </button>
@@ -5920,6 +5971,22 @@ function App() {
                   </div>
                 </div>
               )}
+
+              {(searchResults.length > 0 || processConsultation) && (
+                <div className="mobileConsultationFooterV54">
+                  <button
+                    type="button"
+                    className="btn secondary full"
+                    onClick={() => {
+                      setShowSearchForm(false);
+                      setProcessConsultation(null);
+                      setProcessConsultationMessage("");
+                    }}
+                  >
+                    Fechar consulta
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -6033,13 +6100,15 @@ function App() {
   }
 
   return (
-    <div className="page">
+    <div className={androidAppMode ? "page androidAppModeV54" : "page"}>
       {toast && (
         <div className={`toastPopup ${toast.type || "success"}`}>
           <strong>{toast.title}</strong>
           <span>{toast.message}</span>
         </div>
       )}
+      {!androidAppMode && (
+        <>
       <header className="header">
         <div className="brand">
           <div className="logo">LC</div>
@@ -6236,13 +6305,17 @@ function App() {
           Termos e Política de Privacidade
         </button>
       </div>
+        </>
+      )}
 
       {authMode && (
-        <div className="modalOverlay">
-          <div className="authModal">
-            <button className="closeModal" onClick={() => setAuthMode(null)}>
-              ×
-            </button>
+        <div className={androidAppMode ? "modalOverlay androidLoginOverlayV54" : "modalOverlay"}>
+          <div className={androidAppMode ? "authModal androidLoginModalV54" : "authModal"}>
+            {!androidAppMode && (
+              <button className="closeModal" onClick={() => setAuthMode(null)}>
+                ×
+              </button>
+            )}
 
             <h2>
               {authMode === "reset"

@@ -1,4 +1,4 @@
-# LocaCheck V53
+# LocaCheck V54
 
 Versão com:
 
@@ -26,12 +26,17 @@ Versão com:
 - ícone e tela de abertura próprios do LocaCheck;
 - conexão Android somente por HTTPS;
 - geração automática do APK pela branch de teste;
+- abertura direta da tela de login no APK;
+- exportação de consultas pelo recurso nativo de impressão/PDF do Android;
+- tela de consulta em tamanho completo no celular;
+- resultados e botões reorganizados para telas pequenas;
+- botão de fechamento acessível no início e no final da consulta;
 - remoção do resumo de consulta combinada.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V53-APLICATIVO-ANDROID.md
+AJUSTES-V54-APK-EXPORTACAO-E-MOBILE.md
 ```
 
 Migração obrigatória:
@@ -46,6 +51,6 @@ Migração nova da V51:
 MIGRACAO-V51-RESUMO-DIARIO-ADMIN.sql
 ```
 
-Não existe SQL novo na V53.
+Não existe SQL novo na V54.
 
 Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.
