@@ -46,7 +46,9 @@ jobs:
 
       - name: Gerar APK de teste
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Guardar APK para download
         uses: actions/upload-artifact@v4
