@@ -1,4 +1,4 @@
-# LocaCheck V57 — Teste permanente da branch
+# LocaCheck V58 — Aplicativo final
 
 Versão com:
 
@@ -32,13 +32,14 @@ Versão com:
 - resultados e botões reorganizados para telas pequenas;
 - botão de fechamento acessível no início e no final da consulta;
 - correção da permissão do método Android `onDestroy()` para o APK compilar;
-- APK de teste apontando para o endereço permanente da branch `novo-layout-mobile`;
+- APK final apontando somente para o domínio oficial do LocaCheck;
+- geração automática do APK após o merge em `main`;
 - remoção do resumo de consulta combinada.
 
 Leia primeiro:
 
 ```text
-AJUSTES-V57-APK-BRANCH-PERMANENTE.md
+AJUSTES-V58-APK-FINAL-PUBLICACAO.md
 ```
 
 Migração obrigatória:
@@ -53,6 +54,6 @@ Migração nova da V51:
 MIGRACAO-V51-RESUMO-DIARIO-ADMIN.sql
 ```
 
-Não existe SQL novo na V57.
+Não existe SQL novo na V58.
 
 Use primeiro a branch `novo-layout-mobile`. Não envie diretamente para `main`.
