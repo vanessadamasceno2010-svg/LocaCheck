@@ -921,6 +921,8 @@ function App() {
   const [adminSupportFilter, setAdminSupportFilter] = useState("todos");
   const [activityLogs, setActivityLogs] = useState([]);
   const [activityLogsMessage, setActivityLogsMessage] = useState("");
+  const [securityEvents, setSecurityEvents] = useState([]);
+  const [securityEventsMessage, setSecurityEventsMessage] = useState("");
   const [adminExternalLogs, setAdminExternalLogs] = useState([]);
   const [adminExternalLogsMessage, setAdminExternalLogsMessage] = useState("");
   const [adminExternalFilterType, setAdminExternalFilterType] = useState("todos");
@@ -1337,12 +1339,22 @@ function App() {
     if (profile?.role !== "admin") return;
 
     setActivityLogsMessage("");
+    setSecurityEventsMessage("");
 
-    const { data, error } = await supabase
-      .from("activity_logs")
-      .select("id, user_id, action, details, created_at")
-      .order("created_at", { ascending: false })
-      .limit(80);
+    const [activityResult, securityResult] = await Promise.all([
+      supabase
+        .from("activity_logs")
+        .select("id, user_id, action, details, created_at")
+        .order("created_at", { ascending: false })
+        .limit(80),
+      supabase
+        .from("security_events")
+        .select("id, user_id, event_type, details, created_at")
+        .order("created_at", { ascending: false })
+        .limit(80),
+    ]);
+
+    const { data, error } = activityResult;
 
     if (error) {
       console.log("Erro ao carregar logs:", error);
@@ -1355,6 +1367,17 @@ function App() {
 
     if (!data || data.length === 0) {
       setActivityLogsMessage("Nenhum log registrado ainda.");
+    }
+
+    if (securityResult.error) {
+      console.log("Erro ao carregar eventos de segurança:", securityResult.error);
+      setSecurityEvents([]);
+      setSecurityEventsMessage("Não foi possível carregar eventos de segurança. Verifique a migração V60A.");
+    } else {
+      setSecurityEvents(securityResult.data || []);
+      if (!securityResult.data || securityResult.data.length === 0) {
+        setSecurityEventsMessage("Nenhuma tentativa de alteração sensível foi bloqueada após a V60.");
+      }
     }
   }
 
@@ -2620,82 +2643,110 @@ function App() {
   async function alterarCreditosUsuario(userId, quantidade) {
     if (loading) return;
 
+    if (!session?.user?.id || profile?.role !== "admin") {
+      setAdminUsersMessage("Apenas administradores podem alterar créditos.");
+      return;
+    }
+
     const usuario = adminUsers.find((item) => item.id === userId);
 
     if (!usuario) return;
 
-    const novosCreditos = Math.max(0, Number(usuario.credits || 0) + quantidade);
+    setLoading(true);
+    setAdminUsersMessage("");
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ credits: novosCreditos })
-      .eq("id", userId);
+    const { data, error } = await supabase.rpc("admin_adjust_user_credits_v60", {
+      p_user_id: userId,
+      p_delta: Number(quantidade || 0),
+    });
 
-    if (error) {
-      console.log(error);
-      setAdminUsersMessage("Erro ao alterar créditos.");
+    if (error || data?.success === false) {
+      console.log("Erro ao alterar créditos:", error || data);
+      setAdminUsersMessage(error?.message || data?.message || "Erro ao alterar créditos.");
+      showToast("error", "Erro ao alterar créditos", "A operação segura não foi concluída.");
+      setLoading(false);
       return;
     }
 
     setAdminUsersMessage("Créditos atualizados com sucesso.");
-    showToast("success", "Créditos atualizados", "Saldo do usuário alterado.");
-    await registrarLogAdmin("creditos_alterados", { user_id: userId, quantidade, novos_creditos: novosCreditos });
-    carregarUsuariosAdmin();
+    showToast("success", "Créditos atualizados", `Novo saldo: ${Number(data?.new_credits || 0)} crédito(s).`);
+    await carregarUsuariosAdmin();
 
     if (userId === session.user.id) {
-      loadProfile(session.user.id);
+      await loadProfile(session.user.id);
     }
+
+    setLoading(false);
   }
 
   async function ativarIlimitadoUsuario(userId) {
     if (loading) return;
 
-    const hoje = new Date();
-    hoje.setDate(hoje.getDate() + 30);
+    if (!session?.user?.id || profile?.role !== "admin") {
+      setAdminUsersMessage("Apenas administradores podem ativar plano ilimitado.");
+      return;
+    }
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ unlimited_until: hoje.toISOString() })
-      .eq("id", userId);
+    setLoading(true);
+    setAdminUsersMessage("");
 
-    if (error) {
-      console.log(error);
-      setAdminUsersMessage("Erro ao ativar plano ilimitado.");
+    const { data, error } = await supabase.rpc("admin_set_user_unlimited_v60", {
+      p_user_id: userId,
+      p_days: 30,
+    });
+
+    if (error || data?.success === false) {
+      console.log("Erro ao ativar plano ilimitado:", error || data);
+      setAdminUsersMessage(error?.message || data?.message || "Erro ao ativar plano ilimitado.");
+      showToast("error", "Erro ao ativar plano", "A operação segura não foi concluída.");
+      setLoading(false);
       return;
     }
 
     setAdminUsersMessage("Plano ilimitado ativado por 30 dias.");
     showToast("success", "Plano ativado", "Plano ilimitado ativado por 30 dias.");
-    await registrarLogAdmin("ilimitado_ativado", { user_id: userId });
-    carregarUsuariosAdmin();
+    await carregarUsuariosAdmin();
 
     if (userId === session.user.id) {
-      loadProfile(session.user.id);
+      await loadProfile(session.user.id);
     }
+
+    setLoading(false);
   }
 
   async function cancelarIlimitadoUsuario(userId) {
     if (loading) return;
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ unlimited_until: null })
-      .eq("id", userId);
+    if (!session?.user?.id || profile?.role !== "admin") {
+      setAdminUsersMessage("Apenas administradores podem cancelar plano ilimitado.");
+      return;
+    }
 
-    if (error) {
-      console.log(error);
-      setAdminUsersMessage("Erro ao cancelar plano ilimitado.");
+    setLoading(true);
+    setAdminUsersMessage("");
+
+    const { data, error } = await supabase.rpc("admin_set_user_unlimited_v60", {
+      p_user_id: userId,
+      p_days: 0,
+    });
+
+    if (error || data?.success === false) {
+      console.log("Erro ao cancelar plano ilimitado:", error || data);
+      setAdminUsersMessage(error?.message || data?.message || "Erro ao cancelar plano ilimitado.");
+      showToast("error", "Erro ao cancelar plano", "A operação segura não foi concluída.");
+      setLoading(false);
       return;
     }
 
     setAdminUsersMessage("Plano ilimitado cancelado.");
     showToast("success", "Plano cancelado", "O ilimitado do usuário foi cancelado.");
-    await registrarLogAdmin("ilimitado_cancelado", { user_id: userId });
-    carregarUsuariosAdmin();
+    await carregarUsuariosAdmin();
 
     if (userId === session.user.id) {
-      loadProfile(session.user.id);
+      await loadProfile(session.user.id);
     }
+
+    setLoading(false);
   }
 
   async function carregarMinhasOcorrencias() {
@@ -4580,8 +4631,8 @@ function App() {
               <div className="adminHeader">
                 <div>
                   <span>Auditoria</span>
-                  <h2>Logs do Sistema</h2>
-                  <p>Acompanhe ações administrativas importantes realizadas na plataforma.</p>
+                  <h2>Segurança e logs do sistema</h2>
+                  <p>Acompanhe tentativas bloqueadas e ações administrativas realizadas na plataforma.</p>
                 </div>
 
                 <button className="btn secondary" onClick={carregarLogsSistema}>
@@ -4592,6 +4643,33 @@ function App() {
               {activityLogsMessage && (
                 <div className="authMessage">{activityLogsMessage}</div>
               )}
+
+              <h3 className="adminSectionTitle">Tentativas bloqueadas</h3>
+
+              {securityEventsMessage && (
+                <div className="authMessage">{securityEventsMessage}</div>
+              )}
+
+              <div className="adminList compactList">
+                {securityEvents.map((event) => (
+                  <div className="adminRecord" key={event.id}>
+                    <div className="adminRecordTop">
+                      <h3>{event.event_type}</h3>
+                      <span className="statusBadge rejeitado">Bloqueado</span>
+                    </div>
+
+                    <p>
+                      <strong>Data:</strong>{" "}
+                      {event.created_at ? new Date(event.created_at).toLocaleString("pt-BR") : "Não informado"}
+                    </p>
+
+                    <p><strong>Usuário:</strong> {event.user_id || "Não identificado"}</p>
+                    <p><strong>Detalhes:</strong> {event.details ? JSON.stringify(event.details) : "Sem detalhes"}</p>
+                  </div>
+                ))}
+              </div>
+
+              <h3 className="adminSectionTitle">Ações administrativas</h3>
 
               <div className="adminList compactList">
                 {activityLogs.length === 0 && (
