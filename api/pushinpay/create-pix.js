@@ -80,6 +80,18 @@ export default async function handler(req, res) {
       });
     }
 
+    const authProvider = String(user?.app_metadata?.provider || 'email').toLowerCase();
+    const emailConfirmed = authProvider === 'google' || Boolean(
+      user?.email_confirmed_at || user?.confirmed_at || user?.user_metadata?.email_verified
+    );
+
+    if (!emailConfirmed) {
+      return res.status(403).json({
+        success: false,
+        message: 'Confirme seu e-mail antes de comprar créditos.',
+      });
+    }
+
     const { planId } = req.body;
 
     if (!planId) {

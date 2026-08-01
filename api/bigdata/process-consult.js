@@ -6,6 +6,12 @@ const BIGDATA_TOKEN_ID = process.env.BIGDATA_TOKEN_ID;
 const BIGDATA_ACCESS_TOKEN = process.env.BIGDATA_ACCESS_TOKEN;
 const PROCESS_CREDITS = 1;
 
+function isConfirmedAuthUser(user) {
+  const provider = String(user?.app_metadata?.provider || 'email').toLowerCase();
+  if (provider === 'google') return true;
+  return Boolean(user?.email_confirmed_at || user?.confirmed_at || user?.user_metadata?.email_verified);
+}
+
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
 }
@@ -202,6 +208,10 @@ export default async function handler(req, res) {
     const user = authData?.user;
     if (authError || !user?.id) {
       return res.status(401).json({ success: false, message: 'Usuário não autenticado.' });
+    }
+
+    if (!isConfirmedAuthUser(user)) {
+      return res.status(403).json({ success: false, message: 'Confirme seu e-mail antes de consultar processos.' });
     }
 
     const processNumber = onlyDigits(req.body?.processNumber || req.body?.process_number);
