@@ -401,9 +401,31 @@ function externalConsultationCredits(type) {
 }
 
 function adminConsultationLabel(type, source) {
-  if (type === "internal_included") return "Base interna incluída";
   if (source === "internal" || type === "internal") return "Consulta interna";
   return "Consulta Externa";
+}
+
+function adminActionDescription(log, users = []) {
+  const action = String(log?.action || "ação registrada");
+  const details = log?.details && typeof log.details === "object" ? log.details : {};
+  const actor = users.find((user) => user.id === log?.user_id);
+  const actorName = actor?.nome || actor?.email || "Administrador";
+  const target = users.find((user) => user.id === details.target_user_id || user.id === details.user_id);
+  const targetName = target?.nome || target?.email || details.target_name || "o usuário informado";
+
+  const descriptions = {
+    admin_user_updated: `${actorName} editou os dados de ${targetName}.`,
+    admin_user_password_changed: `${actorName} definiu uma nova senha para ${targetName}.`,
+    usuario_creditos_alterados: `${actorName} alterou os créditos de ${targetName}.`,
+    usuario_status_alterado: `${actorName} alterou o status de acesso de ${targetName}.`,
+    usuario_role_alterado: `${actorName} alterou o perfil de permissão de ${targetName}.`,
+    plano_criado: `${actorName} criou um novo plano.`,
+    plano_atualizado: `${actorName} atualizou um plano.`,
+    plano_excluido: `${actorName} excluiu um plano.`,
+    suporte_atualizado: `${actorName} atualizou uma solicitação de suporte.`,
+  };
+
+  return descriptions[action] || `${actorName} realizou a ação “${action.replaceAll("_", " ")}”.`;
 }
 
 function getAnalyticsSessionKey() {
@@ -551,9 +573,15 @@ function buildExternalReportHtml(item) {
     reportLine("CPF consultado", cpf),
     reportLine("Situação cadastral", item.document_status),
     reportLine("Nascimento", item.birth_date ? formatSimpleDate(item.birth_date) : ""),
+    reportLine("RG", item.rg),
+    reportLine("Órgão emissor do RG", item.rg_issuer),
+    reportLine("NIS", item.nis || item.social_number),
+    reportLine("CNH", item.cnh),
+    reportLine("Nacionalidade", item.nationality),
+    reportLine("Estado civil", item.marital_status),
+    reportLine("Profissão", item.occupation),
     reportLine("Nome da mãe", item.mother_name),
     reportLine("Nome do pai", item.father_name),
-    reportLine("Número social", item.social_number),
     reportLine("Signo", item.zodiac_sign),
   ].join("");
 
@@ -576,15 +604,21 @@ function buildExternalReportHtml(item) {
   ].join("");
 
   const processos = processes.length
-    ? processes.slice(0, 30).map((process, index) => `<div class="process"><b>${reportValue(process.number || `Processo ${index + 1}`)}</b><p>${reportValue([process.court, process.state, process.type, process.status].filter(Boolean).join(" • ") || "Informações principais disponíveis.")}</p>${reportLine("Envolvimento da pessoa", processRoleText(process))}${reportLine("Data", process.distribution_date ? formatSimpleDate(process.distribution_date) : "")}${reportLine("Assunto", process.subject)}${reportLine("Valor informado", process.value)}</div>`).join("")
+    ? processes.slice(0, 30).map((process, index) => {
+        const parties = Array.isArray(process.parties) && process.parties.length
+          ? `<div class="partyList"><strong>Pessoas envolvidas</strong>${process.parties.map((party) => `<p>${reportValue(party.name || "Pessoa não informada")} — ${reportValue(party.role || "Participação não informada")}</p>`).join("")}</div>`
+          : "";
+        return `<div class="process"><b>${reportValue(process.number || `Processo ${index + 1}`)}</b><p>${reportValue([process.court, process.state, process.type, process.status].filter(Boolean).join(" • ") || "Informações principais disponíveis.")}</p>${reportLine("Envolvimento da pessoa", processRoleText(process))}${reportLine("Data", process.distribution_date ? formatSimpleDate(process.distribution_date) : "")}${reportLine("Assunto", process.subject)}${reportLine("Valor informado", process.value)}${parties}${reportLine("Última atualização", process.latest_update)}</div>`;
+      }).join("")
     : `<p class="empty">Não foram retornados detalhes de processos nesta consulta.</p>`;
 
   return buildReportShell({
-    title: "Relatório de Consulta LocaCheck",
+    title: item.is_demo ? "Consulta demonstrativa LocaCheck" : "Relatório de Consulta LocaCheck",
     subtitle: title,
     cpf,
     nome: item.name || item.nome || "Não informado",
     sections: [
+      item.is_demo ? reportSection("Aviso importante", `<p class="empty"><strong>DEMONSTRAÇÃO:</strong> todos os nomes, documentos, contatos, endereços e processos deste arquivo são fictícios. Nenhuma fonte externa foi consultada e nenhum crédito foi consumido.</p>`) : "",
       reportSection("Dados pessoais", personal),
       reportSection("Contatos encontrados", contatos, "Telefones e e-mails retornados pela fonte externa."),
       reportSection("Endereços encontrados", enderecos),
@@ -625,7 +659,7 @@ function buildReportShell({ title, subtitle, cpf, nome, sections }) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${reportEscape(title)}</title>
   <style>
-    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;background:#f4f7fb;color:#152033;margin:0;padding:28px} .page{max-width:920px;margin:0 auto;background:white;border:1px solid #dce5f2;border-radius:18px;overflow:hidden;box-shadow:0 18px 60px rgba(15,23,42,.12)} .header{background:linear-gradient(135deg,#0f2a5f,#2563eb);color:white;padding:30px} .brand{font-size:28px;font-weight:800;letter-spacing:-.5px} .subtitle{font-size:18px;margin-top:8px;opacity:.92}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:18px 30px;background:#eef5ff;border-bottom:1px solid #dce5f2}.meta div{background:white;border:1px solid #dce5f2;border-radius:12px;padding:12px}.meta span{display:block;color:#64748b;font-size:12px;text-transform:uppercase;font-weight:700}.meta strong{display:block;margin-top:5px;font-size:15px}.contentWrap{padding:26px 30px}.card{border:1px solid #dce5f2;border-radius:16px;padding:20px;margin-bottom:18px;break-inside:avoid}.card h2{margin:0 0 8px;font-size:18px;color:#0f2a5f}.muted{margin:0 0 12px;color:#64748b}.row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid #edf2f7;padding:10px 0}.row:first-child{border-top:0}.row span{color:#64748b}.row strong{text-align:right;color:#0f172a}.mini,.process{border:1px solid #edf2f7;border-radius:12px;padding:12px;margin:10px 0;background:#fbfdff}.mini b,.process b{color:#0f2a5f}.mini p,.process p{margin:6px 0;color:#334155}.empty{color:#64748b}.notice{margin-top:20px;padding:16px 20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;color:#7c2d12}.footer{padding:18px 30px;color:#64748b;font-size:12px;border-top:1px solid #dce5f2}.actions{display:flex;gap:10px;justify-content:flex-end;margin:18px auto 0;max-width:920px}.actions button{border:0;border-radius:12px;background:#2563eb;color:white;font-weight:700;padding:12px 18px;cursor:pointer}.actions button.secondary{background:#0f172a}@media print{body{background:white;padding:0}.page{box-shadow:none;border:0;border-radius:0}.actions{display:none}.card{break-inside:avoid}.header{-webkit-print-color-adjust:exact;print-color-adjust:exact}.meta{grid-template-columns:repeat(2,1fr);-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;background:#f4f7fb;color:#152033;margin:0;padding:28px} .page{max-width:920px;margin:0 auto;background:white;border:1px solid #dce5f2;border-radius:18px;overflow:hidden;box-shadow:0 18px 60px rgba(15,23,42,.12)} .header{background:linear-gradient(135deg,#0f2a5f,#2563eb);color:white;padding:30px} .brand{font-size:28px;font-weight:800;letter-spacing:-.5px} .subtitle{font-size:18px;margin-top:8px;opacity:.92}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:18px 30px;background:#eef5ff;border-bottom:1px solid #dce5f2}.meta div{background:white;border:1px solid #dce5f2;border-radius:12px;padding:12px}.meta span{display:block;color:#64748b;font-size:12px;text-transform:uppercase;font-weight:700}.meta strong{display:block;margin-top:5px;font-size:15px}.contentWrap{padding:26px 30px}.card{border:1px solid #dce5f2;border-radius:16px;padding:20px;margin-bottom:18px;break-inside:avoid}.card h2{margin:0 0 8px;font-size:18px;color:#0f2a5f}.muted{margin:0 0 12px;color:#64748b}.row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid #edf2f7;padding:10px 0}.row:first-child{border-top:0}.row span{color:#64748b}.row strong{text-align:right;color:#0f172a}.mini,.process{border:1px solid #edf2f7;border-radius:12px;padding:12px;margin:10px 0;background:#fbfdff}.mini b,.process b{color:#0f2a5f}.mini p,.process p{margin:6px 0;color:#334155}.partyList{margin-top:12px;padding:10px;border-radius:10px;background:#eef5ff}.partyList strong{display:block;margin-bottom:7px;color:#0f2a5f}.partyList p{margin:5px 0}.empty{color:#64748b}.notice{margin-top:20px;padding:16px 20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;color:#7c2d12}.footer{padding:18px 30px;color:#64748b;font-size:12px;border-top:1px solid #dce5f2}.actions{display:flex;gap:10px;justify-content:flex-end;margin:18px auto 0;max-width:920px}.actions button{border:0;border-radius:12px;background:#2563eb;color:white;font-weight:700;padding:12px 18px;cursor:pointer}.actions button.secondary{background:#0f172a}@media print{body{background:white;padding:0}.page{box-shadow:none;border:0;border-radius:0}.actions{display:none}.card{break-inside:avoid}.header{-webkit-print-color-adjust:exact;print-color-adjust:exact}.meta{grid-template-columns:repeat(2,1fr);-webkit-print-color-adjust:exact;print-color-adjust:exact}}
   </style>
 </head>
 <body>
@@ -834,7 +868,123 @@ function LegalTermsContent() {
   );
 }
 
-function DemoConsultation({ onClose, onCreateAccount }) {
+const DEMO_CONSULTATION_DATA = {
+  is_demo: true,
+  consultation_label: "Consulta demonstrativa — dados totalmente fictícios",
+  consultation_type: "external_advanced",
+  name: "MARINA EXEMPLO DE OLIVEIRA",
+  cpf: "***.***.***-00",
+  document_status: "Regular — exemplo fictício",
+  birth_date: "1992-04-18",
+  rg: "00.000.000-0",
+  rg_issuer: "SSP/EXEMPLO",
+  social_number: "000.00000.00-0",
+  cnh: "00000000000",
+  nationality: "Brasileira",
+  marital_status: "Solteira",
+  occupation: "Profissional autônoma — exemplo",
+  mother_name: "HELENA EXEMPLO DE OLIVEIRA",
+  father_name: "ROBERTO EXEMPLO DE OLIVEIRA",
+  phones: [
+    { number: "(11) 90000-0001" },
+    { number: "(11) 90000-0002" },
+    { number: "(21) 90000-0003" },
+    { number: "(31) 90000-0004" },
+    { number: "(41) 90000-0005" },
+    { number: "(51) 90000-0006" },
+    { number: "(61) 90000-0007" },
+    { number: "(71) 90000-0008" },
+  ],
+  emails: [
+    { email: "marina.exemplo01@dominio.test" },
+    { email: "marina.exemplo02@dominio.test" },
+    { email: "contato.marina@dominio.test" },
+    { email: "financeiro.marina@dominio.test" },
+    { email: "cadastro.marina@dominio.test" },
+    { email: "profissional.marina@dominio.test" },
+  ],
+  addresses: [
+    { full: "Rua Demonstração, 100 — Centro — Cidade Exemplo/SP — CEP 00000-000" },
+    { full: "Avenida Modelo, 250 — Bairro Fictício — Cidade Exemplo/SP — CEP 00000-001" },
+    { full: "Travessa Ilustração, 45 — Vila Teste — Município Exemplo/RJ — CEP 00000-002" },
+    { full: "Alameda Simulação, 800 — Jardim Modelo — Município Exemplo/MG — CEP 00000-003" },
+  ],
+  related_people: [
+    { name: "ROBERTO EXEMPLO DE OLIVEIRA", tax_id: "***.***.***-11", relationship: "Pai" },
+    { name: "HELENA EXEMPLO DE OLIVEIRA", tax_id: "***.***.***-22", relationship: "Mãe" },
+    { name: "CARLOS EXEMPLO DE OLIVEIRA", tax_id: "***.***.***-33", relationship: "Irmão" },
+    { name: "ANA MODELO DOS SANTOS", tax_id: "***.***.***-44", relationship: "Amiga" },
+  ],
+  has_lawsuit_indicators: true,
+  lawsuits_total: 4,
+  credits_charged: 0,
+  processes: [
+    {
+      number: "0000000-00.2026.0.00.0001",
+      court: "Tribunal demonstrativo",
+      state: "SP",
+      type: "Cível — exemplo fictício",
+      status: "Em andamento — demonstração",
+      parties: [
+        { name: "MARINA EXEMPLO DE OLIVEIRA", role: "Ré" },
+        { name: "PAULO MODELO FERREIRA", role: "Autor" },
+        { name: "DRA. CAMILA EXEMPLO", role: "Advogada" },
+        { name: "JOÃO TESTE DA SILVA", role: "Testemunha" },
+      ],
+      latest_update: "30/07/2026 — juntada de documento fictício para demonstração.",
+    },
+    {
+      number: "0000000-00.2025.0.00.0002",
+      court: "Vara demonstrativa",
+      state: "RJ",
+      type: "Administrativo — exemplo fictício",
+      status: "Arquivado — demonstração",
+      parties: [
+        { name: "MARINA EXEMPLO DE OLIVEIRA", role: "Autora" },
+        { name: "EMPRESA MODELO LTDA.", role: "Ré" },
+        { name: "DR. LUCAS DEMONSTRAÇÃO", role: "Advogado" },
+      ],
+      latest_update: "18/05/2026 — arquivamento fictício registrado.",
+    },
+    {
+      number: "0000000-00.2024.0.00.0003",
+      court: "Juizado modelo",
+      state: "MG",
+      type: "Trabalhista — exemplo fictício",
+      status: "Concluído — demonstração",
+      parties: [
+        { name: "MARINA EXEMPLO DE OLIVEIRA", role: "Testemunha" },
+        { name: "PEDRO CENÁRIO SOUZA", role: "Réu" },
+        { name: "DRA. RENATA MODELO", role: "Advogada" },
+      ],
+      latest_update: "12/03/2026 — sentença fictícia publicada.",
+    },
+    {
+      number: "0000000-00.2023.0.00.0004",
+      court: "Tribunal de exemplo",
+      state: "CE",
+      type: "Criminal — exemplo fictício",
+      status: "Baixado — demonstração",
+      parties: [
+        { name: "MARCOS PERSONAGEM LIMA", role: "Réu" },
+        { name: "MARINA EXEMPLO DE OLIVEIRA", role: "Testemunha" },
+        { name: "DR. ANDRÉ SIMULAÇÃO", role: "Advogado" },
+      ],
+      latest_update: "09/01/2026 — baixa fictícia do processo.",
+    },
+  ],
+};
+
+function DemoConsultation({ onClose, onCreateAccount, isAuthenticated = false }) {
+  const demo = DEMO_CONSULTATION_DATA;
+
+  function exportDemoConsultation() {
+    abrirRelatorioConsulta(
+      buildExternalReportHtml(demo),
+      "locacheck-consulta-demonstrativa.html"
+    );
+  }
+
   return (
     <div className="modalOverlay demoOverlayV61" role="dialog" aria-modal="true" aria-label="Consulta demonstrativa">
       <div className="demoModalV61">
@@ -850,41 +1000,70 @@ function DemoConsultation({ onClose, onCreateAccount }) {
         <div className="demoGridV61">
           <article className="demoCardV61 demoHighlightV61">
             <small>DADOS CADASTRAIS</small>
-            <h3>MARINA EXEMPLO DE OLIVEIRA</h3>
-            <p><strong>CPF:</strong> ***.***.***-00</p>
-            <p><strong>Idade atual:</strong> 34 anos</p>
-            <p><strong>Situação:</strong> Regular — exemplo fictício</p>
+            <h3>{demo.name}</h3>
+            <p><strong>CPF:</strong> {demo.cpf}</p>
+            <p><strong>Idade atual:</strong> {calculateCurrentAge(demo.birth_date)} anos</p>
+            <p><strong>Situação:</strong> {demo.document_status}</p>
+            <p><strong>RG:</strong> {demo.rg} — {demo.rg_issuer}</p>
+            <p><strong>NIS:</strong> {demo.social_number}</p>
+            <p><strong>CNH:</strong> {demo.cnh}</p>
+            <p><strong>Nacionalidade:</strong> {demo.nationality}</p>
+            <p><strong>Estado civil:</strong> {demo.marital_status}</p>
+            <p><strong>Profissão:</strong> {demo.occupation}</p>
+            <p><strong>Nome da mãe:</strong> {demo.mother_name}</p>
+            <p><strong>Nome do pai:</strong> {demo.father_name}</p>
           </article>
 
           <article className="demoCardV61">
             <small>CONTATOS ENCONTRADOS</small>
-            <p>(11) 90000-0001</p>
-            <p>(11) 90000-0002</p>
+            <strong className="demoSubheadingV63">8 telefones</strong>
+            {demo.phones.map((phone) => <p key={phone.number}>{phone.number}</p>)}
             <div className="demoDividerV61" />
-            <p>marina.exemplo@dominio.test</p>
+            <strong className="demoSubheadingV63">6 e-mails</strong>
+            {demo.emails.map((emailItem) => <p key={emailItem.email}>{emailItem.email}</p>)}
           </article>
 
           <article className="demoCardV61">
-            <small>ENDEREÇOS</small>
-            <p>Rua Demonstração, 100</p>
-            <p>Centro — Cidade Exemplo/SP</p>
+            <small>4 ENDEREÇOS</small>
+            <div className="demoStackV63">
+              {demo.addresses.map((address, index) => (
+                <div className="demoListItemV63" key={address.full}>
+                  <strong>Endereço {index + 1}</strong>
+                  <p>{address.full}</p>
+                </div>
+              ))}
+            </div>
           </article>
 
           <article className="demoCardV61">
             <small>PESSOAS RELACIONADAS</small>
-            <h3>CARLOS EXEMPLO DE OLIVEIRA</h3>
-            <p><strong>CPF:</strong> ***.***.***-11</p>
-            <p><strong>Grau de parentesco:</strong> Pai</p>
-            <button type="button" className="btn demoDisabledButtonV61" disabled>Consultar</button>
+            <div className="demoStackV63">
+              {demo.related_people.map((person) => (
+                <div className="demoListItemV63" key={person.tax_id}>
+                  <h3>{person.name}</h3>
+                  <p><strong>CPF:</strong> {person.tax_id}</p>
+                  <p><strong>Relacionamento:</strong> {person.relationship}</p>
+                  <button type="button" className="btn demoDisabledButtonV61" disabled>Consultar</button>
+                </div>
+              ))}
+            </div>
           </article>
 
           <article className="demoCardV61 demoWideV61">
-            <small>PROCESSOS — EXEMPLO DE APRESENTAÇÃO</small>
-            <h3>0000000-00.2026.0.00.0000</h3>
-            <p><strong>Pessoas envolvidas:</strong></p>
-            <p>Marina Exemplo de Oliveira — Parte demonstrativa</p>
-            <p>Carlos Exemplo de Oliveira — Parte demonstrativa</p>
-            <p><strong>Última atualização:</strong> 30/07/2026 — movimentação fictícia criada apenas para demonstração.</p>
+            <small>4 PROCESSOS — EXEMPLOS DE APRESENTAÇÃO</small>
+            <div className="demoProcessGridV63">
+              {demo.processes.map((process) => (
+                <div className="demoProcessV63" key={process.number}>
+                  <h3>{process.number}</h3>
+                  <p><strong>{process.type}</strong> • {process.status}</p>
+                  <p><strong>Pessoas envolvidas:</strong></p>
+                  {process.parties.map((party) => (
+                    <p key={`${process.number}-${party.name}-${party.role}`}>{party.name} — {party.role}</p>
+                  ))}
+                  <p><strong>Última atualização:</strong> {process.latest_update}</p>
+                </div>
+              ))}
+            </div>
           </article>
         </div>
 
@@ -894,7 +1073,10 @@ function DemoConsultation({ onClose, onCreateAccount }) {
 
         <div className="demoActionsV61">
           <button type="button" className="btn outline" onClick={onClose}>Fechar demonstração</button>
-          <button type="button" className="btn primary" onClick={onCreateAccount}>Criar minha conta</button>
+          <button type="button" className="btn secondary" onClick={exportDemoConsultation}>Exportar consulta</button>
+          <button type="button" className="btn primary" onClick={isAuthenticated ? onClose : onCreateAccount}>
+            {isAuthenticated ? "Voltar para consultar" : "Criar minha conta"}
+          </button>
         </div>
       </div>
     </div>
@@ -980,6 +1162,12 @@ function App() {
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminUsersMessage, setAdminUsersMessage] = useState("");
   const [adminUserSearch, setAdminUserSearch] = useState("");
+  const [editingAdminUser, setEditingAdminUser] = useState(null);
+  const [adminEditUserName, setAdminEditUserName] = useState("");
+  const [adminEditUserEmail, setAdminEditUserEmail] = useState("");
+  const [adminEditUserWhatsapp, setAdminEditUserWhatsapp] = useState("");
+  const [adminEditUserPassword, setAdminEditUserPassword] = useState("");
+  const [adminEditUserMessage, setAdminEditUserMessage] = useState("");
 
   const [adminFinancialData, setAdminFinancialData] = useState(null);
   const [adminFinancialMessage, setAdminFinancialMessage] = useState("");
@@ -992,6 +1180,7 @@ function App() {
   const [activityLogsMessage, setActivityLogsMessage] = useState("");
   const [securityEvents, setSecurityEvents] = useState([]);
   const [securityEventsMessage, setSecurityEventsMessage] = useState("");
+  const [adminRecentAccesses, setAdminRecentAccesses] = useState([]);
   const [adminExternalLogs, setAdminExternalLogs] = useState([]);
   const [adminExternalLogsMessage, setAdminExternalLogsMessage] = useState("");
   const [adminExternalFilterType, setAdminExternalFilterType] = useState("todos");
@@ -1446,7 +1635,7 @@ function App() {
     setActivityLogsMessage("");
     setSecurityEventsMessage("");
 
-    const [activityResult, securityResult] = await Promise.all([
+    const [activityResult, securityResult, visitsResult] = await Promise.all([
       supabase
         .from("activity_logs")
         .select("id, user_id, action, details, created_at")
@@ -1456,6 +1645,12 @@ function App() {
         .from("security_events")
         .select("id, user_id, event_type, details, created_at")
         .order("created_at", { ascending: false })
+        .limit(80),
+      supabase
+        .from("site_visits")
+        .select("id,user_id,path,created_at,last_seen_at")
+        .not("user_id", "is", null)
+        .order("last_seen_at", { ascending: false })
         .limit(80),
     ]);
 
@@ -1483,6 +1678,28 @@ function App() {
       if (!securityResult.data || securityResult.data.length === 0) {
         setSecurityEventsMessage("Nenhuma tentativa de alteração sensível foi bloqueada após a V60.");
       }
+    }
+
+    if (visitsResult.error) {
+      console.log("Erro ao carregar acessos identificados:", visitsResult.error);
+      setAdminRecentAccesses([]);
+    } else {
+      const visits = visitsResult.data || [];
+      const userIds = [...new Set(visits.map((visit) => visit.user_id).filter(Boolean))];
+      let profilesById = {};
+
+      if (userIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from("profiles")
+          .select("id,nome,email")
+          .in("id", userIds);
+        profilesById = Object.fromEntries((profilesData || []).map((item) => [item.id, item]));
+      }
+
+      setAdminRecentAccesses(visits.map((visit) => ({
+        ...visit,
+        profile: profilesById[visit.user_id] || null,
+      })));
     }
   }
 
@@ -2684,6 +2901,75 @@ function App() {
     setAdminUsers(data || []);
   }
 
+  function abrirEdicaoUsuarioAdmin(user) {
+    setEditingAdminUser(user);
+    setAdminEditUserName(user?.nome || "");
+    setAdminEditUserEmail(user?.email || "");
+    setAdminEditUserWhatsapp(formatWhatsappInput(user?.whatsapp || ""));
+    setAdminEditUserPassword("");
+    setAdminEditUserMessage("");
+  }
+
+  async function salvarEdicaoUsuarioAdmin(event) {
+    event.preventDefault();
+    if (loading || !editingAdminUser?.id) return;
+
+    if (!session?.access_token || profile?.role !== "admin") {
+      setAdminEditUserMessage("Sua sessão administrativa expirou. Entre novamente.");
+      return;
+    }
+
+    if (adminEditUserPassword && adminEditUserPassword.length < 8) {
+      setAdminEditUserMessage("A nova senha precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+
+    if (adminEditUserPassword) {
+      const confirmed = window.confirm(
+        `Confirma a definição de uma nova senha para ${editingAdminUser.nome || editingAdminUser.email || "este usuário"}?`
+      );
+      if (!confirmed) return;
+    }
+
+    setLoading(true);
+    setAdminEditUserMessage("Salvando alterações com segurança...");
+
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          userId: editingAdminUser.id,
+          name: adminEditUserName,
+          email: adminEditUserEmail,
+          whatsapp: adminEditUserWhatsapp,
+          password: adminEditUserPassword || undefined,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data?.success) {
+        setAdminEditUserMessage(data?.message || "Não foi possível editar o usuário.");
+        setLoading(false);
+        return;
+      }
+
+      showToast("success", "Usuário atualizado", "Os dados foram salvos e a ação ficou registrada na auditoria.");
+      setAdminUsersMessage("Usuário atualizado com sucesso.");
+      setEditingAdminUser(null);
+      setAdminEditUserPassword("");
+      await Promise.all([carregarUsuariosAdmin(), carregarLogsSistema()]);
+    } catch (error) {
+      console.log("Erro ao editar usuário:", error);
+      setAdminEditUserMessage("Não foi possível conectar à rota administrativa.");
+    }
+
+    setLoading(false);
+  }
+
   async function alterarRoleUsuario(userId, novoRole) {
     if (loading) return;
 
@@ -3405,10 +3691,10 @@ function App() {
     ? adminActivityData.consultations
     : []
   ).filter((item) => {
+    if (item.consultation_type === "internal_included" || item.included_with_external === true) return false;
     const typeOk =
       adminActivityType === "todos" ||
-      (adminActivityType === "internal" && item.source === "internal" && item.consultation_type !== "internal_included") ||
-      (adminActivityType === "internal_included" && item.consultation_type === "internal_included") ||
+      (adminActivityType === "internal" && item.source === "internal") ||
       (adminActivityType === "external" && item.source === "external");
     const search = String(adminActivitySearch || "").trim().toLowerCase();
     const searchable = `${item.user_name || ""} ${item.user_email || ""} ${item.searched_display || ""}`.toLowerCase();
@@ -3928,7 +4214,6 @@ function App() {
                 <select value={adminActivityType} onChange={(e) => setAdminActivityType(e.target.value)}>
                   <option value="todos">Todas as consultas</option>
                   <option value="internal">Somente internas</option>
-                  <option value="internal_included">Internas incluídas na externa</option>
                   <option value="external">Somente externas</option>
                 </select>
                 <input
@@ -3958,7 +4243,7 @@ function App() {
                 <div className="adminStatCard">
                   <small>Consultas internas</small>
                   <strong>{adminActivitySummary.internal_period || 0}</strong>
-                  <span>Inclui buscas combinadas</span>
+                  <span>Somente consultas internas avulsas</span>
                 </div>
                 <div className="adminStatCard">
                   <small>Consultas externas</small>
@@ -4014,16 +4299,20 @@ function App() {
                             {item.status === "error" ? "Erro" : "Concluída"}
                           </span>
                         </div>
-                        <p><strong>Usuário:</strong> {item.user_name || "Usuário sem nome"}</p>
+                        <p className="auditNarrativeV63">
+                          <strong>{item.user_name || "Usuário sem nome"}</strong> realizou uma {item.source === "external" ? "consulta externa" : "consulta interna"} em {formatDate(item.created_at)}.
+                        </p>
                         <p><strong>E-mail:</strong> {item.user_email || "Não informado"}</p>
-                        <p><strong>CPF consultado:</strong> {item.searched_display || "Não informado"}</p>
-                        <p><strong>Resultados:</strong> {item.results_count || 0}</p>
+                        <p><strong>Informação consultada:</strong> {item.searched_display || "Não informado"}</p>
+                        <p><strong>Resultados encontrados:</strong> {item.results_count || 0}</p>
+                        {item.source === "external" && item.credits_balance_before !== null && item.credits_balance_before !== undefined && (
+                          <p><strong>Saldo antes da consulta:</strong> {item.credits_balance_before} crédito(s)</p>
+                        )}
                         <p><strong>Créditos consumidos:</strong> {item.credits_charged || 0}</p>
-                        {item.source === "external" && (
-                          <p><strong>Saldo após a consulta:</strong> {item.credits_balance_after === null || item.credits_balance_after === undefined ? "Não registrado" : `${item.credits_balance_after} crédito(s)`}</p>
+                        {item.credits_balance_after !== null && item.credits_balance_after !== undefined && (
+                          <p><strong>Saldo depois da consulta:</strong> {item.credits_balance_after} crédito(s)</p>
                         )}
                         {item.source === "external" && <p><strong>Cache:</strong> {item.cache_hit ? "Sim" : "Não"}</p>}
-                        <p><strong>Data:</strong> {formatDate(item.created_at)}</p>
                       </div>
                     ))}
                   </div>
@@ -4600,6 +4889,16 @@ function App() {
 
                       <div className="adminButtons">
                         <button
+                          className="btn adminEditUserButtonV63"
+                          type="button"
+                          onClick={() => abrirEdicaoUsuarioAdmin(user)}
+                          disabled={loading}
+                        >
+                          <Settings2 size={17} />
+                          Editar usuário e senha
+                        </button>
+
+                        <button
                           className="btn primary"
                           onClick={() => alterarCreditosUsuario(user.id, 10)}
                         >
@@ -4814,7 +5113,7 @@ function App() {
                   <p>Acompanhe tentativas bloqueadas e ações administrativas realizadas na plataforma.</p>
                 </div>
 
-                <button className="btn secondary" onClick={carregarLogsSistema}>
+                <button className="btn secondary" onClick={() => Promise.all([carregarLogsSistema(), carregarAtividadeAdmin()])}>
                   Atualizar logs
                 </button>
               </div>
@@ -4822,6 +5121,49 @@ function App() {
               {activityLogsMessage && (
                 <div className="authMessage">{activityLogsMessage}</div>
               )}
+
+              <h3 className="adminSectionTitle">Acessos identificados</h3>
+              <p className="auditSectionIntroV63">Mostra acessos em que o usuário já estava autenticado. Visitas anônimas continuam apenas nos totais gerais.</p>
+
+              <div className="adminList compactList">
+                {adminRecentAccesses.length === 0 && <div className="adminEmpty">Nenhum acesso autenticado encontrado.</div>}
+                {adminRecentAccesses.map((access) => (
+                  <div className="adminRecord auditNarrativeCardV63" key={`access-${access.id}`}>
+                    <div className="adminRecordTop">
+                      <h3>Acesso à plataforma</h3>
+                      <span className="statusBadge aprovado">Acesso</span>
+                    </div>
+                    <p className="auditNarrativeV63">
+                      <strong>{access.profile?.nome || access.profile?.email || "Usuário identificado"}</strong> acessou a plataforma em {formatDate(access.last_seen_at || access.created_at)}.
+                    </p>
+                    <p><strong>E-mail:</strong> {access.profile?.email || "Não informado"}</p>
+                    <p><strong>Página acessada:</strong> {access.path || "/"}</p>
+                  </div>
+                ))}
+              </div>
+
+              <h3 className="adminSectionTitle">Consultas dos usuários</h3>
+              <p className="auditSectionIntroV63">A verificação interna automática de uma consulta externa não aparece como uma segunda consulta.</p>
+
+              <div className="adminList compactList">
+                {adminActivityConsultations.length === 0 && <div className="adminEmpty">Nenhuma consulta encontrada no período selecionado.</div>}
+                {adminActivityConsultations.slice(0, 80).map((item) => (
+                  <div className="adminRecord auditNarrativeCardV63" key={`audit-consult-${item.source}-${item.id}`}>
+                    <div className="adminRecordTop">
+                      <h3>{adminConsultationLabel(item.consultation_type, item.source)}</h3>
+                      <span className={`statusBadge ${item.status === "error" ? "reprovado" : "aprovado"}`}>{item.status === "error" ? "Erro" : "Concluída"}</span>
+                    </div>
+                    <p className="auditNarrativeV63">
+                      <strong>{item.user_name || "Usuário sem nome"}</strong> realizou uma {item.source === "external" ? "consulta externa" : "consulta interna"} em {formatDate(item.created_at)}.
+                    </p>
+                    <p><strong>Informação consultada:</strong> {item.searched_display || "Não informado"}</p>
+                    {item.credits_balance_before !== null && item.credits_balance_before !== undefined && <p><strong>Saldo antes:</strong> {item.credits_balance_before} crédito(s)</p>}
+                    <p><strong>Créditos consumidos:</strong> {item.credits_charged || 0}</p>
+                    {item.credits_balance_after !== null && item.credits_balance_after !== undefined && <p><strong>Saldo depois:</strong> {item.credits_balance_after} crédito(s)</p>}
+                    <p><strong>Resultados encontrados:</strong> {item.results_count || 0}</p>
+                  </div>
+                ))}
+              </div>
 
               <h3 className="adminSectionTitle">Tentativas bloqueadas</h3>
 
@@ -4858,23 +5200,15 @@ function App() {
                 {activityLogs.map((log) => (
                   <div className="adminRecord" key={log.id}>
                     <div className="adminRecordTop">
-                      <h3>{log.action}</h3>
+                      <h3>{String(log.action || "Ação administrativa").replaceAll("_", " ")}</h3>
                       <span className="statusBadge aprovado">Log</span>
                     </div>
 
-                    <p>
-                      <strong>Data:</strong>{" "}
-                      {log.created_at ? new Date(log.created_at).toLocaleString("pt-BR") : "Não informado"}
-                    </p>
-
-                    <p>
-                      <strong>Admin:</strong> {log.user_id || "Não informado"}
-                    </p>
-
-                    <p>
-                      <strong>Detalhes:</strong>{" "}
-                      {log.details ? JSON.stringify(log.details) : "Sem detalhes"}
-                    </p>
+                    <p className="auditNarrativeV63">{adminActionDescription(log, adminUsers)}</p>
+                    <p><strong>Data e hora:</strong> {formatDate(log.created_at)}</p>
+                    {log.details?.previous_credits !== undefined && <p><strong>Créditos antes:</strong> {log.details.previous_credits}</p>}
+                    {log.details?.new_credits !== undefined && <p><strong>Créditos depois:</strong> {log.details.new_credits}</p>}
+                    {log.details?.reason && <p><strong>Motivo:</strong> {log.details.reason}</p>}
                   </div>
                 ))}
               </div>
@@ -5933,6 +6267,14 @@ function App() {
                 </button>
               </div>
 
+              <button
+                type="button"
+                className="btn outline full consultationDemoButtonV63"
+                onClick={() => setShowDemoConsultation(true)}
+              >
+                Ver consulta demonstrativa completa
+              </button>
+
               <form onSubmit={consultarLocatario} className="recordForm">
                 {consultationMode !== "internal" && (
                   <div className="externalSearchTypeV46">
@@ -6352,6 +6694,59 @@ function App() {
             </div>
           </div>
         )}
+
+        {showDemoConsultation && (
+          <DemoConsultation
+            onClose={() => setShowDemoConsultation(false)}
+            isAuthenticated
+            onCreateAccount={() => setShowDemoConsultation(false)}
+          />
+        )}
+
+        {editingAdminUser && profile?.role === "admin" && (
+          <div className="modalOverlay adminEditUserOverlayV63" role="dialog" aria-modal="true" aria-label="Editar usuário">
+            <div className="recordModal adminEditUserModalV63">
+              <button
+                type="button"
+                className="closeModal"
+                onClick={() => {
+                  setEditingAdminUser(null);
+                  setAdminEditUserPassword("");
+                  setAdminEditUserMessage("");
+                }}
+                aria-label="Fechar edição do usuário"
+              >
+                ×
+              </button>
+
+              <span className="demoBadgeV61">ÁREA ADMINISTRATIVA PROTEGIDA</span>
+              <h2>Editar usuário</h2>
+              <p>Atualize os dados cadastrais. Preencha a nova senha somente quando realmente precisar redefini-la.</p>
+
+              <form className="recordForm" onSubmit={salvarEdicaoUsuarioAdmin}>
+                <label className="adminEditFieldV63">
+                  <span>Nome ou empresa</span>
+                  <input type="text" value={adminEditUserName} onChange={(event) => setAdminEditUserName(event.target.value)} minLength={2} maxLength={120} required />
+                </label>
+                <label className="adminEditFieldV63">
+                  <span>E-mail</span>
+                  <input type="email" value={adminEditUserEmail} onChange={(event) => setAdminEditUserEmail(event.target.value)} required />
+                </label>
+                <label className="adminEditFieldV63">
+                  <span>WhatsApp com DDD</span>
+                  <input type="tel" inputMode="numeric" value={adminEditUserWhatsapp} onChange={(event) => setAdminEditUserWhatsapp(formatWhatsappInput(event.target.value))} maxLength={15} required />
+                </label>
+                <label className="adminEditFieldV63 sensitive">
+                  <span>Nova senha (opcional)</span>
+                  <input type="password" value={adminEditUserPassword} onChange={(event) => setAdminEditUserPassword(event.target.value)} minLength={8} autoComplete="new-password" placeholder="Deixe vazio para não alterar" />
+                  <small>A senha atual nunca é exibida. A nova senha deve ter no mínimo 8 caracteres.</small>
+                </label>
+                {adminEditUserMessage && <div className="authMessage">{adminEditUserMessage}</div>}
+                <button type="submit" className="btn primary full" disabled={loading}>{loading ? "Salvando..." : "Salvar dados do usuário"}</button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -6736,6 +7131,7 @@ function App() {
       {showDemoConsultation && (
         <DemoConsultation
           onClose={() => setShowDemoConsultation(false)}
+          isAuthenticated={Boolean(session?.user?.id)}
           onCreateAccount={() => {
             setShowDemoConsultation(false);
             setMessage("");
@@ -6743,7 +7139,6 @@ function App() {
           }}
         />
       )}
-
 
       {showPublicSupport && (
         <div className="modalOverlay">

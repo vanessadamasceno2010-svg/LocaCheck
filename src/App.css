@@ -4373,6 +4373,135 @@ body {
 }
 
 /* =========================================================
+   V63 — demonstração completa, auditoria e edição administrativa
+   ========================================================= */
+.demoSubheadingV63 {
+  display: block;
+  margin: 8px 0;
+  color: #93c5fd;
+  font-size: 14px;
+}
+
+.demoStackV63,
+.demoProcessGridV63 {
+  display: grid;
+  gap: 12px;
+}
+
+.demoListItemV63,
+.demoProcessV63 {
+  padding: 14px;
+  border: 1px solid rgba(96, 165, 250, .2);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, .58);
+}
+
+.demoListItemV63 h3,
+.demoProcessV63 h3 {
+  color: #f8fafc;
+  overflow-wrap: anywhere;
+}
+
+.demoProcessGridV63 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.demoActionsV61 .btn.secondary {
+  background: #0ea5e9;
+  color: #031525;
+}
+
+.consultationDemoButtonV63 {
+  margin: 14px 0 4px;
+  border-color: rgba(96, 165, 250, .72) !important;
+  color: #bfdbfe !important;
+}
+
+.auditSectionIntroV63 {
+  margin: -6px 0 14px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.auditNarrativeCardV63 {
+  border-left: 4px solid #3b82f6;
+}
+
+.auditNarrativeV63 {
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, .1);
+  color: #dbeafe !important;
+  line-height: 1.55;
+}
+
+.adminEditUserButtonV63 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #7c3aed;
+  color: #fff;
+}
+
+.adminEditUserButtonV63:hover,
+.adminEditUserButtonV63:focus-visible {
+  background: #6d28d9;
+}
+
+.adminEditUserOverlayV63 {
+  z-index: 13000;
+}
+
+.adminEditUserModalV63 {
+  width: min(540px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.adminEditFieldV63 {
+  display: grid;
+  gap: 7px;
+}
+
+.adminEditFieldV63 > span {
+  color: #dbeafe;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.adminEditFieldV63.sensitive {
+  padding: 13px;
+  border: 1px solid rgba(251, 191, 36, .3);
+  border-radius: 14px;
+  background: rgba(120, 53, 15, .13);
+}
+
+.adminEditFieldV63 small {
+  color: #fde68a;
+  line-height: 1.45;
+}
+
+@media (max-width: 680px) {
+  .demoProcessGridV63 {
+    grid-template-columns: 1fr;
+  }
+
+  .demoActionsV61 {
+    flex-direction: column-reverse;
+  }
+
+  .adminEditUserModalV63 {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border-radius: 0;
+    padding-bottom: max(26px, env(safe-area-inset-bottom));
+  }
+}
+
+/* =========================================================
    V61 — Consulta demonstrativa sem dados reais
    ========================================================= */
 .demoOverlayV61 {
