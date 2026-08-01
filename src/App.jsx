@@ -1057,8 +1057,8 @@ function App() {
   async function loadProfile(userId) {
     const { data: userData } = await supabase.auth.getUser();
     const user = userData?.user;
-    const provider = user?.app_metadata?.provider || "email";
     const userEmail = normalizeEmail(user?.email || "");
+    const userWhatsapp = onlyDigits(user?.user_metadata?.whatsapp || "");
     const userNameFromAuth =
       user?.user_metadata?.nome ||
       user?.user_metadata?.full_name ||
@@ -1074,18 +1074,24 @@ function App() {
 
     if (data) {
       let profileData = data;
+      const profileSync = {};
 
-      const needsGoogleProfileSync =
-        provider === "google" &&
-        (!profileData.email || !profileData.nome || profileData.nome === "Usuário");
+      if (userEmail && normalizeEmail(profileData.email || "") !== userEmail) {
+        profileSync.email = userEmail;
+      }
 
-      if (needsGoogleProfileSync) {
+      if (!profileData.nome || profileData.nome === "Usuário") {
+        profileSync.nome = userNameFromAuth;
+      }
+
+      if (userWhatsapp && !onlyDigits(profileData.whatsapp || "")) {
+        profileSync.whatsapp = userWhatsapp;
+      }
+
+      if (Object.keys(profileSync).length > 0) {
         const { data: syncedProfile, error: syncError } = await supabase
           .from("profiles")
-          .update({
-            nome: profileData.nome && profileData.nome !== "Usuário" ? profileData.nome : userNameFromAuth,
-            email: userEmail || profileData.email || null,
-          })
+          .update(profileSync)
           .eq("id", userId)
           .select("*")
           .maybeSingle();
@@ -1120,6 +1126,15 @@ function App() {
       setProfile(newProfile);
     } else {
       console.log("Erro ao criar perfil:", error);
+      setProfile(null);
+      setMessage(
+        String(error.message || "").toLowerCase().includes("whatsapp")
+          ? "Este WhatsApp já está vinculado a outra conta. Entre com a conta original ou fale com o suporte."
+          : "Não foi possível preparar sua conta com segurança. Tente entrar novamente ou fale com o suporte."
+      );
+      setAuthMode("login");
+      setSession(null);
+      await supabase.auth.signOut();
     }
   }
 
@@ -1617,6 +1632,24 @@ function App() {
 
     if (senha.trim().length < 6) {
       setMessage("A senha precisa ter pelo menos 6 caracteres.");
+      setLoading(false);
+      return;
+    }
+
+    const { data: whatsappAvailable, error: whatsappCheckError } = await supabase.rpc(
+      "is_whatsapp_available_v62c",
+      { p_whatsapp: cadastroWhatsappDigits }
+    );
+
+    if (whatsappCheckError) {
+      console.log("Não foi possível validar o WhatsApp:", whatsappCheckError);
+      setMessage("Não foi possível validar o WhatsApp agora. Aguarde alguns instantes e tente novamente.");
+      setLoading(false);
+      return;
+    }
+
+    if (whatsappAvailable !== true) {
+      setMessage("Este WhatsApp já está vinculado a outra conta ou não pode ser utilizado.");
       setLoading(false);
       return;
     }
@@ -6533,7 +6566,9 @@ function App() {
 
       {authMode && (
         <div className={androidAppMode ? "modalOverlay androidLoginOverlayV54" : "modalOverlay"}>
-          <div className={androidAppMode ? "authModal androidLoginModalV54" : "authModal"}>
+          <div
+            className={`${androidAppMode ? "authModal androidLoginModalV54" : "authModal"} authModalMode-${authMode}`}
+          >
             {!androidAppMode && (
               <button className="closeModal" onClick={() => setAuthMode(null)}>
                 ×

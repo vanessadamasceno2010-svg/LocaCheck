@@ -4315,6 +4315,64 @@ body {
 }
 
 /* =========================================================
+   V62D — cadastro completo e rolável em qualquer tela
+   ========================================================= */
+.authModalMode-cadastro {
+  align-self: center !important;
+  width: min(480px, calc(100vw - 24px)) !important;
+  max-height: calc(100dvh - 24px) !important;
+  margin: auto !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-top: 24px;
+  scroll-padding-bottom: max(28px, env(safe-area-inset-bottom));
+}
+
+.authModalMode-cadastro form {
+  padding-bottom: 2px;
+}
+
+.authModalMode-cadastro::-webkit-scrollbar {
+  width: 8px;
+}
+
+.authModalMode-cadastro::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, .72);
+}
+
+.authModalMode-cadastro::-webkit-scrollbar-thumb {
+  background: #475569;
+  border: 2px solid #0f172a;
+  border-radius: 999px;
+}
+
+@media (max-width: 760px) {
+  .authModalMode-cadastro {
+    align-self: flex-end !important;
+    width: 100% !important;
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top))) !important;
+    margin: 0 auto !important;
+    padding: 30px 16px max(24px, env(safe-area-inset-bottom)) !important;
+    border-radius: 22px 22px 0 0 !important;
+  }
+
+  .authModalMode-cadastro h2 {
+    margin-bottom: 6px !important;
+  }
+
+  .authModalMode-cadastro > p {
+    margin-bottom: 14px !important;
+  }
+
+  .authModalMode-cadastro form {
+    gap: 10px !important;
+  }
+}
+
+/* =========================================================
    V61 — Consulta demonstrativa sem dados reais
    ========================================================= */
 .demoOverlayV61 {
