@@ -6566,7 +6566,9 @@ function App() {
 
       {authMode && (
         <div className={androidAppMode ? "modalOverlay androidLoginOverlayV54" : "modalOverlay"}>
-          <div className={androidAppMode ? "authModal androidLoginModalV54" : "authModal"}>
+          <div
+            className={`${androidAppMode ? "authModal androidLoginModalV54" : "authModal"} authModalMode-${authMode}`}
+          >
             {!androidAppMode && (
               <button className="closeModal" onClick={() => setAuthMode(null)}>
                 ×
