@@ -834,6 +834,73 @@ function LegalTermsContent() {
   );
 }
 
+function DemoConsultation({ onClose, onCreateAccount }) {
+  return (
+    <div className="modalOverlay demoOverlayV61" role="dialog" aria-modal="true" aria-label="Consulta demonstrativa">
+      <div className="demoModalV61">
+        <div className="demoHeaderV61">
+          <div>
+            <span className="demoBadgeV61">DEMONSTRAÇÃO — DADOS FICTÍCIOS</span>
+            <h2>Veja como funciona uma consulta</h2>
+            <p>Nenhuma pessoa real foi consultada e nenhum crédito foi utilizado.</p>
+          </div>
+          <button type="button" className="closeModal" onClick={onClose} aria-label="Fechar demonstração">×</button>
+        </div>
+
+        <div className="demoGridV61">
+          <article className="demoCardV61 demoHighlightV61">
+            <small>DADOS CADASTRAIS</small>
+            <h3>MARINA EXEMPLO DE OLIVEIRA</h3>
+            <p><strong>CPF:</strong> ***.***.***-00</p>
+            <p><strong>Idade atual:</strong> 34 anos</p>
+            <p><strong>Situação:</strong> Regular — exemplo fictício</p>
+          </article>
+
+          <article className="demoCardV61">
+            <small>CONTATOS ENCONTRADOS</small>
+            <p>(11) 90000-0001</p>
+            <p>(11) 90000-0002</p>
+            <div className="demoDividerV61" />
+            <p>marina.exemplo@dominio.test</p>
+          </article>
+
+          <article className="demoCardV61">
+            <small>ENDEREÇOS</small>
+            <p>Rua Demonstração, 100</p>
+            <p>Centro — Cidade Exemplo/SP</p>
+          </article>
+
+          <article className="demoCardV61">
+            <small>PESSOAS RELACIONADAS</small>
+            <h3>CARLOS EXEMPLO DE OLIVEIRA</h3>
+            <p><strong>CPF:</strong> ***.***.***-11</p>
+            <p><strong>Grau de parentesco:</strong> Pai</p>
+            <button type="button" className="btn demoDisabledButtonV61" disabled>Consultar</button>
+          </article>
+
+          <article className="demoCardV61 demoWideV61">
+            <small>PROCESSOS — EXEMPLO DE APRESENTAÇÃO</small>
+            <h3>0000000-00.2026.0.00.0000</h3>
+            <p><strong>Pessoas envolvidas:</strong></p>
+            <p>Marina Exemplo de Oliveira — Parte demonstrativa</p>
+            <p>Carlos Exemplo de Oliveira — Parte demonstrativa</p>
+            <p><strong>Última atualização:</strong> 30/07/2026 — movimentação fictícia criada apenas para demonstração.</p>
+          </article>
+        </div>
+
+        <div className="demoNoticeV61">
+          Este modelo serve somente para apresentar a organização do resultado. Consultas reais exigem conta com e-mail confirmado e créditos adquiridos.
+        </div>
+
+        <div className="demoActionsV61">
+          <button type="button" className="btn outline" onClick={onClose}>Fechar demonstração</button>
+          <button type="button" className="btn primary" onClick={onCreateAccount}>Criar minha conta</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const androidAppMode = isAndroidAppRequest();
   const [session, setSession] = useState(null);
@@ -849,6 +916,7 @@ function App() {
   const [showMyRecords, setShowMyRecords] = useState(false);
   const [showProfileData, setShowProfileData] = useState(false);
   const [showTermsPrivacy, setShowTermsPrivacy] = useState(false);
+  const [showDemoConsultation, setShowDemoConsultation] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSystemLogs, setShowSystemLogs] = useState(false);
@@ -887,6 +955,7 @@ function App() {
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState("");
 
   const [recordNome, setRecordNome] = useState("");
   const [recordCpf, setRecordCpf] = useState("");
@@ -1038,7 +1107,7 @@ function App() {
         email: userEmail || null,
         whatsapp: user?.user_metadata?.whatsapp || "",
         role: "user",
-        credits: 5,
+        credits: 0,
         consultas: 0,
         account_status: "ativo",
         is_blocked: false,
@@ -1077,7 +1146,18 @@ function App() {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session?.user && !isSessionEmailConfirmed(data.session)) {
+        const unconfirmedEmail = normalizeEmail(data.session.user.email || "");
+        setPendingConfirmationEmail(unconfirmedEmail);
+        setMessage("Confirme seu e-mail antes de acessar o LocaCheck.");
+        setAuthMode("login");
+        setSession(null);
+        setProfile(null);
+        await supabase.auth.signOut();
+        return;
+      }
+
       setSession(data.session);
 
       if (data.session?.user) {
@@ -1087,6 +1167,16 @@ function App() {
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, currentSession) => {
+        if (currentSession?.user && !isSessionEmailConfirmed(currentSession)) {
+          setPendingConfirmationEmail(normalizeEmail(currentSession.user.email || ""));
+          setMessage("Confirme seu e-mail antes de acessar o LocaCheck.");
+          setAuthMode("login");
+          setSession(null);
+          setProfile(null);
+          setTimeout(() => supabase.auth.signOut(), 0);
+          return;
+        }
+
         setSession(currentSession);
 
         if (currentSession?.user) {
@@ -1531,10 +1621,11 @@ function App() {
       return;
     }
 
-    const { error } = await supabase.auth.signUp({
+    const { data: signupData, error } = await supabase.auth.signUp({
       email: cadastroEmailNormalized,
       password: senha,
       options: {
+        emailRedirectTo: window.location.origin,
         data: {
           nome: nome.trim(),
           email: cadastroEmailNormalized,
@@ -1549,8 +1640,12 @@ function App() {
     if (error) {
       setMessage(error.message);
     } else {
-      setMessage("Cadastro realizado com sucesso. Confirme seu e-mail. Sua conta terá 5 créditos iniciais.");
-      showToast("success", "Cadastro realizado", "Confirme seu e-mail. Sua conta terá 5 créditos iniciais.");
+      if (signupData?.session && !isSessionEmailConfirmed(signupData.session)) {
+        await supabase.auth.signOut();
+      }
+      setPendingConfirmationEmail(cadastroEmailNormalized);
+      setMessage("Cadastro recebido. Abra o e-mail enviado pela LocaCheck para confirmar sua conta antes de entrar.");
+      showToast("success", "Confirme seu e-mail", "Sua conta terá saldo inicial zero. Use a demonstração para conhecer o sistema.");
       setAuthMode("login");
       setNome("");
       setWhatsapp("");
@@ -1575,13 +1670,23 @@ function App() {
       return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: loginData, error } = await supabase.auth.signInWithPassword({
       email: loginEmailNormalized,
       password: senha,
     });
 
     if (error) {
-      setMessage("E-mail ou senha inválidos.");
+      const emailNotConfirmed = error.code === "email_not_confirmed" || /email not confirmed/i.test(error.message || "");
+      if (emailNotConfirmed) {
+        setPendingConfirmationEmail(loginEmailNormalized);
+        setMessage("Seu e-mail ainda não foi confirmado. Abra o link recebido ou solicite um novo envio abaixo.");
+      } else {
+        setMessage("E-mail ou senha inválidos.");
+      }
+    } else if (!isSessionEmailConfirmed(loginData?.session)) {
+      await supabase.auth.signOut();
+      setPendingConfirmationEmail(loginEmailNormalized);
+      setMessage("Confirme seu e-mail antes de acessar o LocaCheck.");
     } else {
       showToast("success", "Login realizado", "Bem-vindo ao painel LocaCheck.");
       setAuthMode(null);
@@ -1589,6 +1694,31 @@ function App() {
       setSenha("");
     }
 
+    setLoading(false);
+  }
+
+  async function reenviarConfirmacaoEmail() {
+    const confirmationEmail = normalizeEmail(pendingConfirmationEmail || email);
+    if (!isValidEmail(confirmationEmail)) {
+      setMessage("Informe o e-mail usado no cadastro para reenviar a confirmação.");
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: confirmationEmail,
+      options: { emailRedirectTo: window.location.origin },
+    });
+
+    if (error) {
+      setMessage(error.status === 429
+        ? "Aguarde alguns minutos antes de solicitar outro e-mail."
+        : "Não foi possível reenviar agora. Aguarde e tente novamente.");
+    } else {
+      setPendingConfirmationEmail(confirmationEmail);
+      setMessage("Novo e-mail de confirmação enviado. Verifique também a caixa de spam.");
+    }
     setLoading(false);
   }
 
@@ -2500,6 +2630,13 @@ function App() {
   }
 
   async function carregarUsuariosAdmin() {
+    const { data: secureData, error: secureError } = await supabase.rpc("admin_list_users_security_v61");
+
+    if (!secureError && Array.isArray(secureData)) {
+      setAdminUsers(secureData);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
@@ -4391,6 +4528,15 @@ function App() {
                         {user.email || "Não informado"}
                       </p>
 
+                      <p>
+                        <strong>Confirmação do e-mail:</strong>{" "}
+                        {user.email_confirmed === true
+                          ? "Confirmado"
+                          : user.email_confirmed === false
+                          ? "Pendente"
+                          : "Disponível após executar a migração V61"}
+                      </p>
+
                       {getUserAccountStatus(user) === "bloqueado" && (
                         <p className="securityWarningInline">
                           <strong>Motivo do bloqueio:</strong> {user.blocked_reason || "Não informado"}
@@ -6232,24 +6378,23 @@ function App() {
 
             <button
               className="btn outline large"
-              onClick={() => setAuthMode("login")}
+              onClick={() => setShowDemoConsultation(true)}
             >
-              Registrar Ocorrência
+              Ver consulta demonstrativa
             </button>
           </div>
         </section>
 
         <section className="cards">
           <div className="card">
-            <h3>10 Créditos Grátis</h3>
-            <p>Todo novo usuário recebe créditos para começar a consultar.</p>
+            <h3>Demonstração Gratuita</h3>
+            <p>Conheça a organização de uma consulta usando somente dados fictícios.</p>
           </div>
 
           <div className="card featured">
             <h3>Consulta Completa</h3>
             <p>
-              Ao buscar, 1 crédito é descontado e o resultado completo é
-              exibido.
+              Consulte por CPF, telefone ou e-mail após confirmar sua conta e adquirir créditos.
             </p>
           </div>
 
@@ -6521,6 +6666,25 @@ function App() {
 
             {message && <div className="authMessage">{message}</div>}
 
+            {authMode === "login" && pendingConfirmationEmail && (
+              <button
+                type="button"
+                className="btn outline full"
+                onClick={reenviarConfirmacaoEmail}
+                disabled={loading}
+              >
+                Reenviar e-mail de confirmação
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="switchAuth demoAuthLinkV61"
+              onClick={() => setShowDemoConsultation(true)}
+            >
+              Ver uma consulta demonstrativa
+            </button>
+
             <button
               className="switchAuth"
               onClick={() => {
@@ -6532,6 +6696,17 @@ function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {showDemoConsultation && (
+        <DemoConsultation
+          onClose={() => setShowDemoConsultation(false)}
+          onCreateAccount={() => {
+            setShowDemoConsultation(false);
+            setMessage("");
+            setAuthMode("cadastro");
+          }}
+        />
       )}
 
 
