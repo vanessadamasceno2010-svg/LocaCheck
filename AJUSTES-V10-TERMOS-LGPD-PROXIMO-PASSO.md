@@ -1,6 +1,6 @@
 # Ajustes V10 — Termos, Privacidade e LGPD
 
-## O que foi ajustado
+## O que foi ajustdo
 
 - Termos de Uso e Política de Privacidade mais completos dentro do app.
 - Aviso claro sobre finalidade da plataforma.
