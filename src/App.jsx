@@ -23,6 +23,9 @@ import {
 import { supabase } from "./supabaseClient";
 import BuyCreditsModal from "./BuyCreditsModal";
 import SupportModal from "./SupportModal";
+import MyRentalSiteModal from "./MyRentalSiteModal";
+import PublicRentalSitePage from "./PublicRentalSitePage";
+import { getRentalSiteSlugFromPath } from "./services/rentalSiteService";
 import "./App.css";
 
 const TIPOS_OCORRENCIA = [
@@ -1085,6 +1088,7 @@ function DemoConsultation({ onClose, onCreateAccount, isAuthenticated = false })
 
 function App() {
   const androidAppMode = isAndroidAppRequest();
+  const publicRentalSiteSlug = getRentalSiteSlugFromPath(typeof window !== "undefined" ? window.location.pathname : "");
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authMode, setAuthMode] = useState(() => (androidAppMode ? "login" : null));
@@ -1097,6 +1101,7 @@ function App() {
   const [showPaymentsHistory, setShowPaymentsHistory] = useState(false);
   const [showMyRecords, setShowMyRecords] = useState(false);
   const [showProfileData, setShowProfileData] = useState(false);
+  const [showMyRentalSite, setShowMyRentalSite] = useState(false);
   const [showTermsPrivacy, setShowTermsPrivacy] = useState(false);
   const [showDemoConsultation, setShowDemoConsultation] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -3702,6 +3707,10 @@ function App() {
   });
   const maxDailyVisits = Math.max(1, ...adminDailyVisits.map((item) => Number(item.visits || 0)));
 
+  if (publicRentalSiteSlug) {
+    return <PublicRentalSitePage slug={publicRentalSiteSlug} />;
+  }
+
   if (session && !profile) {
     return (
       <div className="page">
@@ -3879,6 +3888,16 @@ function App() {
             >
               Comprar Créditos
             </button>
+
+            {profile.role !== "admin" && (
+              <button
+                className="btn outline large actionRentalSite"
+                onClick={() => setShowMyRentalSite(true)}
+              >
+                Meu Site
+                <small>Crie o site da sua locadora</small>
+              </button>
+            )}
 
             {shouldShowTopNotifications(notificationItems, notificationReadIds) && (
               <button
@@ -5571,6 +5590,11 @@ function App() {
                 Registrar
               </button>
 
+              <button type="button" onClick={() => setShowMyRentalSite(true)}>
+                <span>▦</span>
+                Meu Site
+              </button>
+
               <button type="button" onClick={abrirMeusDados}>
                 <span>◎</span>
                 Perfil
@@ -5578,6 +5602,17 @@ function App() {
             </>
           )}
         </nav>
+
+        {showMyRentalSite && profile.role !== "admin" && (
+          <MyRentalSiteModal
+            userId={session?.user?.id}
+            profile={profile}
+            onClose={() => setShowMyRentalSite(false)}
+            onBuyCredits={() => setShowBuyCredits(true)}
+            showToast={showToast}
+          />
+        )}
+
 {showExternalConsultationHistory && (
   <div className="modalOverlay">
     <div className="recordModal externalHistoryModal">
