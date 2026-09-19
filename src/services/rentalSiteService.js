@@ -171,6 +171,7 @@ export async function createMyRentalSite({ userId, brandName, slug, tagline, wha
     hero_title: `Alugue sua moto com a ${normalizedBrandName}`,
     hero_subtitle: "Escolha sua moto, consulte os valores e fale diretamente com nossa equipe.",
     about_title: `Sobre a ${normalizedBrandName}`,
+    about_text: `A ${normalizedBrandName} oferece locação de motos com atendimento próximo, informações claras e modelos preparados para diferentes necessidades. Nosso objetivo é facilitar sua locação com segurança, praticidade e transparência.`,
     cta_text: "Falar no WhatsApp",
     published: false,
   };

@@ -10,16 +10,22 @@ function whatsappUrl(value, brandName) {
 }
 function money(value) { return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 
-export default function PublicRentalSitePage({ slug }) {
+export default function PublicRentalSitePage({ slug, previewSite = null, previewMotorcycles = null }) {
   const [loading, setLoading] = useState(true);
   const [site, setSite] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
+    if (previewSite) {
+      setSite({ ...previewSite, motorcycles: previewMotorcycles || [] });
+      setLoading(false);
+      return undefined;
+    }
     let active = true;
+    setLoading(true);
     getPublicRentalSite(slug).then(data => { if (active) setSite(data || null); }).catch(() => { if (active) setSite(null); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [slug]);
+  }, [slug, previewSite, previewMotorcycles]);
 
   const wa = useMemo(() => whatsappUrl(site?.whatsapp, site?.brand_name), [site?.whatsapp, site?.brand_name]);
   if (loading) return <div className="rentalPublicV67 rentalPublicLoadingV67"><div className="rentalPublicLoaderV67"><Bike size={30}/><strong>Carregando sua locadora...</strong><span>Preparando o site.</span></div></div>;
