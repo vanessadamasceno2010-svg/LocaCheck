@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bike, CalendarDays, CheckCircle2, Clock3, Instagram, Mail, MapPin, Menu, MessageCircle, Phone, ShieldCheck, Star, X } from "lucide-react";
 import { getPublicRentalSite } from "./services/rentalSiteService";
+import heroFallback from "./assets/hero-moto.jpg";
 
 function whatsappUrl(value, brandName) {
   const digits = String(value || "").replace(/\D/g, "");
@@ -34,7 +35,7 @@ export default function PublicRentalSitePage({ slug, previewSite = null, preview
   const primary = site.primary_color || "#2563eb";
   const secondary = site.secondary_color || "#0f172a";
   const motos = site.motorcycles || [];
-  const hero = site.hero_image_url || "";
+  const hero = site.hero_image_url || heroFallback;
 
   const scroll = id => { setMenuOpen(false); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); };
 
