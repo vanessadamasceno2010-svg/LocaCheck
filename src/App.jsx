@@ -27,6 +27,9 @@ import {
   UserPlus,
   Users,
   WalletCards,
+  UserCircle2,
+  LogOut,
+  Globe2,
   X,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
@@ -1148,6 +1151,7 @@ function App() {
   const [profileEmail, setProfileEmail] = useState("");
   const [profileNewPassword, setProfileNewPassword] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -1177,6 +1181,7 @@ function App() {
 
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminUsersMessage, setAdminUsersMessage] = useState("");
+  const [adminSiteAccessLoadingId, setAdminSiteAccessLoadingId] = useState("");
   const [adminUserSearch, setAdminUserSearch] = useState("");
   const [editingAdminUser, setEditingAdminUser] = useState(null);
   const [adminEditUserName, setAdminEditUserName] = useState("");
@@ -2899,7 +2904,9 @@ function App() {
     const { data: secureData, error: secureError } = await supabase.rpc("admin_list_users_security_v61");
 
     if (!secureError && Array.isArray(secureData)) {
-      setAdminUsers(secureData);
+      const { data: accessData } = await supabase.rpc("admin_list_rental_site_access_v66");
+      const accessMap = Object.fromEntries((Array.isArray(accessData) ? accessData : []).map((item) => [item.user_id, item]));
+      setAdminUsers(secureData.map((user) => ({ ...user, site_access_grant: accessMap[user.id] || null })));
       return;
     }
 
@@ -2914,7 +2921,61 @@ function App() {
       return;
     }
 
-    setAdminUsers(data || []);
+    const { data: accessData } = await supabase.rpc("admin_list_rental_site_access_v66");
+    const accessMap = Object.fromEntries((Array.isArray(accessData) ? accessData : []).map((item) => [item.user_id, item]));
+    setAdminUsers((data || []).map((user) => ({ ...user, site_access_grant: accessMap[user.id] || null })));
+  }
+
+  async function liberarSiteUsuario(userId) {
+    if (loading || !userId || profile?.role !== "admin") return;
+    const usuario = adminUsers.find((item) => item.id === userId);
+    if (!usuario) return;
+    const confirmar = window.confirm(`Liberar o benefício Meu Site para ${usuario.nome || usuario.email || "este usuário"} por 30 dias?`);
+    if (!confirmar) return;
+
+    setAdminSiteAccessLoadingId(userId);
+    setAdminUsersMessage("");
+    const { data, error } = await supabase.rpc("admin_grant_rental_site_access_v66", {
+      p_user_id: userId,
+      p_days: 30,
+    });
+
+    if (error || data?.success === false) {
+      console.log("Erro ao liberar Meu Site:", error || data);
+      setAdminUsersMessage(error?.message || data?.message || "Não foi possível liberar o site.");
+      showToast("error", "Erro ao liberar site", "A operação segura não foi concluída.");
+      setAdminSiteAccessLoadingId("");
+      return;
+    }
+
+    await registrarLogAdmin("site_beneficio_liberado", { user_id: userId, days: 30, expires_at: data.expires_at });
+    showToast("success", "Meu Site liberado", `Benefício liberado até ${new Date(data.expires_at).toLocaleDateString("pt-BR")}.`);
+    await carregarUsuariosAdmin();
+    setAdminSiteAccessLoadingId("");
+  }
+
+  async function cancelarLiberacaoSiteUsuario(userId) {
+    if (loading || !userId || profile?.role !== "admin") return;
+    const usuario = adminUsers.find((item) => item.id === userId);
+    if (!usuario) return;
+    const confirmar = window.confirm(`Cancelar a liberação administrativa do Meu Site para ${usuario.nome || usuario.email || "este usuário"}?`);
+    if (!confirmar) return;
+
+    setAdminSiteAccessLoadingId(userId);
+    setAdminUsersMessage("");
+    const { data, error } = await supabase.rpc("admin_revoke_rental_site_access_v66", { p_user_id: userId });
+
+    if (error || data?.success === false) {
+      setAdminUsersMessage(error?.message || data?.message || "Não foi possível cancelar a liberação.");
+      showToast("error", "Erro ao cancelar", "A operação segura não foi concluída.");
+      setAdminSiteAccessLoadingId("");
+      return;
+    }
+
+    await registrarLogAdmin("site_beneficio_cancelado", { user_id: userId });
+    showToast("success", "Liberação cancelada", "A liberação administrativa do site foi cancelada.");
+    await carregarUsuariosAdmin();
+    setAdminSiteAccessLoadingId("");
   }
 
   function abrirEdicaoUsuarioAdmin(user) {
@@ -3811,74 +3872,91 @@ function App() {
             <span>{toast.message}</span>
           </div>
         )}
-        {profile.role === "admin" ? (
-          <header className="header">
-            <div className="brand">
-              <div className="logo">LC</div>
-              <div>
-                <strong>LocaCheck</strong>
-                <span>Painel administrador</span>
-              </div>
+        <header className={`userHeaderV65 ${profile.role === "admin" ? "adminHeaderV66" : ""}`}>
+          <div className="userBrandV65">
+            <img src={locacheckLogoIcon} alt="LocaCheck" />
+            <div>
+              <strong>LocaCheck</strong>
+              <span>{profile.role === "admin" ? "Painel do administrador" : "Painel do usuário"}</span>
             </div>
+          </div>
 
-            <div className="headerUserToolsV37">
-              <div className="headerCreditsV37" aria-label="Créditos disponíveis">
-                <span>Créditos</span>
-                <strong>{profile.credits}</strong>
-              </div>
+          <nav className="userDesktopNavV65" aria-label="Navegação principal">
+            {profile.role === "admin" ? (
+              <>
+                <button className={adminActiveSection === "resumo" ? "active" : ""} type="button" onClick={() => setAdminActiveSection("resumo")}>
+                  <Home size={22} />
+                  <span>Início</span>
+                </button>
+                <button className={adminActiveSection === "usuarios" ? "active" : ""} type="button" onClick={() => setAdminActiveSection("usuarios")}>
+                  <Users size={22} />
+                  <span>Usuários</span>
+                </button>
+                <button className={adminActiveSection === "atividade" ? "active" : ""} type="button" onClick={() => { setAdminActiveSection("atividade"); carregarAtividadeAdmin(); }}>
+                  <Search size={22} />
+                  <span>Consultas</span>
+                </button>
+                <button className={adminActiveSection === "usuarios" ? "" : ""} type="button" onClick={() => setAdminActiveSection("usuarios")}>
+                  <Globe2 size={21} />
+                  <span>Sites</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="active" type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+                  <Home size={22} />
+                  <span>Início</span>
+                </button>
+                <button type="button" onClick={() => { setSearchMessage(""); setSearchResults([]); setSearchText(""); setConsultationMode("internal"); setCombinedConsultationStatus(null); setShowSearchForm(true); }}>
+                  <Search size={22} />
+                  <span>Consultar</span>
+                </button>
+                <button type="button" onClick={() => { setRecordMessage(""); setShowRecordForm(true); }}>
+                  <Plus size={24} />
+                  <span>Registrar</span>
+                </button>
+                <button type="button" onClick={() => setShowMyRentalSite(true)}>
+                  <Grid3X3 size={21} />
+                  <span>Meu Site</span>
+                </button>
+              </>
+            )}
+          </nav>
 
-              <button className="btn secondary headerLogoutV36" onClick={sair} aria-label="Sair da conta">
-                Sair
+          <div className="userHeaderToolsV65">
+            <button className="userCreditsPillV65" type="button" onClick={() => setShowBuyCredits(true)} aria-label="Comprar créditos">
+              <span>CRÉDITOS</span>
+              <strong>{profile.credits}</strong>
+            </button>
+            <div className="profileMenuWrapV66">
+              <button className="userAvatarV65 profileAvatarV66" type="button" onClick={() => setProfileMenuOpen((value) => !value)} aria-label="Abrir menu do perfil" aria-expanded={profileMenuOpen}>
+                <UserCircle2 size={22} />
+                <ChevronDown size={14} />
               </button>
+              {profileMenuOpen && (
+                <div className="profileDropdownV66">
+                  <div className="profileDropdownHeaderV66">
+                    <strong>{profile.nome || "Usuário"}</strong>
+                    <span>{profile.role === "admin" ? "Administrador" : "Minha conta"}</span>
+                  </div>
+                  <button type="button" onClick={() => { setProfileMenuOpen(false); abrirMeusDados(); }}>
+                    <UserCircle2 size={18} /> Meu perfil
+                  </button>
+                  <button type="button" className="profileLogoutV66" onClick={() => { setProfileMenuOpen(false); sair(); }}>
+                    <LogOut size={18} /> Sair da conta
+                  </button>
+                </div>
+              )}
             </div>
-          </header>
-        ) : (
-          <header className="userHeaderV65">
-            <div className="userBrandV65">
-              <img src={locacheckLogoIcon} alt="LocaCheck" />
-              <div>
-                <strong>LocaCheck</strong>
-                <span>Painel do usuário</span>
-              </div>
-            </div>
+          </div>
+        </header>
 
-            <nav className="userDesktopNavV65" aria-label="Navegação principal">
-              <button className="active" type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-                <Home size={22} />
-                <span>Início</span>
-              </button>
-              <button type="button" onClick={() => { setSearchMessage(""); setSearchResults([]); setSearchText(""); setConsultationMode("internal"); setCombinedConsultationStatus(null); setShowSearchForm(true); }}>
-                <Search size={22} />
-                <span>Consultar</span>
-              </button>
-              <button type="button" onClick={() => { setRecordMessage(""); setShowRecordForm(true); }}>
-                <Plus size={24} />
-                <span>Registrar</span>
-              </button>
-              <button type="button" onClick={() => setShowMyRentalSite(true)}>
-                <Grid3X3 size={21} />
-                <span>Meu Site</span>
-              </button>
-            </nav>
-
-            <div className="userHeaderToolsV65">
-              <button className="userCreditsPillV65" type="button" onClick={() => setShowBuyCredits(true)} aria-label="Comprar créditos">
-                <span>CRÉDITOS</span>
-                <strong>{profile.credits}</strong>
-              </button>
-              <button className="userAvatarV65" type="button" onClick={abrirMeusDados} aria-label="Abrir perfil">
-                LC <ChevronDown size={16} />
-              </button>
-            </div>
-          </header>
-        )}
-
-        <main className={`dashboard ${profile.role !== "admin" ? "userDashboardV65" : ""}`}>
+        <main className={`dashboard dashboardV66Shell ${profile.role !== "admin" ? "userDashboardV65" : "adminDashboardV66"}`}>
           {profile.role !== "admin" && (
             <>
               <section className="userHeroV65">
                 <div className="userHeroCopyV65">
-                  <span className="userEyebrowV65">BEM-VINDO(A) AO LOCACHECK</span>
+                  <span className="userEyebrowV65">BEM-VINDO(A), {profile.nome || "USUÁRIO"} AO LOCACHECK</span>
                   <h1>Consulta de <em>CPF</em> para Locadoras</h1>
                   <p>Mais segurança nas suas locações. Consulte, registre e gerencie tudo em um só lugar, de forma rápida e prática.</p>
                   <div className="userHeroActionsV65">
@@ -3941,7 +4019,7 @@ function App() {
           {profile.role === "admin" && (
             <section className="dashboardHero compactHero">
               <span>Painel LocaCheck</span>
-              <h1>Olá, {profile.nome || "Administrador"}</h1>
+              <h1>Bem-vindo(a), {profile.nome || "Administrador"} ao LocaCheck</h1>
               <p>Consulte, registre e acompanhe tudo em um painel rápido e otimizado para celular.</p>
             </section>
           )}
@@ -5018,6 +5096,13 @@ function App() {
                           : "Inativo"}
                       </p>
 
+                      <p>
+                        <strong>Meu Site:</strong>{" "}
+                        {user.site_access_grant?.active && user.site_access_grant?.expires_at
+                          ? `Liberação administrativa até ${new Date(user.site_access_grant.expires_at).toLocaleDateString("pt-BR")}`
+                          : "Sem liberação administrativa"}
+                      </p>
+
                       <div className="adminButtons">
                         <button
                           className="btn adminEditUserButtonV63"
@@ -5056,6 +5141,28 @@ function App() {
                         >
                           Cancelar ilimitado
                         </button>
+
+                        {user.site_access_grant?.active ? (
+                          <button
+                            className="btn danger"
+                            type="button"
+                            onClick={() => cancelarLiberacaoSiteUsuario(user.id)}
+                            disabled={loading || adminSiteAccessLoadingId === user.id}
+                          >
+                            <Globe2 size={17} />
+                            {adminSiteAccessLoadingId === user.id ? "Atualizando..." : "Cancelar Meu Site"}
+                          </button>
+                        ) : (
+                          <button
+                            className="btn primary"
+                            type="button"
+                            onClick={() => liberarSiteUsuario(user.id)}
+                            disabled={loading || adminSiteAccessLoadingId === user.id}
+                          >
+                            <Globe2 size={17} />
+                            {adminSiteAccessLoadingId === user.id ? "Liberando..." : "Liberar Meu Site por 30 dias"}
+                          </button>
+                        )}
 
                         {String(user.role || "user").toLowerCase() === "admin" ? (
                           <button
@@ -5638,52 +5745,21 @@ function App() {
         <nav className={`mobileBottomNav ${profile.role === "admin" ? "adminMobileNav" : ""}`} aria-label="Navegação rápida">
           {profile.role === "admin" ? (
             <>
-              <button
-                type="button"
-                className={adminActiveSection === "resumo" ? "active" : ""}
-                onClick={() => setAdminActiveSection("resumo")}
-              >
-                <LayoutDashboard size={20} />
-                Resumo
+              <button type="button" className={adminActiveSection === "resumo" ? "active" : ""} onClick={() => setAdminActiveSection("resumo")}>
+                <Home size={20} />
+                Início
               </button>
-
-              <button
-                type="button"
-                className={adminActiveSection === "atividade" ? "active" : ""}
-                onClick={() => {
-                  setAdminActiveSection("atividade");
-                  carregarAtividadeAdmin();
-                }}
-              >
-                <Activity size={20} />
-                Atividade
-              </button>
-
-              <button
-                type="button"
-                className={adminActiveSection === "ocorrencias" ? "active" : ""}
-                onClick={() => setAdminActiveSection("ocorrencias")}
-              >
-                <ClipboardCheck size={20} />
-                Ocorrências
-              </button>
-
-              <button
-                type="button"
-                className={adminActiveSection === "usuarios" ? "active" : ""}
-                onClick={() => setAdminActiveSection("usuarios")}
-              >
+              <button type="button" className={adminActiveSection === "usuarios" ? "active" : ""} onClick={() => setAdminActiveSection("usuarios")}>
                 <Users size={20} />
                 Usuários
               </button>
-
-              <button
-                type="button"
-                className={adminActiveSection === "financeiro" ? "active" : ""}
-                onClick={() => setAdminActiveSection("financeiro")}
-              >
-                <BadgeDollarSign size={20} />
-                Financeiro
+              <button type="button" className={adminActiveSection === "atividade" ? "active" : ""} onClick={() => { setAdminActiveSection("atividade"); carregarAtividadeAdmin(); }}>
+                <Search size={20} />
+                Consultas
+              </button>
+              <button type="button" className={adminActiveSection === "usuarios" ? "active" : ""} onClick={() => setAdminActiveSection("usuarios")}>
+                <Globe2 size={20} />
+                Sites
               </button>
             </>
           ) : (

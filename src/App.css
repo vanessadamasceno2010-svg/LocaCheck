@@ -6294,3 +6294,147 @@ body,
   .userFooterBrandV65 { font-size: 13px; }
   .userFooterV65 > span:not(.userFooterOnlineV65) { grid-column: 1 / -1; order: 3; }
 }
+
+/* ===== V66 - Perfil unificado + layout administrativo + liberação Meu Site ===== */
+.userHeaderV65.adminHeaderV66 {
+  grid-template-columns: 280px 1fr auto;
+}
+
+.adminDashboardV66 {
+  width: min(1280px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 0 20px 112px;
+  background: rgba(2,16,39,.58);
+  border-left: 1px solid rgba(96,165,250,.28);
+  border-right: 1px solid rgba(96,165,250,.28);
+  border-bottom: 1px solid rgba(96,165,250,.28);
+  border-radius: 0 0 28px 28px;
+}
+
+.profileMenuWrapV66 {
+  position: relative;
+  z-index: 120;
+}
+
+.profileAvatarV66 {
+  border: 1px solid rgba(96,165,250,.24);
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+
+.profileDropdownV66 {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(290px, calc(100vw - 24px));
+  padding: 8px;
+  border: 1px solid rgba(96,165,250,.28);
+  border-radius: 18px;
+  background: rgba(5,24,52,.98);
+  box-shadow: 0 24px 60px rgba(0,0,0,.38);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.profileDropdownHeaderV66 {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid rgba(148,163,184,.12);
+  margin-bottom: 5px;
+}
+
+.profileDropdownHeaderV66 strong,
+.profileDropdownHeaderV66 span {
+  display: block;
+}
+
+.profileDropdownHeaderV66 strong {
+  color: #f8fbff;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profileDropdownHeaderV66 span {
+  margin-top: 3px;
+  color: #8da8c9;
+  font-size: 11px;
+}
+
+.profileDropdownV66 > button {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 12px;
+  background: transparent;
+  color: #dbeafe;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.profileDropdownV66 > button:hover {
+  background: rgba(37,99,235,.12);
+  color: #fff;
+}
+
+.profileDropdownV66 .profileLogoutV66 {
+  color: #fca5a5;
+}
+
+.profileDropdownV66 .profileLogoutV66:hover {
+  background: rgba(239,68,68,.1);
+  color: #fecaca;
+}
+
+.adminDashboardV66 .adminNavigationPanel,
+.adminDashboardV66 .adminPanel {
+  width: 100%;
+}
+
+.adminDashboardV66 .compactHero {
+  margin-top: 0;
+}
+
+@media (max-width: 980px) {
+  .userHeaderV65.adminHeaderV66 {
+    grid-template-columns: 1fr auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .adminDashboardV66 {
+    width: 100%;
+    padding: 0 12px 92px;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .userHeaderV65.adminHeaderV66 .userBrandV65 span {
+    display: block;
+  }
+
+  .profileDropdownV66 {
+    position: fixed;
+    top: 58px;
+    right: 10px;
+  }
+
+  .mobileBottomNav.adminMobileNav {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .mobileBottomNav.adminMobileNav button {
+    font-size: 10px;
+  }
+
+  .adminDashboardV66 .adminHeader,
+  .adminDashboardV66 .adminRecordTop {
+    gap: 12px;
+  }
+}
