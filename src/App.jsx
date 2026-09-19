@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import {
   Activity,
+  ArrowRight,
+  ChevronRight,
+  FileText,
+  Grid3X3,
+  Home,
+  LockKeyhole,
+  MessageCircle,
+  Plus,
+  Zap,
   BadgeDollarSign,
   BarChart3,
   ChevronDown,
@@ -27,6 +36,8 @@ import MyRentalSiteModal from "./MyRentalSiteModal";
 import PublicRentalSitePage from "./PublicRentalSitePage";
 import { getRentalSiteSlugFromPath } from "./services/rentalSiteService";
 import "./App.css";
+import locacheckLogoIcon from "./assets/locacheck-logo-icon.png";
+import heroMoto from "./assets/hero-moto.jpg";
 
 const TIPOS_OCORRENCIA = [
   "Inadimplência",
@@ -3800,39 +3811,140 @@ function App() {
             <span>{toast.message}</span>
           </div>
         )}
-        <header className="header">
-          <div className="brand">
-            <div className="logo">LC</div>
-            <div>
-              <strong>LocaCheck</strong>
-              <span>
-                {profile.role === "admin"
-                  ? "Painel administrador"
-                  : "Painel do usuário"}
-              </span>
-            </div>
-          </div>
-
-          <div className="headerUserToolsV37">
-            <div className="headerCreditsV37" aria-label="Créditos disponíveis">
-              <span>Créditos</span>
-              <strong>{profile.credits}</strong>
+        {profile.role === "admin" ? (
+          <header className="header">
+            <div className="brand">
+              <div className="logo">LC</div>
+              <div>
+                <strong>LocaCheck</strong>
+                <span>Painel administrador</span>
+              </div>
             </div>
 
-            <button className="btn secondary headerLogoutV36" onClick={sair} aria-label="Sair da conta">
-              Sair
-            </button>
-          </div>
-        </header>
+            <div className="headerUserToolsV37">
+              <div className="headerCreditsV37" aria-label="Créditos disponíveis">
+                <span>Créditos</span>
+                <strong>{profile.credits}</strong>
+              </div>
 
-        <main className="dashboard">
-          <section className="dashboardHero compactHero">
-            <span>Painel LocaCheck</span>
-            <h1>Olá, {profile.nome || "Usuário"}</h1>
-            <p>
-              Consulte, registre e acompanhe tudo em um painel rápido e otimizado para celular.
-            </p>
-          </section>
+              <button className="btn secondary headerLogoutV36" onClick={sair} aria-label="Sair da conta">
+                Sair
+              </button>
+            </div>
+          </header>
+        ) : (
+          <header className="userHeaderV65">
+            <div className="userBrandV65">
+              <img src={locacheckLogoIcon} alt="LocaCheck" />
+              <div>
+                <strong>LocaCheck</strong>
+                <span>Painel do usuário</span>
+              </div>
+            </div>
+
+            <nav className="userDesktopNavV65" aria-label="Navegação principal">
+              <button className="active" type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+                <Home size={22} />
+                <span>Início</span>
+              </button>
+              <button type="button" onClick={() => { setSearchMessage(""); setSearchResults([]); setSearchText(""); setConsultationMode("internal"); setCombinedConsultationStatus(null); setShowSearchForm(true); }}>
+                <Search size={22} />
+                <span>Consultar</span>
+              </button>
+              <button type="button" onClick={() => { setRecordMessage(""); setShowRecordForm(true); }}>
+                <Plus size={24} />
+                <span>Registrar</span>
+              </button>
+              <button type="button" onClick={() => setShowMyRentalSite(true)}>
+                <Grid3X3 size={21} />
+                <span>Meu Site</span>
+              </button>
+            </nav>
+
+            <div className="userHeaderToolsV65">
+              <button className="userCreditsPillV65" type="button" onClick={() => setShowBuyCredits(true)} aria-label="Comprar créditos">
+                <span>CRÉDITOS</span>
+                <strong>{profile.credits}</strong>
+              </button>
+              <button className="userAvatarV65" type="button" onClick={abrirMeusDados} aria-label="Abrir perfil">
+                LC <ChevronDown size={16} />
+              </button>
+            </div>
+          </header>
+        )}
+
+        <main className={`dashboard ${profile.role !== "admin" ? "userDashboardV65" : ""}`}>
+          {profile.role !== "admin" && (
+            <>
+              <section className="userHeroV65">
+                <div className="userHeroCopyV65">
+                  <span className="userEyebrowV65">BEM-VINDO(A) AO LOCACHECK</span>
+                  <h1>Consulta de <em>CPF</em> para Locadoras</h1>
+                  <p>Mais segurança nas suas locações. Consulte, registre e gerencie tudo em um só lugar, de forma rápida e prática.</p>
+                  <div className="userHeroActionsV65">
+                    <button className="userHeroPrimaryV65" type="button" onClick={() => { setSearchMessage(""); setSearchResults([]); setSearchText(""); setConsultationMode("internal"); setCombinedConsultationStatus(null); setShowSearchForm(true); }}>
+                      <Search size={20} /> Consultar CPF <ArrowRight size={18} />
+                    </button>
+                    <button className="userHeroSecondaryV65" type="button" onClick={() => setShowMyRentalSite(true)}>
+                      <Grid3X3 size={19} /> Meu Site
+                    </button>
+                  </div>
+                </div>
+                <div className="userHeroImageV65">
+                  <img src={heroMoto} alt="Moto disponível para locação" />
+                  <div className="userHeroImageShadeV65" />
+                  <div className="userHeroImageBadgeV65"><ShieldCheck size={17} /> Segurança para sua locadora</div>
+                </div>
+              </section>
+
+              <section className="userQuickCardsV65" aria-label="Principais recursos">
+                <button type="button" className="userQuickCardV65 featured" onClick={() => { setSearchMessage(""); setSearchResults([]); setSearchText(""); setConsultationMode("internal"); setCombinedConsultationStatus(null); setShowSearchForm(true); }}>
+                  <span className="userQuickIconV65"><Search size={25} /></span>
+                  <span><strong>Consultar CPF</strong><small>Consulta interna ou externa completa</small></span>
+                  <ChevronRight size={21} />
+                </button>
+                <button type="button" className="userQuickCardV65" onClick={() => { setRecordMessage(""); setShowRecordForm(true); }}>
+                  <span className="userQuickIconV65"><FileText size={25} /></span>
+                  <span><strong>Registrar Ocorrência</strong><small>Faça o registro de ocorrências com facilidade</small></span>
+                  <ChevronRight size={21} />
+                </button>
+                <button type="button" className="userQuickCardV65" onClick={() => setShowBuyCredits(true)}>
+                  <span className="userQuickIconV65"><WalletCards size={25} /></span>
+                  <span><strong>Comprar Créditos</strong><small>Adquira mais créditos para suas consultas</small></span>
+                  <ChevronRight size={21} />
+                </button>
+                <button type="button" className="userQuickCardV65" onClick={() => setShowMyRentalSite(true)}>
+                  <span className="userQuickIconV65"><Grid3X3 size={25} /></span>
+                  <span><strong>Meu Site</strong><small>Crie o site da sua locadora</small></span>
+                  <ChevronRight size={21} />
+                </button>
+              </section>
+
+              <section className="userSecurityPanelV65">
+                <div className="userSecurityIntroV65">
+                  <span className="userSecurityMainIconV65"><ShieldCheck size={31} /></span>
+                  <div>
+                    <h2>Segurança e praticidade<br />para o seu negócio</h2>
+                    <p>Tenha acesso a informações completas e atualizadas, com a confiança e a agilidade que sua locadora precisa.</p>
+                  </div>
+                </div>
+                <div className="userSecurityFeaturesV65">
+                  <div><span><ShieldCheck size={19} /></span><div><strong>Dados atualizados</strong><small>Informações precisas e confiáveis.</small></div></div>
+                  <div><span><LockKeyhole size={19} /></span><div><strong>Ambiente seguro</strong><small>Seus dados protegidos.</small></div></div>
+                  <div><span><Zap size={19} /></span><div><strong>Processo rápido</strong><small>Agilidade na consulta e no registro.</small></div></div>
+                  <div><span><Headphones size={19} /></span><div><strong>Suporte especializado</strong><small>Estamos sempre com você.</small></div></div>
+                </div>
+              </section>
+            </>
+          )}
+
+          {profile.role === "admin" && (
+            <section className="dashboardHero compactHero">
+              <span>Painel LocaCheck</span>
+              <h1>Olá, {profile.nome || "Administrador"}</h1>
+              <p>Consulte, registre e acompanhe tudo em um painel rápido e otimizado para celular.</p>
+            </section>
+          )}
 
           <section className="userTopStripV33">
             {myPendingRecordsCount > 0 && (
@@ -5512,6 +5624,17 @@ function App() {
           )}
         </main>
 
+        {profile.role !== "admin" && (
+          <footer className="userFooterV65">
+            <div className="userFooterBrandV65">
+              <img src={locacheckLogoIcon} alt="LocaCheck" />
+              <strong>LocaCheck</strong>
+            </div>
+            <span>© 2025 LocaCheck. Todos os direitos reservados.</span>
+            <span className="userFooterOnlineV65"><i /> Sistema online</span>
+          </footer>
+        )}
+
         <nav className={`mobileBottomNav ${profile.role === "admin" ? "adminMobileNav" : ""}`} aria-label="Navegação rápida">
           {profile.role === "admin" ? (
             <>
@@ -5566,7 +5689,7 @@ function App() {
           ) : (
             <>
               <button type="button" className="active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-                <span>⌂</span>
+                <Home size={20} />
                 Início
               </button>
 
@@ -5578,7 +5701,7 @@ function App() {
                 setCombinedConsultationStatus(null);
                 setShowSearchForm(true);
               }}>
-                <span>⌕</span>
+                <Search size={20} />
                 Consultar
               </button>
 
@@ -5586,18 +5709,13 @@ function App() {
                 setRecordMessage("");
                 setShowRecordForm(true);
               }}>
-                <span>＋</span>
+                <Plus size={21} />
                 Registrar
               </button>
 
               <button type="button" onClick={() => setShowMyRentalSite(true)}>
-                <span>▦</span>
+                <Grid3X3 size={19} />
                 Meu Site
-              </button>
-
-              <button type="button" onClick={abrirMeusDados}>
-                <span>◎</span>
-                Perfil
               </button>
             </>
           )}
