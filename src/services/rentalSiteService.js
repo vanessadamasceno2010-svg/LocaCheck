@@ -85,11 +85,13 @@ export function getRentalSiteSlugFromPath(pathname) {
 export function getRentalSitePublicUrl(slug) {
   const path = getRentalSitePublicPath(slug);
 
-  if (typeof window === "undefined") {
-    return path;
-  }
+  // Durante a fase sem domínio próprio, nunca usamos a URL de preview/deployment
+  // da Vercel para o link compartilhável. Isso garante um endereço estável.
+  // Quando tivermos domínio próprio, basta definir VITE_PUBLIC_SITE_BASE_URL.
+  const configuredBase = String(import.meta.env.VITE_PUBLIC_SITE_BASE_URL || "").trim().replace(/\/$/, "");
+  const baseUrl = configuredBase || "https://loca-check.vercel.app";
 
-  return `${window.location.origin}${path}`;
+  return `${baseUrl}${path}`;
 }
 
 export async function getMyRentalSiteBenefit() {
