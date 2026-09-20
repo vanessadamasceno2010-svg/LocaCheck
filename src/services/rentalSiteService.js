@@ -200,6 +200,8 @@ export async function updateMyRentalSite(siteId, updates) {
     "slug",
     "brand_name",
     "tagline",
+    "logo_url",
+    "hero_image_url",
     "whatsapp",
     "phone",
     "email",
@@ -373,7 +375,7 @@ export async function getPublicRentalSite(slug) {
 
   const { data: motorcycles, error: motorcyclesError } = await supabase
     .from("rental_site_motorcycles")
-    .select("id, name, category, description, image_url, price_day, price_week, price_month, available, published, sort_order")
+    .select("id, name, description, image_url, model_year, engine_cc, deposit, price_day, price_week, price_month, available, published, sort_order")
     .eq("site_id", data.id)
     .eq("published", true)
     .order("sort_order", { ascending: true })
