@@ -302,6 +302,9 @@ export async function createRentalSiteMotorcycle(siteId, values) {
     site_id: siteId,
     name: String(values?.name || "").trim(),
     category: String(values?.category || "").trim() || null,
+    model_year: values?.model_year ? Number(values.model_year) : null,
+    engine_cc: values?.engine_cc ? Number(values.engine_cc) : null,
+    deposit: Number(values?.deposit || 0),
     description: String(values?.description || "").trim() || null,
     image_url: String(values?.image_url || "").trim() || null,
     price_day: Number(values?.price_day || 0),
@@ -319,7 +322,7 @@ export async function createRentalSiteMotorcycle(siteId, values) {
 
 export async function updateRentalSiteMotorcycle(id, values) {
   if (!id) throw new Error("Moto não informada.");
-  const allowed = ["name", "category", "description", "image_url", "price_day", "price_week", "price_month", "available", "published", "sort_order"];
+  const allowed = ["name", "category", "model_year", "engine_cc", "deposit", "description", "image_url", "price_day", "price_week", "price_month", "available", "published", "sort_order"];
   const payload = {};
   for (const field of allowed) if (Object.prototype.hasOwnProperty.call(values || {}, field)) payload[field] = values[field];
   if (payload.name !== undefined) {
