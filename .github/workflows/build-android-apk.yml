@@ -1,3 +1,335 @@
+import { chromium } from "playwright";
+import { createClient } from "@supabase/supabase-js";
+
+const {
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  SIGMA_EMAIL,
+  SIGMA_PASSWORD,
+} = process.env;
+
+function requireEnv(name, value) {
+  if (!value) throw new Error(`Variável obrigatória ausente: ${name}`);
+}
+
+requireEnv("SUPABASE_URL", SUPABASE_URL);
+requireEnv("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_ROLE_KEY);
+requireEnv("SIGMA_EMAIL", SIGMA_EMAIL);
+requireEnv("SIGMA_PASSWORD", SIGMA_PASSWORD);
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+});
+
+const SIGMA_ORIGIN = "https://painelslim.site";
+const DEFAULT_SERVER_ID = "BV4D3rLaqZ";
+
+async function getPendingJob() {
+  const { data, error } = await supabase
+    .from("sigma_jobs")
+    .select("*")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (error) throw new Error(`Erro ao buscar sigma_jobs: ${error.message}`);
+  return data?.[0] ?? null;
+}
+
+async function updateJob(jobId, values) {
+  const { error } = await supabase
+    .from("sigma_jobs")
+    .update(values)
+    .eq("id", jobId);
+
+  if (error) {
+    throw new Error(`Erro ao atualizar sigma_job ${jobId}: ${error.message}`);
+  }
+}
+
+async function firstVisible(page, selectors, timeout = 1500) {
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    try {
+      await locator.waitFor({ state: "visible", timeout });
+      return locator;
+    } catch {}
+  }
+  return null;
+}
+
+async function isLoggedIn(page) {
+  const url = page.url();
+  if (url.includes("/customers") || url.includes("/dashboard") || url.includes("/apps")) {
+    return true;
+  }
+
+  const passwordField = await firstVisible(
+    page,
+    [
+      'input[type="password"]',
+      'input[name="password"]',
+      'input[autocomplete="current-password"]',
+    ],
+    700
+  );
+
+  return !passwordField;
+}
+
+async function loginSigma(page) {
+  console.log("Abrindo Sigma...");
+
+  await page.goto(SIGMA_ORIGIN, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await page.waitForTimeout(1500);
+
+  if (await isLoggedIn(page)) {
+    console.log("Sessão Sigma já autenticada.");
+    return;
+  }
+
+  console.log("Tela de login detectada.");
+
+  const loginField = await firstVisible(
+    page,
+    [
+      'input[type="email"]',
+      'input[name="email"]',
+      'input[name="username"]',
+      'input[autocomplete="username"]',
+      'input[placeholder*="mail" i]',
+      'input[placeholder*="usuário" i]',
+      'input[placeholder*="usuario" i]',
+      'input[type="text"]',
+    ],
+    2500
+  );
+
+  if (!loginField) {
+    throw new Error("Não encontrei o campo de login do Sigma.");
+  }
+
+  const passwordField = await firstVisible(
+    page,
+    [
+      'input[type="password"]',
+      'input[name="password"]',
+      'input[autocomplete="current-password"]',
+      'input[placeholder*="senha" i]',
+    ],
+    2500
+  );
+
+  if (!passwordField) {
+    throw new Error("Não encontrei o campo de senha do Sigma.");
+  }
+
+  await loginField.fill(SIGMA_EMAIL);
+  await passwordField.fill(SIGMA_PASSWORD);
+
+  const submitButton = await firstVisible(
+    page,
+    [
+      'button[type="submit"]',
+      'button:has-text("Entrar")',
+      'button:has-text("Login")',
+      'button:has-text("Acessar")',
+    ],
+    2500
+  );
+
+  if (!submitButton) {
+    throw new Error("Não encontrei o botão de login do Sigma.");
+  }
+
+  await Promise.all([
+    page.waitForLoadState("domcontentloaded").catch(() => null),
+    submitButton.click(),
+  ]);
+
+  await page.waitForTimeout(2500);
+
+  if (!(await isLoggedIn(page))) {
+    throw new Error(`Login no Sigma não foi confirmado. URL atual: ${page.url()}`);
+  }
+
+  console.log("Login no Sigma realizado com sucesso.");
+}
+
+async function sigmaFetch(page, path, options = {}) {
+  const result = await page.evaluate(
+    async ({ path, options }) => {
+      const response = await fetch(path, {
+        ...options,
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Locale: "pt",
+          "X-App-Version": "3.92",
+          ...(options.headers || {}),
+        },
+      });
+
+      const text = await response.text();
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {}
+
+      return {
+        ok: response.ok,
+        status: response.status,
+        url: response.url,
+        text,
+        json,
+      };
+    },
+    { path, options }
+  );
+
+  if (!result.ok) {
+    throw new Error(
+      `Sigma ${result.status} em ${result.url}: ${result.text.slice(0, 1200)}`
+    );
+  }
+
+  return result.json ?? result.text;
+}
+
+async function testCredentialGeneration(page, job) {
+  const serverId = job.sigma_server_id || DEFAULT_SERVER_ID;
+
+  console.log(`Testando generate-credential no servidor ${serverId}...`);
+
+  const credential = await sigmaFetch(
+    page,
+    "/api/customers/generate-credential",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        field: "password",
+        server_id: serverId,
+      }),
+    }
+  );
+
+  if (!credential?.value || !credential?.reservation_token) {
+    throw new Error(
+      `Sigma respondeu sem value/reservation_token: ${JSON.stringify(credential)}`
+    );
+  }
+
+  console.log("Generate-credential funcionando.");
+  console.log(
+    JSON.stringify(
+      {
+        value: credential.value,
+        reservation_token_present: Boolean(credential.reservation_token),
+      },
+      null,
+      2
+    )
+  );
+
+  return {
+    test: "generate-credential",
+    server_id: serverId,
+    credential_value: credential.value,
+    reservation_token_present: true,
+  };
+}
+
+async function processJob(page, job) {
+  switch (job.type) {
+    case "TEST_CONNECTION":
+    case "TEST_LOGIN":
+    case "TEST_CREDENTIAL":
+      return await testCredentialGeneration(page, job);
+    default:
+      throw new Error(`Tipo de sigma_job ainda não implementado: ${job.type}`);
+  }
+}
+
+async function main() {
+  const job = await getPendingJob();
+
+  if (!job) {
+    console.log("Nenhuma tarefa pendente em sigma_jobs.");
+    return;
+  }
+
+  console.log(`Processando job ${job.id} (${job.type})`);
+
+  await updateJob(job.id, {
+    status: "processing",
+    attempts: (job.attempts || 0) + 1,
+    error_message: null,
+  });
+
+  const browser = await chromium.launch({ headless: true });
+
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    locale: "pt-BR",
+  });
+
+  const page = await context.newPage();
+
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      console.log(`[Browser console] ${msg.text()}`);
+    }
+  });
+
+  try {
+    await loginSigma(page);
+    const result = await processJob(page, job);
+
+    await updateJob(job.id, {
+      status: "completed",
+      processed_at: new Date().toISOString(),
+      result,
+      error_message: null,
+    });
+
+    console.log(`Job ${job.id} concluído com sucesso.`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    console.error("Erro no Sigma Worker:");
+    console.error(message);
+
+    try {
+      await page.screenshot({
+        path: "sigma-worker-error.png",
+        fullPage: true,
+      });
+      console.log("Screenshot de erro salvo em sigma-worker-error.png");
+    } catch {}
+
+    await updateJob(job.id, {
+      status: "error",
+      error_message: message.slice(0, 5000),
+      processed_at: new Date().toISOString(),
+    });
+
+    throw error;
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
 name: Gerar APK de teste LocaCheck
 
 on:
